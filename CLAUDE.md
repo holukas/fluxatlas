@@ -8,10 +8,85 @@ RECO, H, LE), meteorology, and their quality flags, resolved from the whole
 record down to the single day. One site over decades is the target; several
 sites is a later possibility, not a current requirement.
 
-**Status: the name is reserved, the implementation is not written.** PyPI holds
-`fluxatlas` 0.0.1, which is a placeholder release — a docstring and a
-`__version__`, nothing else. Treat any description of behaviour in this file as
-intent rather than as a description of existing code.
+**Status: the library works for meteorological variables; nothing is released
+yet.** PyPI still holds the 0.0.1 placeholder. `Atlas` builds and renders, and a
+selection of one variable produces a correct one-variable page. The fluxes, the
+CLI and the GUI are not written.
+
+```python
+import fluxatlas as fa
+
+fa.available("CH-LAE_HH.csv")                                   # what the file carries
+fa.build_atlas("CH-LAE_HH.csv", "atlas.html", variables=["TA"])  # TA and nothing else
+```
+
+## Module layout
+
+| Module | Responsibility |
+| --- | --- |
+| `atlas.py` | The public API — `Atlas`, `build_atlas`, `available`. Everything a CLI or GUI would need belongs here, so both stay thin. |
+| `io.py` | Reading one half-hourly FLUXNET file: timestamp, `-9999`, whole years, unit conversion, the measured/modelled split. |
+| `variables.py` | The registry, keyed by canonical key (`TA`, `PREC`, …), each with the candidate FLUXNET columns that can supply it and the factor onto the canonical unit. |
+| `stats.py` | Theil-Sen trend, spells, growing season, rounding — the estimators shared with the CH-LAE dashboards. |
+| `build.py` | The ported computation: metrics, badges, day tests, normals, seasons, payload, render. The large one. |
+| `assets/` | `calendar.js`, `calendar.css`, `base.css`, `template.html`, inlined into the output. |
+
+**Selection is the organizing principle.** A metric whose variable is absent is
+dropped, a badge whose `needs` are unmet is withheld with a reason, a day test
+reading an absent variable is skipped, and a metric that would have no values at
+all is not offered. When adding anything to a registry, ask what a one-variable
+build does with it.
+
+**The registry is a convenience, not a requirement.** The candidate column names
+in `variables.py` are how a FLUXNET-named file is read without being told
+anything. Any other half-hourly series is read by passing an explicit mapping:
+
+```python
+fa.Atlas(path, {"TA": {"column": "Lufttemperatur", "qc": "TA_FLAG"}})
+```
+
+The canonical key still has to be one the registry describes, because that is
+where the units, thresholds and aggregation come from — only the column name is
+the caller's. `io.resolve` is where the three accepted forms are documented.
+
+## examples/ and tests/
+
+`examples/data/CH-LAE_meteo_30min_2005-2025.parquet` (9.3 MB, committed) is a
+twenty-one-year six-variable extract of the CH-LAE merged meteo product, cut
+down by `examples/make_example_data.py` — that script needs the CH-LAE data
+folder and is there for provenance, not as a step anyone else runs.
+`examples/build_lae_meteo_atlas.py` builds a six-variable and a one-variable
+atlas from it into `examples/output/` (ignored).
+
+The example uses CH-LAE column names deliberately: it is the mapping case, which
+is the general one. A FLUXNET-named file needs `variables=["TA"]` and nothing
+more.
+
+`pytest` — 78 tests, ~40 s. Most run on **synthetic** data built by
+`tests/conftest.py`: a twelve-year half-hourly record with seasonal and diurnal
+cycles, noise, and an imposed 0.8 K/decade warming the trend tests assert is
+recovered. Twelve years because `MIN_NORMAL_YEARS` is 8 and nothing interesting
+exists below it. The tests that read the bundled extract skip when it is absent,
+so a fresh checkout still passes.
+
+## What is planned, and deliberately not here yet
+
+- **The fluxes** (NEE, GPP, RECO, LE, H). The registry, the metrics and the
+  badges are all written for meteo; adding a flux means a `variables.py` entry
+  plus metrics and badges that make sense for it.
+- **A CLI.** `python -m fluxatlas` or a `fluxatlas` entry point over
+  `atlas.build_atlas`. The argument surface the CH-LAE script had (`--vars`,
+  `--out`, `--outdir`, `--no-hourly`, `--list`, `--open`) is a reasonable
+  starting point.
+- **Wider input than half-hourly.** Everything currently assumes 30-minute
+  records: the reader reindexes onto a `30min` grid and the seasonal coverage
+  denominators are `n_days * 48`. Hourly or daily input needs those two places
+  generalized before it will give correct coverage.
+- **A desktop GUI** for choosing the file and the variables. `available()`
+  exists to feed exactly that picker.
+
+Both front ends are meant to be thin wrappers. Anything either would need goes
+in `atlas.py`, not in them.
 
 ## Where it comes from
 
@@ -30,6 +105,26 @@ CH-LAE flux product repo:
 That repo is meteo-only and CH-LAE-only. The two things this project changes are
 that the input is a FLUXNET-standardized file rather than the LAE meteo products,
 and that fluxes are in scope alongside meteo.
+
+**Nothing was removed from the CH-LAE repo**; the code was copied. The two will
+drift, and that is accepted — the LAE script keeps its site-specific product
+loading, its integrity checks and its `deploy.ps1` step.
+
+What the port changed, beyond the data layer:
+
+- `build_meteo_dashboard`'s `VARIABLES` + the script's own `CALENDAR` dict became
+  one registry in `variables.py`; the per-variable page settings (`ship`,
+  `digits`, `hourly`, `scale`, `short`) now live on `Variable`.
+- The canonical key `SWC_0.2` became `SWC` — a depth is a CH-LAE fact.
+- `sparse` badge: named TA and PREC, now reports on whatever is selected.
+- `SpanStats.__missing__` returns 0 for `n_*` and `spell_*` so a badge may ask
+  about a day test the selection dropped. Every other missing key is still a
+  `KeyError`, which is what catches a genuine registry bug.
+- Page copy that said "meteo" or "the exported products" was generalized.
+
+The `calendar.js` renderer was copied nearly as-is and still contains references
+to specific variable keys. It survives a one-variable payload — that is tested —
+but expect to revisit it when fluxes arrive.
 
 ## Packaging conventions
 
