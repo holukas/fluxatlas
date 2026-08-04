@@ -1,0 +1,565 @@
+/* ==============================================================================================
+   CH-LAE meteo calendar explorer - components
+   ----------------------------------------------------------------------------------------------
+   This file is appended to `dashboard_assets/dashboard.css`, which supplies the tokens, the base
+   layout, the cards, the tables and the tooltip. Only the components this page adds are defined
+   here, so the two pages cannot drift apart and no colour is decided twice.
+
+   The one token added is a status colour for sparse coverage. It is deliberately not one of the
+   series slots: a warning is a state, not a series, and reusing a categorical hue for it would
+   make "sparsely measured" look like a sixth variable. It always ships with an icon and a label,
+   and a sparse tile also carries a hatch, so the state survives greyscale and forced colours.
+   ============================================================================================== */
+
+:root {
+  --tone-warn: #a35c00;
+  --cell-radius: 10px;
+  /* The measured height of the top bar, written by the script on load and on resize. The grid's
+     sticky month header offsets by exactly this, so no band of tiles shows between the two. */
+  --topbar-h: 56px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where([data-theme="auto"]) { --tone-warn: #f0b74e; }
+}
+:root[data-theme="dark"] { --tone-warn: #f0b74e; }
+
+/* ---------------------------------------------------------------------------------------------
+   Top bar breadcrumb
+   --------------------------------------------------------------------------------------------- */
+
+.crumbs { margin-left: auto; display: flex; align-items: center; gap: 8px;
+          font-size: 13px; color: var(--text-muted); min-width: 0; }
+.crumbs .sep { opacity: .5; }
+.crumbs b { color: var(--text-primary); font-weight: 600; }
+
+/* ---------------------------------------------------------------------------------------------
+   Controls
+   --------------------------------------------------------------------------------------------- */
+
+.controls {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 22px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 13px 16px; margin-bottom: 16px;
+}
+
+.control { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+/* A `display` of its own outranks the user agent's rule for the `hidden` attribute, so a control
+   that hides itself has to say so here or it stays on screen with its state ignored. */
+.control[hidden] { display: none; }
+.control > label, .control > .control-label {
+  font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 600;
+}
+
+select.picker {
+  font: inherit; font-size: 13.5px; color: var(--text-primary);
+  background: var(--surface-raised); border: 1px solid var(--border);
+  border-radius: 9px; padding: 7px 11px; min-width: 250px; cursor: pointer;
+}
+select.picker:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
+
+.switchrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.switch {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-raised);
+  border-radius: 999px; padding: 6px 13px 6px 10px; font-size: 13px;
+  color: var(--text-secondary);
+}
+.switch input { accent-color: var(--series-1); margin: 0; }
+.switch:hover { color: var(--text-primary); }
+
+.control-note { font-size: 12px; color: var(--text-muted); max-width: 46ch; }
+
+.btn {
+  font: inherit; font-size: 13px; color: var(--text-secondary); cursor: pointer;
+  background: var(--surface-raised); border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px 14px;
+}
+.btn:hover { color: var(--text-primary); background: var(--wash); }
+.btn.icon { padding: 6px 11px; font-size: 15px; line-height: 1; }
+.btn:disabled { opacity: .35; cursor: default; }
+.btn.back::before { content: "\2190"; margin-right: 7px; }
+
+/* ---------------------------------------------------------------------------------------------
+   The grid
+   ---------------------------------------------------------------------------------------------
+   Twelve month columns between a year label and a year summary. Below the width at which a tile
+   can still carry its value the whole grid scrolls sideways rather than the tiles collapsing: a
+   month with an unreadable number in it is worse than a scrollbar.
+
+   The month header sticks under the top bar so the twenty-one rows stay readable, and getting that
+   right is subtler than it looks. `overflow-x: auto` computes `overflow-y` to `auto` as well, which
+   makes the shell a scroll container in *both* axes; a `position: sticky` header inside it then
+   resolves its offset against the shell rather than against the viewport, and - because the shell
+   never scrolls vertically - is pushed permanently that far *down*, straight into the first row of
+   tiles. Two rules follow, and neither may be dropped:
+
+   1. The shell carries `overflow-x` only at the widths where the grid cannot fit, because
+      `overflow: auto` establishes a scroll container whether or not there is anything to scroll.
+      Above that width the shell is an ordinary block and the header's offset is measured against
+      the viewport, which is what makes it stick correctly. Below it, `--calhead-top: auto` turns
+      the vertical stickiness off rather than leaving it to be displaced.
+   2. Where it does stick, it has to be opaque across the whole row. Each header is its own grid
+      item, so negative margins of half the gap close the slivers between them and a negative
+      bottom margin carries the band over the row gap onto the tiles below.
+   --------------------------------------------------------------------------------------------- */
+
+.calshell { padding-bottom: 4px; }
+@media (max-width: 1199.98px) {
+  .calshell { overflow-x: auto; }
+}
+
+.calgrid {
+  display: grid;
+  grid-template-columns: 50px repeat(12, minmax(0, 1fr)) 84px;
+  gap: 5px;
+  /* Wide enough that four badge chips and the overflow count still fit inside a tile at the
+     narrowest the grid is allowed to be; below this the shell scrolls sideways. */
+  min-width: 1080px;
+  --calhead-top: auto;
+}
+
+/* Above this width the grid fits without sideways scrolling, so the shell is not a scroll
+   container and the header can stick to the viewport. The margin is real but not large: at the
+   breakpoint a classic scrollbar leaves 1185 px, main takes 2.5 vw a side, and 1126 px remain for
+   a grid that asks for 1080 - so raising `min-width` on the grid means moving this too. */
+@media (min-width: 1200px) {
+  .calgrid { --calhead-top: var(--topbar-h); }
+}
+
+.calhead {
+  font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-muted); text-align: center;
+  position: sticky; top: var(--calhead-top); z-index: 6;
+  margin: 0 -2.5px -6px; padding: 11px 2.5px 8px;
+  background: var(--page);
+  border-bottom: 1px solid var(--border);
+}
+/* The corner is the one header that also has to survive the sideways scroll, so it sticks in both
+   directions and outranks the year labels that pass beneath it. */
+.calhead.corner { text-align: left; left: 0; z-index: 8; }
+
+.calyear {
+  position: sticky; left: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: flex-end;
+  font-size: 12.5px; font-weight: 600; color: var(--text-secondary);
+  font-variant-numeric: tabular-nums; padding-right: 8px;
+  background: var(--page);
+}
+/* Every fifth year is marked, so the eye can count rows without reading every label. */
+.calyear.decade { color: var(--text-primary); }
+.calyear.decade::before {
+  content: ""; width: 3px; height: 15px; border-radius: 2px; margin-right: 7px;
+  background: var(--text-muted); opacity: .55;
+}
+
+.cell {
+  position: relative; display: flex; flex-direction: column; gap: 2px;
+  min-height: 66px; padding: 6px 7px 5px; cursor: pointer; text-align: left;
+  border: 0; border-radius: var(--cell-radius);
+  background: var(--neutral-mid); color: var(--text-primary);
+  font: inherit; overflow: hidden;
+  transition: transform .1s ease, box-shadow .1s ease;
+}
+/* A hairline drawn in the tile's own ink separates two tiles of nearly the same colour without
+   introducing a border colour that would have to work against every step of every ramp. */
+.cell::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  border-radius: var(--cell-radius); box-shadow: inset 0 0 0 1px currentColor; opacity: .13;
+}
+.cell:hover { transform: translateY(-2px); box-shadow: 0 6px 18px -5px rgba(0, 0, 0, .42); z-index: 3; }
+.cell:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; z-index: 4; }
+
+/* The tile ink is chosen against the tile, not against the page: a dark end of a ramp needs light
+   ink and the pale middle needs dark ink, and the two cases are set by the renderer. */
+.cell.on-dark { color: #fff; }
+.cell.on-light { color: #101010; }
+
+.cell-value {
+  font-size: 16px; font-weight: 650; letter-spacing: -.025em;
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.cell-value .u { font-size: .62em; font-weight: 500; opacity: .72; margin-left: 2px; }
+.cell-sub { font-size: 10.5px; opacity: .76; line-height: 1.2; font-variant-numeric: tabular-nums; }
+
+.cell-badges { margin-top: 3px; display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
+/* With every badge shown the chips wrap, and the busiest tile sets the height of its row - which
+   is why this is a choice in the controls rather than how the grid always looks. */
+.all-badges .cell-badges { flex-wrap: wrap; row-gap: 3px; }
+.all-badges .cell { min-height: 76px; }
+
+/* Four seasons instead of twelve months: the tiles are three times as wide, which is room the day
+   strip uses well - ninety days of a summer read as a curve rather than as a bar code. */
+.calgrid.seasons { grid-template-columns: 50px repeat(4, minmax(0, 1fr)) 84px; min-width: 620px; }
+.calgrid.seasons .cell { min-height: 74px; }
+.calgrid.seasons .cell-strip { height: 18px; }
+
+select.picker.narrow { min-width: 210px; }
+
+.seasonline {
+  margin: 14px 0 0; font-size: 13px; color: var(--text-secondary); max-width: 82ch;
+}
+.seasonline a { color: var(--series-1); }
+.cell-badges .more { font-size: 10px; opacity: .8; font-weight: 600; }
+
+/* The day strip sits on the bottom edge of the tile whatever else the tile carries, so the strips
+   of one year read as a continuous band across the row. */
+.cell-strip { display: block; width: 100%; height: 13px; margin-top: auto; padding-top: 4px; }
+
+/* A month with no data at all is drawn as absence rather than as a value at the bottom of the
+   scale, which is what a zero-coloured tile would read as. */
+.cell.empty {
+  background: transparent; cursor: default; color: var(--text-muted);
+}
+.cell.empty::before { box-shadow: none; }
+.cell.empty::after {
+  content: ""; position: absolute; inset: 0; border-radius: var(--cell-radius);
+  border: 1px dashed var(--border);
+}
+.cell.empty:hover { transform: none; box-shadow: none; }
+
+/* Sparse coverage carries a texture as well as a badge, so it survives greyscale and forced
+   colours - and so a reader sees it before reading anything. */
+.cell.sparse::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: var(--cell-radius);
+  background: repeating-linear-gradient(135deg, transparent 0 5px,
+              color-mix(in srgb, var(--page) 55%, transparent) 5px 9px);
+}
+
+.cell.dim { opacity: .17; }
+.cell.hit { box-shadow: inset 0 0 0 2px var(--text-primary); }
+
+/* The year figure carries its own miniature of the twelve months, so a row can be read as a shape
+   as well as a number - which is what shows a year that was mild throughout against one that
+   averaged the same from a cold spring and a hot summer. */
+.calsummary {
+  display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  padding: 4px 9px; border-radius: var(--cell-radius);
+  background: var(--wash); font-variant-numeric: tabular-nums;
+}
+.calsummary .v { font-size: 13px; font-weight: 650; letter-spacing: -.02em; }
+.calsummary .k { font-size: 9.5px; color: var(--text-muted); letter-spacing: .04em;
+                 text-transform: uppercase; }
+.calsummary svg { display: block; width: 100%; height: 11px; margin-top: 2px; }
+
+/* The closing row: each calendar month over the whole record, so the grid answers down its columns
+   as well as across its rows. The rule above it is drawn per cell with the same half-gap negative
+   margins the sticky header uses, which is what makes it continuous rather than dashed by the
+   column gaps. */
+.calfoot-label, .calfootcell {
+  margin: 7px -2.5px 0; padding: 9px 2.5px 0; border-top: 1px solid var(--border);
+}
+.calfoot-label {
+  position: sticky; left: 0; z-index: 5; background: var(--page);
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 600; padding-right: 8px; text-align: right;
+}
+.calfoot-label .sub { font-size: 9px; letter-spacing: .04em; opacity: .8; }
+.calfootcell {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background-clip: content-box; border-radius: var(--cell-radius);
+  min-height: 48px; font-variant-numeric: tabular-nums; color: var(--text-primary);
+}
+.calfootcell.on-dark { color: #fff; }
+.calfootcell.on-light { color: #101010; }
+.calfootcell .v { font-size: 13.5px; font-weight: 650; letter-spacing: -.02em; }
+.calfootcell .k { font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase; opacity: .72; }
+.calfootcell.record { background: var(--wash); color: var(--text-primary); }
+
+/* The slope under a column figure. It is deliberately quieter than the mean above it - the mean is
+   the baseline a reader is comparing tiles against, and the slope is the qualification on it. Where
+   Kendall's tau clears the threshold the number is given its full weight and an asterisk, so the
+   distinction between a measured trend and an undecided one survives at this size. */
+.calfootcell .t { font-size: 10px; font-weight: 500; opacity: .62; letter-spacing: -.01em; }
+.calfootcell .t.sig { font-weight: 700; opacity: .95; }
+.calfootcell .t.none { font-style: italic; opacity: .45; }
+
+/* ---------------------------------------------------------------------------------------------
+   The day raster
+   ---------------------------------------------------------------------------------------------
+   The third resolution of the same grid: one mark per day, a row to the year. It replaces the
+   tile grid inside the same shell, so the shell's twelve-column template has to be switched off
+   rather than fought - and its minimum width with it, because a raster reflows to any width while
+   a tile carrying four chips and a number does not.
+   --------------------------------------------------------------------------------------------- */
+
+.calgrid.raster { display: block; min-width: 0; }
+.rasterhost { width: 100%; }
+.rasterhost svg { display: block; width: 100%; height: auto; overflow: visible; }
+.rasterhost svg:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; }
+
+/* A day the record does not carry has to read as a gap in a row rather than as page showing
+   through where no row was drawn, so every row is laid on a track first. */
+.raster-track { fill: var(--wash); }
+/* The first of each month: the boundaries this scale exists to draw across. They are kept faint
+   and kept visible - a spell only reads as continuous if the line it runs over does too. */
+.raster-rule { stroke: var(--border); stroke-width: 1; opacity: .85; }
+.raster-cursor { fill: none; stroke: var(--text-primary); stroke-width: 1.6; pointer-events: none; }
+.raster-year {
+  font-size: 10px; fill: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.raster-year.decade { fill: var(--text-primary); font-weight: 600; }
+.rasterempty {
+  margin: 0; padding: 26px 0; font-size: 13.5px; color: var(--text-secondary); max-width: 62ch;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Trend
+   --------------------------------------------------------------------------------------------- */
+
+/* Direction is carried by which side of the zero line a bar falls on, and significance by whether
+   it is filled. No hue is spent on either: a slope has no warm end, and giving it one would make
+   a rise in humidity read as a rise in temperature. */
+.trendbar { fill: none; stroke: var(--text-secondary); stroke-width: 1; opacity: .75; }
+.trendbar.sig { fill: var(--text-secondary); opacity: 1; }
+
+.scalenote { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 8px; max-width: 52ch; }
+.scalenote b { color: var(--text-primary); font-weight: 600; }
+
+.tablewrap .muted { color: var(--text-muted); font-weight: 400; }
+
+/* A note under the rows of a tooltip: a sentence rather than a value, so it wraps where the rows
+   do not, and the tooltip is allowed the width a sentence needs. */
+.tooltip:has(.tt-note) { max-width: 340px; }
+.tt-note {
+  margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--text-secondary); white-space: normal;
+}
+
+.undergrid {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px 30px; margin-top: 18px;
+}
+.scalebar { min-width: 280px; flex: 0 1 400px; }
+.scalebar svg { display: block; width: 100%; height: auto; }
+.gridnote { font-size: 12.5px; color: var(--text-muted); margin: 0; max-width: 68ch; flex: 1 1 320px; }
+
+/* The tooltip's badge list. It carries every badge of the month whatever the tile shows, so the
+   compact grid hides nothing - which is what lets four chips be the default. The shared stylesheet
+   caps the tooltip at 280 px for prose; a list of chips needs the room a long label asks for. */
+.tooltip:has(.tt-badges) { max-width: 340px; }
+.tt-badges {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border);
+}
+.tt-badge { display: flex; align-items: center; gap: 7px; font-size: 12px; white-space: nowrap; }
+
+/* ---------------------------------------------------------------------------------------------
+   Badges
+   --------------------------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------------------------
+   Badge chips
+   ---------------------------------------------------------------------------------------------
+   A chip is a solid tile of colour with a white or near-black symbol on it. The colour is a
+   *family*, not an identity: five of them, and the symbol is what names the badge. That is
+   deliberate and was measured rather than assumed - eight distinguishable chip colours do not
+   exist in this token set. Run against the palette validator, a set of eight failed the
+   normal-vision floor (a teal and a blue at deltaE 11) and the CVD floor (a grey and a green at 5);
+   these five pass both checks in light and in dark, which is why a raindrop and a snowflake are
+   both blue on purpose. Every chip ships with its label in the legend and in the month view, so
+   colour is never the only carrier.
+
+   The one exception is the data-quality chip, which is a status rather than a family: it is the
+   only chip with a texture, so "sparsely measured" survives greyscale, forced colours and a
+   reader who does not know the palette.
+   --------------------------------------------------------------------------------------------- */
+
+.chip {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 17px; height: 17px; border-radius: 5px;
+}
+.chip svg { width: 12px; height: 12px; display: block; }
+.chip.lg { width: 26px; height: 26px; border-radius: 8px; }
+.chip.lg svg { width: 17px; height: 17px; }
+.chip.sm { width: 14px; height: 14px; border-radius: 4px; }
+.chip.sm svg { width: 10px; height: 10px; }
+
+.chip-warm { background: var(--pole-warm); color: #fff; }
+.chip-cold, .chip-wet { background: var(--pole-cold); color: #fff; }
+.chip-dry, .chip-sun { background: var(--series-4); color: #101010; }
+.chip-grow { background: var(--series-3); color: #101010; }
+.chip-dull { background: var(--text-secondary); color: #fff; }
+.chip-warn {
+  background: var(--tone-warn); color: #fff;
+  background-image: repeating-linear-gradient(135deg,
+    rgba(255, 255, 255, .38) 0 2px, transparent 2px 5px);
+}
+
+/* Both of these tokens inverts with the theme, so the symbol on them has to invert too. */
+@media (prefers-color-scheme: dark) {
+  :root:where([data-theme="auto"]) .chip-dull,
+  :root:where([data-theme="auto"]) .chip-warn { color: #101010; }
+  :root:where([data-theme="auto"]) .chip-warn {
+    background-image: repeating-linear-gradient(135deg,
+      rgba(0, 0, 0, .28) 0 2px, transparent 2px 5px);
+  }
+}
+:root[data-theme="dark"] .chip-dull,
+:root[data-theme="dark"] .chip-warn { color: #101010; }
+:root[data-theme="dark"] .chip-warn {
+  background-image: repeating-linear-gradient(135deg,
+    rgba(0, 0, 0, .28) 0 2px, transparent 2px 5px);
+}
+
+/* On a coloured tile a chip needs a hairline of separation, or a blue chip on a blue tile loses
+   its edge. The ring is drawn in whichever direction the tile's own ink runs. */
+.cell.on-light .chip, .daycell.on-light .chip { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .85); }
+.cell.on-dark .chip, .daycell.on-dark .chip { box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .28); }
+
+
+.badgelegend { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.badgegroup {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 13px 15px 14px;
+}
+.badgegroup h3 {
+  font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); margin: 0 0 9px; font-weight: 600;
+}
+.badgetoggle {
+  display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left;
+  background: transparent; border: 1px solid transparent; border-radius: 10px;
+  padding: 6px 8px; margin: 0 0 2px; cursor: pointer; font: inherit; color: var(--text-primary);
+}
+.badgetoggle:hover { background: var(--wash); }
+.badgetoggle[aria-pressed="true"] { border-color: var(--text-primary); background: var(--wash); }
+.badgetoggle .chip { margin-top: 1px; }
+.badgetoggle .bl { font-size: 13.5px; font-weight: 600; }
+.badgetoggle .bn { font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.badgetoggle .bd { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
+.badgetoggle .bt { min-width: 0; }
+
+/* ---------------------------------------------------------------------------------------------
+   Month view
+   --------------------------------------------------------------------------------------------- */
+
+.monthbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: clamp(20px, 3vw, 34px) 0 14px;
+}
+.monthnav { display: flex; align-items: center; gap: 8px; }
+.monthnav.year { margin-left: auto; }
+.monthtitle {
+  font-size: clamp(24px, 3vw, 38px); line-height: 1.1; margin: 0; letter-spacing: -.02em;
+  min-width: 5.6em; text-align: center;
+}
+/* The season the month belongs to, beside its name, so a reader arriving from a deep link knows
+   where in the year they have landed without counting months. */
+.monthtitle .season {
+  display: block; font-size: 11.5px; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 600;
+}
+
+/* A one-line statement of what the month was, above the numbers that support it. It is assembled
+   from the same statistics the tiles show, so it cannot describe a month they contradict. */
+.monthlede {
+  margin: 0 0 var(--gap); font-size: 16px; color: var(--text-secondary); max-width: 82ch;
+}
+.monthlede b { color: var(--text-primary); font-weight: 600; }
+
+.badgelist { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 var(--gap); padding: 0; list-style: none; }
+.badgelist li {
+  display: flex; align-items: flex-start; gap: 9px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 10px 14px 10px 12px; max-width: 42ch;
+}
+.badgelist .bl { font-size: 13.5px; font-weight: 600; }
+.badgelist .bd { font-size: 12.5px; color: var(--text-secondary); }
+.badgelist .chip { margin-top: 2px; }
+.badgelist.none li { color: var(--text-muted); }
+
+/* ---------------------------------------------------------------------------------------------
+   Day calendar inside a month
+   --------------------------------------------------------------------------------------------- */
+
+.daygrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.dayhead {
+  font-size: 11px; letter-spacing: .05em; text-transform: uppercase; font-weight: 600;
+  color: var(--text-muted); text-align: center; padding-bottom: 3px;
+}
+.daycell {
+  position: relative; display: flex; flex-direction: column; gap: 1px;
+  min-height: 84px; padding: 6px 7px 5px; cursor: pointer; text-align: left;
+  border: 1px solid transparent; border-radius: var(--cell-radius);
+  background: var(--neutral-mid); color: var(--text-primary); font: inherit; overflow: hidden;
+}
+.daycell.blank { background: transparent; border-color: transparent; cursor: default; }
+.daycell.on-dark { color: #fff; }
+.daycell.on-light { color: #101010; }
+.daycell:hover:not(.blank) { box-shadow: 0 4px 14px -4px rgba(0, 0, 0, .35); }
+.daycell:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+.daycell[aria-current="true"] { box-shadow: inset 0 0 0 2px var(--text-primary); }
+.daycell .dnum { font-size: 11.5px; font-weight: 700; opacity: .8; font-variant-numeric: tabular-nums; }
+.daycell .dval { font-size: 15px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.daycell .dsub { font-size: 10.5px; opacity: .8; font-variant-numeric: tabular-nums; }
+.daycell .dflags { margin-top: auto; display: flex; gap: 3px; align-items: center; }
+.daycell .drain {
+  position: absolute; left: 0; bottom: 0; height: 3px;
+  background: var(--series-1); border-radius: 0 2px 0 0;
+}
+.daycell.sparse::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: var(--cell-radius);
+  background: repeating-linear-gradient(135deg, transparent 0 5px,
+              color-mix(in srgb, var(--page) 55%, transparent) 5px 9px);
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Day panel
+   --------------------------------------------------------------------------------------------- */
+
+.daypanel { scroll-margin-top: 80px; }
+.daypanel .card-head .btn { margin-left: auto; }
+.dayfacets { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+/* Three compact panels inside a half-width card: at the default minimum the third would wrap and
+   leave the row ragged. */
+.dayfacets.tight { gap: 14px; grid-template-columns: repeat(auto-fit, minmax(186px, 1fr)); }
+.facet-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0 0 2px; }
+.facet-title .unit { color: var(--text-muted); font-weight: 500; }
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin: 0;
+      font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.kv dt { color: var(--text-secondary); }
+.kv dd { margin: 0; text-align: right; font-weight: 600; }
+
+.kv .muted { color: var(--text-muted); font-weight: 500; }
+/* An axis that reached one standard deviation is what the count is counting, so it is
+   marked in the list the count is taken from. */
+.kv dd.strong { color: var(--pole-warm); }
+
+.smallnote { font-size: 12px; color: var(--text-muted); margin: 10px 0 0; }
+
+/* ---------------------------------------------------------------------------------------------
+   Where a month sits among the same month of every other year
+   ---------------------------------------------------------------------------------------------
+   One row per variable: every qualifying year as a dot on a shared line, this year filled and
+   labelled. The rank is stated in words beside it, because a position on a line is a comparison
+   and the sentence is the claim.
+   --------------------------------------------------------------------------------------------- */
+
+.strips { display: flex; flex-direction: column; gap: 12px; }
+.strip { display: grid; grid-template-columns: minmax(96px, 1fr) minmax(150px, 2.4fr) auto;
+         align-items: center; gap: 4px 14px; }
+.strip .sname { font-size: 12.5px; color: var(--text-secondary);
+                font-variant-numeric: tabular-nums; }
+.strip .sname b { color: var(--text-primary); font-weight: 600; display: block;
+                  font-variant-numeric: normal; }
+.striphost { min-width: 0; }
+.striphost svg { display: block; width: 100%; height: 30px; overflow: visible; }
+.strip .srank { font-size: 12px; color: var(--text-muted); text-align: right;
+                font-variant-numeric: tabular-nums; white-space: nowrap; }
+.strip .srank b { color: var(--text-primary); font-weight: 600; }
+
+@media (max-width: 640px) {
+  .strip { grid-template-columns: 1fr auto; }
+  .striphost { grid-column: 1 / -1; }
+}
+
+/* A card that should never be halved, whatever the breakpoint allows. */
+.w-12 { grid-column: span 12; }
+
+@media (max-width: 700px) {
+  .monthnav.year { margin-left: 0; }
+  select.picker { min-width: 0; width: 100%; }
+}

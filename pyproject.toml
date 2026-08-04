@@ -11,8 +11,28 @@ requires-python = ">=3.12,<3.14"
 license = { text = "GPL-3.0" }
 authors = [{ name = "Lukas Hörtnagl", email = "holukas@ethz.ch" }]
 
-dependencies = []
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    # Theil-Sen slopes and Kendall's tau, the estimators behind every trend the page publishes.
+    "scipy>=1.11",
+    # Reading .parquet input; FLUXNET files are usually .csv, but the upstream CH-LAE products the
+    # first atlases were built from are parquet.
+    "pyarrow>=15.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/holukas/fluxatlas"
 Repository = "https://github.com/holukas/fluxatlas"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `tests/` is not a package, and conftest.py exports the synthetic-data builders that several
+# test modules import by name.
+pythonpath = ["tests"]
+addopts = "-q"

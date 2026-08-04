@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">
+        <strong id="brand-site">CH-LAE</strong>
+        <span id="brand-sub">atlas</span>
+      </span>
+    </div>
+    <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-live="polite">
+      <span class="theme-icon" aria-hidden="true"></span><span class="theme-label">Dark mode</span>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- Level 1: every month of every year -->
+  <section id="view-grid">
+    <section class="hero">
+      <h1 id="page-title">The record, month by month</h1>
+      <p class="lede" id="page-lede"></p>
+      <ul class="chips" id="page-chips"></ul>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <h2 class="section" id="s-grid">The grid</h2>
+    <div class="controls" id="controls"></div>
+    <div class="calshell">
+      <div class="calgrid" id="calgrid" role="grid" aria-label="Months of the record"></div>
+    </div>
+    <div class="undergrid">
+      <div class="scalebar" id="scalebar"></div>
+      <p class="gridnote" id="gridnote"></p>
+    </div>
+
+    <h2 class="section" id="s-badges">Badges</h2>
+    <p class="lede small" id="badge-lede"></p>
+    <div class="badgelegend" id="badgelegend"></div>
+
+    <h2 class="section" id="s-about">About this page</h2>
+    <div class="grid" id="g-about"></div>
+  </section>
+
+  <!-- Level 2 and 3: one month, and one day inside it -->
+  <section id="view-month" hidden>
+    <div class="monthbar">
+      <button type="button" class="btn back" id="month-back">All months</button>
+      <div class="monthnav">
+        <button type="button" class="btn icon" id="month-prev" aria-label="Previous month">‹</button>
+        <h1 class="monthtitle" id="month-title">—</h1>
+        <button type="button" class="btn icon" id="month-next" aria-label="Next month">›</button>
+      </div>
+      <div class="monthnav year">
+        <button type="button" class="btn icon" id="year-prev" aria-label="Same month, previous year">−1 yr</button>
+        <button type="button" class="btn icon" id="year-next" aria-label="Same month, next year">+1 yr</button>
+      </div>
+    </div>
+    <div id="month-body"></div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <p id="footer-text"></p>
+</footer>
+
+<div id="tooltip" class="tooltip" role="status" aria-live="polite"></div>
+
+<script id="payload" type="application/json">/*__DATA__*/</script>
+<script>
+/*__JS__*/
+</script>
+</body>
+</html>

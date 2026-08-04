@@ -1,0 +1,402 @@
+/* ==============================================================================================
+   CH-LAE air temperature dashboard - styles
+   ----------------------------------------------------------------------------------------------
+   Light and dark are two *selected* token sets, not an automatic inversion: the dark series
+   colours are the same hues stepped for the dark surface. Every categorical set used on the page
+   was checked with the palette validator (lightness band, chroma floor, CVD separation,
+   normal-vision floor, contrast against its own surface) in both modes.
+
+   The dark values are declared twice on purpose. The media query covers the operating system
+   setting; the [data-theme] scope covers the toggle in the top bar, which has to win in both
+   directions.
+   ============================================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces and ink */
+  --page:            #f9f9f7;
+  --surface:         #fcfcfb;
+  --surface-raised:  #ffffff;
+  --text-primary:    #0b0b0b;
+  --text-secondary:  #52514e;
+  --text-muted:      #898781;
+  --grid:            #e1e0d9;
+  --axis:            #c3c2b7;
+  --border:          rgba(11, 11, 11, 0.10);
+  --shadow:          0 1px 2px rgba(11, 11, 11, .05), 0 8px 24px -12px rgba(11, 11, 11, .18);
+  --wash:            rgba(11, 11, 11, 0.04);
+
+  /* Categorical slots, fixed order, never cycled */
+  --series-1: #2a78d6;  /* blue */
+  --series-2: #eb6834;  /* orange */
+  --series-3: #1baf7a;  /* aqua */
+  --series-4: #eda100;  /* yellow */
+
+  /* Diverging poles: cool and warm, used where the two series are the two poles */
+  --pole-cold: #2a78d6;
+  --pole-warm: #e34948;
+  --neutral-mid: #f0efec;
+
+  /* Sequential blue ramp, light -> dark */
+  --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #6da7ec; --seq-4: #3987e5;
+  --seq-5: #256abf; --seq-6: #184f95; --seq-7: #0d366b;
+
+  /* Ordinal ramps for the two ordered index families */
+  --cold-1: #5598e7; --cold-2: #184f95;
+  --warm-1: #ee9060; --warm-2: #dd5f2c; --warm-3: #93380f;
+
+  /* Neutral range bands. They carry no identity, only an interval, so they stay achromatic - but
+     they still have to be visible against their own surface, which a first pass got wrong in both
+     modes. */
+  --band-outer: #e3e8ec;
+  --band-inner: #bcc7d1;
+
+  --radius: 14px;
+  --gap: 18px;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where([data-theme="auto"]) {
+    color-scheme: dark;
+    --page:           #0d0d0d;
+    --surface:        #1a1a19;
+    --surface-raised: #212120;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --axis:           #383835;
+    --border:         rgba(255, 255, 255, 0.10);
+    --shadow:         0 1px 2px rgba(0, 0, 0, .5), 0 12px 32px -14px rgba(0, 0, 0, .8);
+    --wash:           rgba(255, 255, 255, 0.05);
+
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    --pole-cold: #3987e5; --pole-warm: #e66767;
+    --neutral-mid: #383835;
+
+    --seq-1: #0d366b; --seq-2: #184f95; --seq-3: #256abf; --seq-4: #3987e5;
+    --seq-5: #6da7ec; --seq-6: #9ec5f4; --seq-7: #cde2fb;
+
+    --cold-1: #9ec5f4; --cold-2: #2a78d6;
+    --warm-1: #f6b48f; --warm-2: #e07040; --warm-3: #b4441a;
+
+    --band-outer: #2e343c;
+    --band-inner: #4a5561;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page:           #0d0d0d;
+  --surface:        #1a1a19;
+  --surface-raised: #212120;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --grid:           #2c2c2a;
+  --axis:           #383835;
+  --border:         rgba(255, 255, 255, 0.10);
+  --shadow:         0 1px 2px rgba(0, 0, 0, .5), 0 12px 32px -14px rgba(0, 0, 0, .8);
+  --wash:           rgba(255, 255, 255, 0.05);
+
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --pole-cold: #3987e5; --pole-warm: #e66767;
+  --neutral-mid: #383835;
+
+  --seq-1: #0d366b; --seq-2: #184f95; --seq-3: #256abf; --seq-4: #3987e5;
+  --seq-5: #6da7ec; --seq-6: #9ec5f4; --seq-7: #cde2fb;
+
+  --cold-1: #9ec5f4; --cold-2: #2a78d6;
+  --warm-1: #f6b48f; --warm-2: #e07040; --warm-3: #b4441a;
+
+  --band-outer: #2e343c;
+  --band-inner: #4a5561;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------------------------- */
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 78px; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--series-1); }
+
+.skip {
+  position: absolute; left: -999px; top: 0; z-index: 100;
+  background: var(--surface-raised); color: var(--text-primary);
+  padding: 10px 16px; border-radius: 0 0 var(--radius) 0;
+}
+.skip:focus { left: 0; }
+
+/* ---------------------------------------------------------------------------------------------
+   Top bar
+   --------------------------------------------------------------------------------------------- */
+
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  background: color-mix(in srgb, var(--page) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-inner {
+  max-width: 1760px; margin: 0 auto;
+  padding: 10px clamp(14px, 2.5vw, 34px);
+  display: flex; align-items: center; gap: 18px;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.brand-mark {
+  width: 24px; height: 24px; border-radius: 7px; flex: none;
+  background: linear-gradient(150deg, var(--pole-cold), var(--pole-warm));
+}
+
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.brand-text strong { font-size: 14px; letter-spacing: .02em; }
+.brand-text span { font-size: 11.5px; color: var(--text-muted); white-space: nowrap;
+                   overflow: hidden; text-overflow: ellipsis; }
+
+/* Below this width the nav cannot fit beside the brand and the toggle without being clipped, and a
+   clipped row of links reads as broken rather than as scrollable. The headings stay in the page. */
+.sectionnav { display: none; gap: 2px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+@media (min-width: 1000px) { .sectionnav { display: flex; } }
+@media (max-width: 999px) { .theme-toggle { margin-left: auto; } }
+.sectionnav::-webkit-scrollbar { display: none; }
+.sectionnav a {
+  color: var(--text-secondary); text-decoration: none; font-size: 13px;
+  padding: 6px 11px; border-radius: 999px; white-space: nowrap;
+}
+.sectionnav a:hover { background: var(--wash); color: var(--text-primary); }
+.sectionnav a.active { background: var(--wash); color: var(--text-primary); font-weight: 600; }
+
+.theme-toggle {
+  flex: none; display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border); background: var(--surface-raised); color: var(--text-secondary);
+  border-radius: 999px; padding: 6px 14px 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.theme-toggle:hover { color: var(--text-primary); }
+.theme-icon {
+  width: 14px; height: 14px; border-radius: 50%; flex: none;
+  background: var(--text-secondary);
+  box-shadow: inset -4px -3px 0 0 var(--surface-raised);
+}
+:root[data-theme="dark"] .theme-icon,
+:root:where([data-theme="auto"]) .theme-icon { box-shadow: none; }
+@media (prefers-color-scheme: light) {
+  :root:where([data-theme="auto"]) .theme-icon { box-shadow: inset -4px -3px 0 0 var(--surface-raised); }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Layout
+   --------------------------------------------------------------------------------------------- */
+
+main { max-width: 1760px; margin: 0 auto; padding: 0 clamp(14px, 2.5vw, 34px) 60px; }
+
+.hero { padding: clamp(26px, 4vw, 46px) 0 8px; }
+
+h1 {
+  font-size: clamp(28px, 3.4vw, 44px); line-height: 1.1; margin: 0 0 10px;
+  letter-spacing: -0.02em;
+}
+
+.lede { margin: 0 0 18px; max-width: 78ch; color: var(--text-secondary); font-size: 16px; }
+
+.chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0 0 26px; }
+.chips li {
+  font-size: 12.5px; color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px;
+  background: var(--surface);
+}
+.chips li b { color: var(--text-primary); font-weight: 600; }
+
+.note {
+  margin: 22px 0 0; max-width: 90ch; font-size: 13px; color: var(--text-muted);
+  border-left: 2px solid var(--axis); padding-left: 14px;
+}
+
+h2.section {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .11em;
+  color: var(--text-muted); font-weight: 600;
+  margin: 46px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+
+.grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
+
+.card { grid-column: span 12; }
+
+@media (min-width: 760px) {
+  .w-4 { grid-column: span 6; }
+  .w-6 { grid-column: span 6; }
+  .w-8 { grid-column: span 12; }
+}
+@media (min-width: 1200px) {
+  .w-4 { grid-column: span 4; }
+  .w-6 { grid-column: span 6; }
+  .w-8 { grid-column: span 8; }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Stat tiles
+   --------------------------------------------------------------------------------------------- */
+
+.tiles {
+  display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.tile {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 18px 15px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 2px;
+}
+
+.tile-label {
+  font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 600;
+}
+.tile-value {
+  font-size: clamp(26px, 2.4vw, 34px); line-height: 1.1; letter-spacing: -0.02em;
+  font-weight: 600; margin-top: 4px;
+}
+.tile-value .unit { font-size: .52em; font-weight: 500; color: var(--text-secondary);
+                    margin-left: 3px; letter-spacing: 0; }
+.tile-sub { font-size: 12.5px; color: var(--text-secondary); }
+.tile-accent-cold .tile-value { color: var(--pole-cold); }
+.tile-accent-warm .tile-value { color: var(--pole-warm); }
+
+/* ---------------------------------------------------------------------------------------------
+   Cards
+   --------------------------------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 16px 18px 14px;
+  display: flex; flex-direction: column; min-width: 0;
+}
+
+.card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+.card-title { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.card-sub { font-size: 12.5px; color: var(--text-secondary); margin: 3px 0 0; max-width: 74ch; }
+
+.viewtoggle { margin-left: auto; display: flex; gap: 2px; flex: none;
+              background: var(--wash); border-radius: 999px; padding: 2px; }
+.viewtoggle button {
+  border: 0; background: transparent; color: var(--text-secondary);
+  font: inherit; font-size: 12px; padding: 3px 11px; border-radius: 999px; cursor: pointer;
+}
+.viewtoggle button[aria-pressed="true"] {
+  background: var(--surface-raised); color: var(--text-primary); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+}
+
+.card-body { margin-top: 10px; flex: 1 1 auto; min-width: 0; }
+.chart { width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 10px 2px 0; }
+.legend-item { display: inline-flex; align-items: center; gap: 7px;
+               font-size: 12.5px; color: var(--text-secondary); }
+/* A neutral band swatch is nearly the colour of the card, so it gets the hairline ring the marks
+   themselves do not need. */
+.legend-swatch { width: 11px; height: 11px; border-radius: 3px; flex: none;
+                 box-shadow: inset 0 0 0 1px var(--border); }
+.legend-swatch.line { height: 3px; border-radius: 2px; width: 15px; }
+
+.card-foot { font-size: 12px; color: var(--text-muted); margin: 12px 0 0; }
+
+/* ---------------------------------------------------------------------------------------------
+   Tables (the table-view twin of every chart, and the standalone table cards)
+   --------------------------------------------------------------------------------------------- */
+
+.tablewrap { overflow-x: auto; max-height: 460px; overflow-y: auto; border-radius: 10px;
+             border: 1px solid var(--border); }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px;
+        font-variant-numeric: tabular-nums; }
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-raised); color: var(--text-secondary);
+  text-align: right; font-weight: 600; padding: 8px 10px;
+  border-bottom: 1px solid var(--axis); white-space: nowrap;
+}
+thead th:first-child, tbody td:first-child { text-align: left; }
+tbody td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid);
+           white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--wash); }
+td.num-warm { color: var(--pole-warm); }
+td.num-cold { color: var(--pole-cold); }
+
+/* ---------------------------------------------------------------------------------------------
+   Tooltip
+   --------------------------------------------------------------------------------------------- */
+
+.tooltip {
+  position: fixed; z-index: 60; pointer-events: none; opacity: 0;
+  transform: translate(-50%, -100%); transition: opacity .09s ease;
+  background: var(--surface-raised); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 9px;
+  box-shadow: 0 6px 22px -6px rgba(0, 0, 0, .4);
+  padding: 8px 11px; font-size: 12.5px; line-height: 1.45;
+  max-width: 280px;
+}
+.tooltip.on { opacity: 1; }
+.tooltip .tt-title { font-weight: 600; margin-bottom: 3px; }
+.tooltip .tt-row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.tooltip .tt-row .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.tooltip .tt-row .k { color: var(--text-secondary); }
+.tooltip .tt-row .v { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* ---------------------------------------------------------------------------------------------
+   Chart primitives drawn by dashboard.js
+   --------------------------------------------------------------------------------------------- */
+
+.ax-line { stroke: var(--axis); stroke-width: 1; fill: none; }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.ax-text { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.ax-title { fill: var(--text-secondary); font-size: 11.5px; }
+.mark-label { fill: var(--text-secondary); font-size: 11.5px; font-weight: 600; }
+.crosshair { stroke: var(--text-muted); stroke-width: 1; }
+.hit { fill: transparent; }
+.cell-label { font-size: 10px; font-variant-numeric: tabular-nums; }
+
+.scalebar-text { fill: var(--text-muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------------------------------------
+   Footer
+   --------------------------------------------------------------------------------------------- */
+
+.footer {
+  border-top: 1px solid var(--border); margin-top: 20px;
+  padding: 22px clamp(14px, 2.5vw, 34px) 40px;
+}
+.footer p { max-width: 1760px; margin: 0 auto; font-size: 12.5px; color: var(--text-muted); }
+
+/* ---------------------------------------------------------------------------------------------
+   Print and forced colours
+   --------------------------------------------------------------------------------------------- */
+
+@media print {
+  .topbar, .viewtoggle, .skip { display: none; }
+  .card { break-inside: avoid; box-shadow: none; }
+  body { background: #fff; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; }
+}
