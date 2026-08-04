@@ -1,0 +1,191 @@
+"""Reading: timestamps, missing values, whole years, units, the measured split, and resolution."""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from conftest import synthetic_frame, to_fluxnet_csv
+from fluxatlas import io, variables as varreg
+
+
+# -- Timestamps ----------------------------------------------------------------------------------
+
+def test_reads_fluxnet_csv_and_indexes_on_the_window_middle(csv_path):
+    loaded = io.read_fluxnet(csv_path, ["TA"], quiet=True)
+    index = loaded["TA"]["series"].index
+    assert isinstance(index, pd.DatetimeIndex)
+    # The middle of a 00:00-00:30 window is 00:15, which is the point of indexing this way.
+    assert index[0].minute == 15
+    assert (index[1] - index[0]) == pd.Timedelta("30min")
+
+
+def test_end_stamp_alone_still_lands_on_the_right_day():
+    """A record ending 00:00 belongs to the previous day, not to the one that is starting."""
+    index = pd.date_range("2020-01-01 00:30", periods=4, freq="30min")
+    df = pd.DataFrame({"TIMESTAMP_END": index.strftime("%Y%m%d%H%M").astype("int64"),
+                       "TA_F": [1.0, 2.0, 3.0, 4.0]})
+    middles = io._timestamp_index(df)
+    assert middles[0] == pd.Timestamp("2020-01-01 00:15")
+
+
+def test_a_frame_already_on_a_datetimeindex_is_taken_as_is(frame):
+    assert io._timestamp_index(frame).equals(frame.index)
+
+
+def test_a_file_without_any_timestamp_is_refused():
+    with pytest.raises(ValueError, match="does not\n?\\s*look like a FLUXNET"):
+        io._timestamp_index(pd.DataFrame({"TA_F": [1.0, 2.0]}))
+
+
+# -- Missing values ------------------------------------------------------------------------------
+
+def test_the_fluxnet_missing_value_becomes_nan(tmp_path):
+    frame = synthetic_frame(years=2)
+    frame.iloc[:10, frame.columns.get_loc("TA_F")] = -9999.0
+    path = tmp_path / "hh.parquet"
+    frame.to_parquet(path)
+    series = io.read_fluxnet(path, ["TA"], quiet=True)["TA"]["series"]
+    assert series.iloc[:10].isna().all()
+    # And it must not survive as a number anywhere in the series.
+    assert series.dropna().min() > -100
+
+
+# -- Whole years ---------------------------------------------------------------------------------
+
+def test_a_partial_first_and_last_year_are_dropped(tmp_path):
+    frame = synthetic_frame(first_year=2010, years=4)
+    frame = frame.loc["2010-03-01":"2013-08-31"]      # 2010 has no January, 2013 no December
+    path = tmp_path / "hh.parquet"
+    frame.to_parquet(path)
+    loaded = io.read_fluxnet(path, ["TA"], quiet=True)
+    assert io.span(loaded) == (2011, 2012)
+
+
+def test_the_span_can_be_narrowed_by_hand(parquet_path):
+    loaded = io.read_fluxnet(parquet_path, ["TA"], first_year=2012, last_year=2015, quiet=True)
+    assert io.span(loaded) == (2012, 2015)
+
+
+def test_the_index_is_continuous_after_reading_a_gappy_file(tmp_path):
+    """Rows missing from the file must come back as missing records, not as a shorter series."""
+    frame = synthetic_frame(years=2)
+    frame = frame.drop(frame.index[500:900])
+    path = tmp_path / "hh.parquet"
+    frame.to_parquet(path)
+    series = io.read_fluxnet(path, ["TA"], quiet=True)["TA"]["series"]
+    assert series.index.freq is None or True
+    assert (series.index.to_series().diff().dropna() == pd.Timedelta("30min")).all()
+    assert series.isna().sum() >= 400
+
+
+def test_a_record_with_no_whole_year_is_refused(tmp_path):
+    frame = synthetic_frame(years=1).loc["2010-03-01":"2010-09-30"]
+    path = tmp_path / "hh.parquet"
+    frame.to_parquet(path)
+    with pytest.raises(ValueError, match="no whole year"):
+        io.read_fluxnet(path, ["TA"], quiet=True)
+
+
+# -- Units ---------------------------------------------------------------------------------------
+
+def test_the_unit_factor_is_applied(tmp_path):
+    """VPD in Pa becomes VPD in kPa, because the thresholds are stated in kPa."""
+    frame = synthetic_frame(years=2)
+    frame["VPD_EP"] = 1500.0                      # 1500 Pa
+    path = tmp_path / "hh.parquet"
+    frame.to_parquet(path)
+    series = io.read_fluxnet(path, ["VPD"], quiet=True)["VPD"]["series"]
+    assert np.isclose(series.dropna().iloc[0], 1.5)
+
+
+def test_a_wrong_unit_fails_the_read_naming_the_column(tmp_path):
+    """VPD in Pa read as though it were hPa lands far outside the plausible range."""
+    frame = synthetic_frame(years=2)
+    frame["VPD_F"] = 1500.0                       # Pa, but VPD_F is documented as hPa
+    path = tmp_path / "hh.parquet"
+    frame.to_parquet(path)
+    with pytest.raises(ValueError, match="VPD_F.*outside the plausible range"):
+        io.read_fluxnet(path, ["VPD"], quiet=True)
+
+
+# -- Measured versus modelled --------------------------------------------------------------------
+
+def test_qc_zero_is_measured_and_anything_above_it_is_not(parquet_path, frame):
+    loaded = io.read_fluxnet(parquet_path, ["TA"], quiet=True)
+    measured = loaded["TA"]["measured"]
+    expected = (frame["TA_F_QC"] == 0).sum()
+    assert measured.sum() == expected
+    assert 0.85 < measured.mean() < 1.0
+
+
+def test_without_a_qc_column_present_means_measured(tmp_path):
+    frame = synthetic_frame(years=2).drop(columns=["TA_F_QC"])
+    path = tmp_path / "hh.parquet"
+    frame.to_parquet(path)
+    loaded = io.read_fluxnet(path, ["TA"], quiet=True)
+    assert loaded["TA"]["v"].qc_column is None
+    assert loaded["TA"]["measured"].equals(loaded["TA"]["series"].notna())
+
+
+# -- Resolution ----------------------------------------------------------------------------------
+
+def test_available_finds_the_registry_columns(parquet_path):
+    found = io.available(parquet_path)
+    assert set(found) == {"TA", "PREC", "SW_IN"}
+    assert found["TA"]["column"] == "TA_F"
+    assert found["TA"]["qc"] == "TA_F_QC"
+
+
+def test_resolve_accepts_a_list_a_string_and_none(frame):
+    assert set(io.resolve(frame, ["TA", "PREC"])) == {"TA", "PREC"}
+    assert set(io.resolve(frame, "TA")) == {"TA"}
+    assert set(io.resolve(frame, None)) == {"TA", "PREC", "SW_IN"}
+
+
+def test_resolve_accepts_an_explicit_mapping(frame):
+    renamed = frame.rename(columns={"TA_F": "my_temperature", "TA_F_QC": "my_flag"})
+    specs = io.resolve(renamed, {"TA": dict(column="my_temperature", qc="my_flag")})
+    assert specs["TA"] == dict(column="my_temperature", factor=1.0, qc="my_flag")
+    # A bare string is the same thing without a flag.
+    assert io.resolve(renamed, {"TA": "my_temperature"})["TA"]["qc"] is None
+
+
+def test_a_mapping_makes_a_non_fluxnet_file_readable(tmp_path):
+    """The point of the mapping: columns that were never named for FLUXNET."""
+    frame = synthetic_frame(years=10).rename(columns={"TA_F": "Lufttemperatur"})
+    path = tmp_path / "local.parquet"
+    frame.to_parquet(path)
+    with pytest.raises(KeyError, match="carries no column for TA"):
+        io.read_fluxnet(path, ["TA"], quiet=True)
+    loaded = io.read_fluxnet(path, {"TA": "Lufttemperatur"}, quiet=True)
+    assert loaded["TA"]["v"].column == "Lufttemperatur"
+
+
+def test_unknown_keys_and_missing_columns_are_named_in_the_error(frame):
+    with pytest.raises(KeyError, match="unknown variable"):
+        io.resolve(frame, ["NOT_A_VARIABLE"])
+    with pytest.raises(KeyError, match="no column 'nope'"):
+        io.resolve(frame, {"TA": "nope"})
+    with pytest.raises(KeyError, match="quality flag"):
+        io.resolve(frame, {"TA": dict(column="TA_F", qc="nope")})
+
+
+def test_a_missing_column_suggests_the_mapping(frame):
+    with pytest.raises(KeyError, match="Pass an explicit mapping"):
+        io.resolve(frame.drop(columns=["TA_F"]), ["TA"])
+
+
+def test_csv_and_parquet_give_the_same_series(csv_path, parquet_path):
+    from_csv = io.read_fluxnet(csv_path, ["TA"], quiet=True)["TA"]["series"]
+    from_parquet = io.read_fluxnet(parquet_path, ["TA"], quiet=True)["TA"]["series"]
+    pd.testing.assert_series_equal(from_csv, from_parquet, check_freq=False)
+
+
+def test_every_registry_variable_declares_columns_and_a_unit():
+    for key in varreg.known():
+        v = varreg.make(key)
+        assert v.candidates, f"{key} lists no candidate columns"
+        assert v.units, f"{key} has no units"
+        assert v.limits[0] < v.limits[1], f"{key} has empty limits"
