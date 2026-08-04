@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Example output: regenerate with examples/build_lae_meteo_atlas.py
+examples/output/
