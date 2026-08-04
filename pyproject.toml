@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fluxatlas"
+version = "0.0.1"
+description = "Interactive explorer for FLUXNET-standardized ecosystem data"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "GPL-3.0" }
+authors = [{ name = "Lukas Hörtnagl", email = "holukas@ethz.ch" }]
+
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/holukas/fluxatlas"
+Repository = "https://github.com/holukas/fluxatlas"
