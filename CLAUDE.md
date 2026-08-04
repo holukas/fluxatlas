@@ -8,10 +8,15 @@ RECO, H, LE), meteorology, and their quality flags, resolved from the whole
 record down to the single day. One site over decades is the target; several
 sites is a later possibility, not a current requirement.
 
-**Status: the library works for meteorological variables; nothing is released
-yet.** PyPI still holds the 0.0.1 placeholder. `Atlas` builds and renders, and a
-selection of one variable produces a correct one-variable page. The fluxes, the
-CLI and the GUI are not written.
+**Status: the library and the CLI work for meteorological variables; nothing is
+released yet.** PyPI still holds the 0.0.1 placeholder. `Atlas` builds and
+renders, and a selection of one variable produces a correct one-variable page.
+The fluxes and the GUI are not written.
+
+```bash
+fluxatlas record.csv --list                                   # what the file carries
+fluxatlas record.parquet -o atlas.html --var TA=Lufttemperatur --qc TA=TA_FLAG
+```
 
 ```python
 import fluxatlas as fa
@@ -24,7 +29,8 @@ fa.build_atlas("CH-LAE_HH.csv", "atlas.html", variables=["TA"])  # TA and nothin
 
 | Module | Responsibility |
 | --- | --- |
-| `atlas.py` | The public API — `Atlas`, `build_atlas`, `available`. Everything a CLI or GUI would need belongs here, so both stay thin. |
+| `atlas.py` | The public API — `Atlas`, `build_atlas`, `available`. Everything a front end would need belongs here, so they stay thin. |
+| `cli.py` | The command line, a thin wrapper over `atlas.py`. `__main__.py` and the `fluxatlas` entry point both land here. |
 | `io.py` | Reading one half-hourly FLUXNET file: timestamp, `-9999`, whole years, unit conversion, the measured/modelled split. |
 | `variables.py` | The registry, keyed by canonical key (`TA`, `PREC`, …), each with the candidate FLUXNET columns that can supply it and the factor onto the canonical unit. |
 | `stats.py` | Theil-Sen trend, spells, growing season, rounding — the estimators shared with the CH-LAE dashboards. |
@@ -74,10 +80,6 @@ so a fresh checkout still passes.
 - **The fluxes** (NEE, GPP, RECO, LE, H). The registry, the metrics and the
   badges are all written for meteo; adding a flux means a `variables.py` entry
   plus metrics and badges that make sense for it.
-- **A CLI.** `python -m fluxatlas` or a `fluxatlas` entry point over
-  `atlas.build_atlas`. The argument surface the CH-LAE script had (`--vars`,
-  `--out`, `--outdir`, `--no-hourly`, `--list`, `--open`) is a reasonable
-  starting point.
 - **Wider input than half-hourly.** Everything currently assumes 30-minute
   records: the reader reindexes onto a `30min` grid and the seasonal coverage
   denominators are `n_days * 48`. Hourly or daily input needs those two places

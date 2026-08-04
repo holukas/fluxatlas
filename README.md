@@ -6,11 +6,36 @@ Interactive explorer for FLUXNET-standardized ecosystem data.
 FLUXNET-standardized output of an eddy covariance site — every month of the
 record on one grid, drilling down to the season, the month and the single day.
 
-> **In preparation.** The library builds atlases for meteorological variables.
-> The fluxes, a command-line interface and a desktop GUI are not written yet, and
+> **In preparation.** The library and its command line build atlases for
+> meteorological variables. The fluxes and a desktop GUI are not written yet, and
 > nothing beyond the 0.0.1 placeholder is on PyPI.
 
-## Use
+## Command line
+
+```bash
+fluxatlas record.csv --list
+```
+
+`--list` reports which variables the registry can find, and which it cannot. Where
+the file uses FLUXNET names, that is all you need:
+
+```bash
+fluxatlas record.csv -o atlas.html --vars TA,PREC
+```
+
+Where the columns are named to some other convention — which is most real files —
+name them:
+
+```bash
+fluxatlas record.parquet -o atlas.html --var TA=Lufttemperatur --qc TA=TA_ISFILLED
+```
+
+`--qc` names the quality flag beside a column (0 measured, above 0 modelled) and
+`--factor` converts it onto the canonical unit, e.g. `--factor VPD=0.001` for Pa
+to kPa. Both forms combine, so registry-found and hand-named variables can appear
+in one build. `python -m fluxatlas` is the same entry point.
+
+## Use as a library
 
 ```python
 import fluxatlas as fa
