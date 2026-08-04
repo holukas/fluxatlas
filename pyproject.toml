@@ -21,6 +21,9 @@ dependencies = [
     "pyarrow>=15.0",
 ]
 
+[project.scripts]
+fluxatlas = "fluxatlas.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/holukas/fluxatlas"
 Repository = "https://github.com/holukas/fluxatlas"
