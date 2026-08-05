@@ -443,6 +443,15 @@ are stated, so there is no second requirements file. It is an extra rather than 
 dependency group because a PEP 735 group is not reachable from a path install,
 which is how Read the Docs installs a project.
 
+**Read the Docs reads the sources with `-j auto`, and a Windows checkout cannot.**
+Parallel reading needs `os.fork`, so `parallel_available` is False here and a
+local build is serial whatever it is asked for. Anything that only breaks under a
+parallel read is invisible until the hosted build meets it, which is how
+`sphinx-argparse` - whose domain has no `merge_domaindata` while declaring itself
+parallel-read-safe - crashed a build that passed locally. `conf.py` marks that
+extension unsafe in its `setup`, and the CI job builds with `-j auto` on Linux so
+the next one is caught before Read the Docs sees it.
+
 **A key Read the Docs does not know fails the build before it starts.** The log
 clones, checks out, prints `.readthedocs.yaml` and stops, with no environment and
 no install, which reads like a mysterious silence rather than a validation error.

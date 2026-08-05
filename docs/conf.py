@@ -100,3 +100,21 @@ copybutton_prompt_is_regexp = True
 # The units on these pages are heavy in characters pdflatex cannot set - `W m⁻²`, `µmol`, `°C` -
 # so a PDF build uses the engine that can.
 latex_engine = "xelatex"
+
+
+def setup(app):
+    """Read the sources serially.
+
+    `sphinx-argparse` registers a domain that does not implement `merge_domaindata`, so Sphinx
+    cannot merge the environments its workers produce and a parallel read dies with a
+    `NotImplementedError` part-way through. The extension declares itself parallel-read-safe all
+    the same, so the only way to avoid it is to say otherwise here.
+
+    This is not hypothetical and it is not visible from a Windows checkout. Read the Docs builds
+    with `-j auto`, while `sphinx.util.parallel.parallel_available` is False anywhere without
+    `os.fork`, so a developer machine builds serially whatever it is asked for and the hosted build
+    was the first to try it. The CI job passes `-j auto` on Linux for that reason.
+
+    Fifteen pages read serially cost nothing. Remove this once the extension implements the method.
+    """
+    app.extensions["sphinxarg.ext"].parallel_read_safe = False

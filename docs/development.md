@@ -76,6 +76,17 @@ uv run sphinx-build -b html -W docs docs/_build/html
 in `.readthedocs.yaml`. Build locally with it and a broken cross-reference will not first be found
 by a hosted build.
 
+```{admonition} What a local build cannot see
+:class: warning
+
+Read the Docs reads the sources in parallel, with `-j auto`. Parallel reading needs `os.fork`, so
+`sphinx.util.parallel.parallel_available` is False on Windows and a checkout there builds serially
+whatever it is asked for. A failure that only appears under a parallel read is therefore invisible
+locally, and the hosted build is the first to meet it. That is how `sphinx-argparse` crashing a
+parallel merge got as far as Read the Docs; `conf.py` now marks that extension unsafe to read in
+parallel, and the CI job passes `-j auto` on Linux so the next one is caught there.
+```
+
 The hosted build installs the package and its `docs` **extra** with pip, from the same
 `pyproject.toml`. That list is the only place the documentation dependencies are stated, so there
 is no second requirements file to keep in step, which is the one packaging convention that departs
