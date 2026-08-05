@@ -93,6 +93,14 @@ development
 changelog
 ```
 
+## Author
+
+Lukas Hörtnagl, [Grassland Sciences group, ETH Zürich](https://gl.ethz.ch/)
+([holukas@ethz.ch](mailto:holukas@ethz.ch)).
+
+Every built page carries the same credit in its footer, since an atlas is one file that travels
+away from whatever produced it.
+
 ## License
 
 GPL-3.0. The source is at [github.com/holukas/fluxatlas](https://github.com/holukas/fluxatlas).

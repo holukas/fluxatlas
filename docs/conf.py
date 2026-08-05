@@ -19,7 +19,7 @@ from fluxatlas import __version__ as fluxatlas_version  # noqa: E402
 
 project = "fluxatlas"
 author = "Lukas Hörtnagl"
-copyright = "2026, Lukas Hörtnagl"
+copyright = "2026, Lukas Hörtnagl, Grassland Sciences group, ETH Zürich"
 version = fluxatlas_version
 release = fluxatlas_version
 

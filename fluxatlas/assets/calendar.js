@@ -1710,6 +1710,15 @@
       + (M.source ? ' from <code>' + M.source + '</code>' : '') + '. Normals use the months at '
       + 'least ' + M.cov_normal_text + ' measured, and need at least ' + M.min_normal_years
       + ' such years; daily normals pool a ±' + M.clim_window + ' day window across all years.';
+
+    /* Who made the page and what made it, on its own line. This file travels away from whatever
+       produced it, and by the time someone opens it from a share or a memory stick there may be
+       nothing else around it to say where the definitions behind its figures are written down. */
+    document.getElementById('footer-credit').innerHTML =
+      'Built with <span class="wordmark">flux<b>atlas</b></span>'
+      + (M.version ? ' ' + M.version : '') + ' by ' + M.author
+      + (M.affiliation ? ', <a href="' + M.affiliation_url + '">' + M.affiliation + '</a>' : '')
+      + ' · <a href="' + M.repository + '">' + M.repository.replace(/^https?:\/\//, '') + '</a>';
   }
 
   /* The way into the per-variable pages. One card each, carrying the figure that most reader will

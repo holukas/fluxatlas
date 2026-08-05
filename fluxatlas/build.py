@@ -89,6 +89,7 @@ from __future__ import annotations
 
 import base64
 import calendar
+import importlib.metadata
 import json
 import re
 from datetime import datetime
@@ -106,6 +107,24 @@ from .stats import (
 )
 
 ASSETS = Path(__file__).parent / "assets"
+
+# The page says what made it and who to ask. A built atlas is one file that travels: it is opened
+# from a memory stick, mailed to a co-author, put on a share years later. By then nothing around it
+# says which tool produced it or where to find the definitions behind its figures, so the page
+# carries that itself rather than relying on where it happens to be sitting.
+#
+# The version comes from the installed distribution, so it cannot drift from what was actually run;
+# a source tree that was never installed simply has none to state. The rest is the same fact
+# `pyproject.toml` states for the distribution.
+AUTHOR = "Lukas Hörtnagl"
+AFFILIATION = "Grassland Sciences group, ETH Zürich"
+AFFILIATION_URL = "https://gl.ethz.ch/"
+REPOSITORY = "https://github.com/holukas/fluxatlas"
+
+try:
+    VERSION = importlib.metadata.version("fluxatlas")
+except importlib.metadata.PackageNotFoundError:   # a checkout that was never installed
+    VERSION = ""
 
 # The coverage thresholds are per variable and live in the registry; these are its defaults, kept
 # here under their old names because the page's prose and the payload's metadata state them as the
@@ -2588,6 +2607,8 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
             composite=composite_correlation(all_stats, months, keys,
                                             {k: loaded[k]["v"].title for k in keys}),
             source=source,
+            author=AUTHOR, affiliation=AFFILIATION, affiliation_url=AFFILIATION_URL,
+            repository=REPOSITORY, version=VERSION,
         ),
         variables=variables,
         metrics=metrics,
