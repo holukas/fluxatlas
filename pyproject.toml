@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "fluxatlas"
 version = "0.0.1"
-description = "Interactive explorer for FLUXNET-standardized ecosystem data"
+description = "Standalone HTML explorer for eddy covariance records: fluxes, meteorology, badges, trends, day by day"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = { text = "GPL-3.0" }
