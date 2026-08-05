@@ -61,8 +61,9 @@ from source.
 - **A page per variable**, reached from an index under the grid or from the variable's label on any
   span panel. It carries the slope of each calendar month taken separately with its 95 % interval,
   every year of the record with the published Theil-Sen fit drawn through it, the shape of the year
-  as normals with their spread and full range, the five highest and lowest months, and the measured
-  and available share of each year against the variable's warning line. A January slope and a July
+  as normals with their spread and full range, the five highest and lowest months, the measured and
+  available share of each year against the variable's warning line, and the record day by day in
+  the two forms the span panel uses for a month. A January slope and a July
   slope are separate statements, and one annual figure averages the difference away.
 - **A mark** (`assets/logo.svg`): nine tiles of the anomaly grid, inlined into the topbar and
   base64'd into the favicon from the same file.

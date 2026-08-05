@@ -73,8 +73,9 @@ stood from the rest:
 Carbon balance      The site was a net sink of 158 g C m⁻² ± 16, 8th of 12 years.
 Growing season      325 days long, 66 days longer than usual (259). 1st longest of 21 years.
 Air temperature     2nd of 21 years. 10.6 °C, +1.0 against the record
-Most unusual month  November, Precipitation +2.5 standard deviations from its November normal,
-                    on 3 axes at once
+Most unusual month  November: precipitation stood +2.5 standard deviations from its November
+                    normal, and 3 of the 5 variables that could be judged stood at least 1 from
+                    theirs.
 ```
 
 The carbon balance leads whatever it placed, because the sign of the annual figure is the headline
@@ -104,7 +105,13 @@ The rest of the page:
 - the five highest and five lowest months, each linking to its own panel, named from the registry's
   words for each end so that the highest five months of `NEE` are labelled as its largest releases;
 - how much of each year was available and how much was measured, against the variable's warning
-  line.
+  line;
+- the record day by day, in the two forms the span panel uses for a month. Every year is drawn
+  along the year over the normal band for each date, since at this length what a daily scale can
+  answer is where in the year the variable varies and where it holds still. Beside it, every day's
+  departure from the normal for its own date, with the mean of those departures over a centred
+  year: a departure that persists for years is a different thing from one that persists for a
+  fortnight, and only the running line separates them.
 
 Nothing on the page is computed twice. The slopes are the ones the grid's foot row prints, and the
 fitted line is drawn from the two endpoints the build ships rather than re-fitted in the browser,

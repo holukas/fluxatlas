@@ -3428,6 +3428,166 @@
     };
   }
 
+  /* ------------------------------------------------------------------------------------------
+     The variable page at daily resolution
+     ------------------------------------------------------------------------------------------
+     The span panel asks two questions of a month: how did its days run against the normal for
+     their own dates, and how far did each of them sit from it. Both are worth asking of the whole
+     record, and the answers are different in kind rather than only in length.
+
+     Over one month the days are drawn along the month. Over twenty-one years they are drawn along
+     the year, every year at once: 7,670 marks on one axis is a texture rather than a series, and
+     what a reader can actually read off the daily scale at that length is where in the year the
+     variable varies and where it holds still. The departures keep the record's own axis, since
+     that is the one question the year-of-day view cannot answer, and carry a year-long running
+     mean so the drift is visible under the noise.
+     ------------------------------------------------------------------------------------------ */
+
+  /** The daily statistic a variable is read by: the one its own metric draws, or its aggregation. */
+  function dailyStatOf(v) {
+    const met = ownMetric(v);
+    if (met && met.day && met.day.stat && (met.day.kind === 'value' || met.day.kind === 'anom')) {
+      return met.day.stat;
+    }
+    return v.agg === 'sum' ? 'sum' : 'mean';
+  }
+
+  const hasDaily = v => {
+    const stat = dailyStatOf(v);
+    return !!(DAYS.series[v.key + '_' + stat] && NORM[v.key] && NORM[v.key][stat]);
+  };
+
+  /** Every year of the record drawn along the year, over the normal band for each date. */
+  function drawVarDailyCycle(key) {
+    const v = VARS[key];
+    const stat = dailyStatOf(v);
+    return function (host) {
+      const norm = NORM[key][stat];
+      const doys = [];
+      for (let d = 1; d <= 365; d++) doys.push(d);
+
+      // One track per year, laid on the day-of-year axis. 29 February folds onto 1 March, exactly
+      // as the normals were built, so the tracks and the band share one x axis.
+      const tracks = YEARS.map(() => new Array(366).fill(null));
+      for (let i = 0; i < DAYS.n; i++) {
+        const at = dateAt(i);
+        const row = at.y - M.first_year;
+        if (row < 0 || row >= tracks.length) continue;
+        tracks[row][doy365(at.y, at.m, at.d)] = dayStat(key, stat, i);
+      }
+
+      const f = frame(host, { aspect: 0.36,
+        ariaLabel: v.short + ' through the year, every year of the record' });
+      const ext = extent([norm.p10, norm.p90].concat(tracks.map(t => t.slice(1))));
+      const pad = (ext[1] - ext[0]) * 0.04 || 1;
+      const sx = linear(1, 365, f.m.left, f.m.left + f.iw);
+      const sy = linear(ext[0] - pad, ext[1] + pad, f.m.top + f.ih, f.m.top);
+      drawAxes(f, sx, sy, { yDigits: v.digits, yLabel: v.units,
+        xTicks: MONTH_ABBR.map((label, i) => ({ v: doy365(2001, i + 1, 1), label: label })) });
+
+      el('path', { d: areaFrom(doys, doys.map(d => norm.p10[d]), doys.map(d => norm.p90[d]), sx, sy),
+        fill: f.p.bandOuter, opacity: 0.8 }, f.svg);
+      tracks.forEach(track => {
+        el('path', { d: pathFrom(doys, doys.map(d => track[d]), sx, sy), fill: 'none',
+          stroke: f.p.series[0], 'stroke-width': 0.7, opacity: 0.4 }, f.svg);
+      });
+      el('path', { d: pathFrom(doys, doys.map(d => norm.mean[d]), sx, sy), fill: 'none',
+        stroke: f.p.ink, 'stroke-width': 2, 'stroke-dasharray': '5 3' }, f.svg);
+
+      hover(f, sx, doys.filter(d => d % 5 === 1), d => {
+        const values = tracks.map(t => t[d]).filter(isNum);
+        const at = new Date(Date.UTC(2001, 0, d));
+        return tipRows(at.getUTCDate() + ' ' + MONTH_NAME[at.getUTCMonth()], [
+          { k: 'Normal', v: nf(norm.mean[d], v.digits) + ' ' + v.units, color: f.p.ink },
+          { k: '10th to 90th', v: nf(norm.p10[d], v.digits) + ' to ' + nf(norm.p90[d], v.digits),
+            color: 'var(--band-outer)' },
+          { k: 'Years drawn', v: String(values.length) }
+        ]);
+      });
+    };
+  }
+
+  /* How far every day of the record sat from the normal for its own date, and the year-long mean
+     of those departures. The bars are the same statement the month panel makes; the running mean
+     is what only this length can show, since a departure that persists for years is a different
+     thing from one that persists for a fortnight. */
+  function drawVarDailyDeparture(key) {
+    const v = VARS[key];
+    const stat = dailyStatOf(v);
+    return function (host) {
+      const norm = NORM[key][stat];
+      const dev = new Array(DAYS.n).fill(null);
+      for (let i = 0; i < DAYS.n; i++) {
+        const at = dateAt(i);
+        const value = dayStat(key, stat, i);
+        const mid = norm.mean[doy365(at.y, at.m, at.d)];
+        if (isNum(value) && isNum(mid)) dev[i] = value - mid;
+      }
+
+      // A centred year of departures, which is the shortest window that removes the seasonal cycle
+      // from a daily series without also removing what a reader came here to see.
+      const win = 365, half = Math.floor(win / 2);
+      const run = new Array(DAYS.n).fill(null);
+      let acc = 0, seen = 0;
+      for (let i = 0; i < DAYS.n; i++) {
+        if (isNum(dev[i])) { acc += dev[i]; seen += 1; }
+        const out = i - win;
+        if (out >= 0 && isNum(dev[out])) { acc -= dev[out]; seen -= 1; }
+        if (i >= win - 1 && seen > win / 2) run[i - half] = acc / seen;
+      }
+
+      const f = frame(host, { aspect: 0.3,
+        ariaLabel: v.short + ' departure from the normal for each date' });
+      const ext = extent([dev]);
+      const span = Math.max(Math.abs(ext[0]), Math.abs(ext[1]), 1) * 1.06;
+      const sx = linear(0, DAYS.n, f.m.left, f.m.left + f.iw);
+      const sy = linear(-span, span, f.m.top + f.ih, f.m.top);
+      const every = Math.max(1, Math.ceil(YEARS.length / Math.max(3, Math.floor(f.iw / 54))));
+      drawAxes(f, sx, sy, { yDigits: v.digits > 1 ? 1 : 0, yLabel: v.units,
+        xTicks: YEARS.filter((y, i) => i % every === 0)
+          .map(y => ({ v: dayIndex(y, 1, 1), label: String(y) })) });
+
+      /* Twenty-one years of days is roughly thirteen days to the pixel, so a bar each would draw
+         a smear a fraction of a pixel wide and pile its opacity up into a solid block. Each pixel
+         column gets the range of the days that fall in it instead: the warm half from zero up to
+         the highest, the cold half from zero down to the lowest. The result is the same chart the
+         month panel draws, at the only resolution this length has. */
+      const cols = Math.max(1, Math.round(f.iw));
+      const hi = new Array(cols).fill(null), lo = new Array(cols).fill(null);
+      for (let i = 0; i < DAYS.n; i++) {
+        if (!isNum(dev[i])) continue;
+        const c = Math.min(cols - 1, Math.floor(i / DAYS.n * cols));
+        if (hi[c] === null || dev[i] > hi[c]) hi[c] = dev[i];
+        if (lo[c] === null || dev[i] < lo[c]) lo[c] = dev[i];
+      }
+      const bw = f.iw / cols;
+      for (let c = 0; c < cols; c++) {
+        if (hi[c] === null) continue;
+        const x = f.m.left + c * bw;
+        if (hi[c] > 0) {
+          el('rect', { x: x, y: sy(hi[c]), width: bw,
+            height: Math.max(0.8, sy(0) - sy(hi[c])), fill: f.p.warm }, f.svg);
+        }
+        if (lo[c] < 0) {
+          el('rect', { x: x, y: sy(0), width: bw,
+            height: Math.max(0.8, sy(lo[c]) - sy(0)), fill: f.p.cold }, f.svg);
+        }
+      }
+      el('line', { x1: f.m.left, x2: f.m.left + f.iw, y1: sy(0), y2: sy(0),
+        stroke: f.p.axis, 'stroke-width': 1 }, f.svg);
+      el('path', { d: pathFrom(run.map((x, i) => i), run, sx, sy), fill: 'none',
+        stroke: f.p.ink, 'stroke-width': 2 }, f.svg);
+
+      hover(f, sx, YEARS.map(y => dayIndex(y, 7, 1)), i => {
+        const at = dateAt(i);
+        return tipRows(String(at.y), [
+          { k: 'Running mean', v: isNum(run[i]) ? nfs(run[i], v.digits) + ' ' + v.units
+            : 'not formed', color: f.p.ink }
+        ]);
+      }, i => { location.hash = dateAt(i).y + '-' + M.year_slug; });
+    };
+  }
+
   /** The per-month slopes as a table, for the reader who wants the numbers rather than the bars. */
   function monthlyTrendTable(key) {
     const met = ownMetric(VARS[key]);
@@ -3489,6 +3649,8 @@
       + '<div class="grid" id="var-summary"></div>'
       + '<h2 class="section">Over the record</h2><div class="grid" id="var-record"></div>'
       + '<h2 class="section">Month by month</h2><div class="grid" id="var-months"></div>'
+      + (hasDaily(v) ? '<h2 class="section">Day by day</h2>'
+        + '<div class="grid" id="var-daily"></div>' : '')
       + '<h2 class="section">What the record covers</h2><div class="grid" id="var-cov"></div>';
 
     document.getElementById('var-lede').innerHTML = v.about
@@ -3546,6 +3708,38 @@
       sub: 'The five highest and five lowest months of the record, with their departure from the '
         + 'calendar-month normal. Selecting one opens it.'
     }).innerHTML = varMoments(key);
+
+    if (hasDaily(v)) {
+      const daily = document.getElementById('var-daily');
+      chartCard(daily, {
+        title: 'Every year of the record, day by day', width: 'w-6',
+        sub: 'One faint line per year on the day-of-year axis, over the ±' + M.clim_window
+          + ' day normal band for each date.',
+        legend: [
+          { color: 'var(--band-outer)', label: 'normal 10th–90th percentile' },
+          { color: 'var(--series-1)', label: 'one year', line: true },
+          { color: 'var(--text-primary)', label: 'normal for the date', line: true }
+        ],
+        foot: 'Drawn along the year rather than along the record, because at this length the '
+          + 'question a daily scale can answer is where in the year this variable varies and '
+          + 'where it holds still.',
+        draw: drawVarDailyCycle(key)
+      });
+      chartCard(daily, {
+        title: 'How far each day sat from its normal', width: 'w-6',
+        sub: 'Every day of the record against the normal for the same date, with the mean of '
+          + 'those departures over a centred year.',
+        legend: [
+          { color: 'var(--pole-warm)', label: 'above the normal for the date' },
+          { color: 'var(--pole-cold)', label: 'below it' },
+          { color: 'var(--text-primary)', label: 'year-long running mean', line: true }
+        ],
+        foot: 'A departure that persists for years is a different thing from one that persists '
+          + 'for a fortnight, and only the running line separates them. Selecting a point opens '
+          + 'its year.',
+        draw: drawVarDailyDeparture(key)
+      });
+    }
 
     chartCard(document.getElementById('var-cov'), {
       title: 'How much of each year was measured', width: 'w-12',
