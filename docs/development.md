@@ -82,9 +82,14 @@ by a hosted build.
 Read the Docs reads the sources in parallel, with `-j auto`. Parallel reading needs `os.fork`, so
 `sphinx.util.parallel.parallel_available` is False on Windows and a checkout there builds serially
 whatever it is asked for. A failure that only appears under a parallel read is therefore invisible
-locally, and the hosted build is the first to meet it. That is how `sphinx-argparse` crashing a
-parallel merge got as far as Read the Docs; `conf.py` now marks that extension unsafe to read in
-parallel, and the CI job passes `-j auto` on Linux so the next one is caught there.
+locally, and the hosted build is the first to meet it.
+
+That is how `sphinx-argparse` got as far as Read the Docs twice. It declares itself safe to read in
+parallel and registers a domain with no `merge_domaindata`, so Sphinx splits the read and then dies
+merging the result. Declaring the extension unsafe instead only moves the failure, because Sphinx
+then warns that it is unsafe and that it is reading serially, and `-W` turns both warnings into the
+error that fails the build. `conf.py` supplies the missing method instead, and the CI job passes
+`-j auto` on Linux so the next one is caught in a push rather than in a hosted build.
 ```
 
 The hosted build installs the package and its `docs` **extra** with pip, from the same

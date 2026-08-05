@@ -448,9 +448,14 @@ Parallel reading needs `os.fork`, so `parallel_available` is False here and a
 local build is serial whatever it is asked for. Anything that only breaks under a
 parallel read is invisible until the hosted build meets it, which is how
 `sphinx-argparse` - whose domain has no `merge_domaindata` while declaring itself
-parallel-read-safe - crashed a build that passed locally. `conf.py` marks that
-extension unsafe in its `setup`, and the CI job builds with `-j auto` on Linux so
-the next one is caught before Read the Docs sees it.
+parallel-read-safe - crashed a build that passed locally.
+
+**Declaring the extension unsafe does not fix it**, which cost a second build:
+Sphinx then warns that it is unsafe and that it is reading serially, `-W` turns
+both into errors, and neither warning carries a type that `suppress_warnings`
+could reach. `conf.py` supplies the missing `merge_domaindata` instead, guarded
+so a released fix upstream wins over it. The CI job builds with `-j auto` on
+Linux so the next one is caught before Read the Docs sees it.
 
 **A key Read the Docs does not know fails the build before it starts.** The log
 clones, checks out, prints `.readthedocs.yaml` and stops, with no environment and
