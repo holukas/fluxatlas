@@ -1459,12 +1459,17 @@
   }
 
   function renderHero() {
-    document.getElementById('brand-site').textContent = M.site;
+    /* The site is the heading of the page it is a page of; the eyebrow says what is being shown of
+       it, and the span is already stated by the breadcrumb on the right of the bar. */
+    const years = M.last_year - M.first_year + 1;
+    document.getElementById('page-eyebrow').textContent =
+      'Atlas of the ' + years + '-year record';
+    document.getElementById('page-title').textContent = M.site;
     document.getElementById('page-lede').textContent =
-      'Every month of the ' + M.site + ' record on one grid, ' + M.first_year + ' to '
-      + M.last_year + '. Tiles are coloured by the selected metric and badged with what was '
-      + 'notable. Open one to walk the month day by day. The values are those read from the input file: '
-      + 'this page aggregates and compares them, and corrects nothing.';
+      'Every month from ' + M.first_year + ' to ' + M.last_year + ' on one grid, coloured by the '
+      + 'selected metric and badged with what was notable. Open one to walk the month day by day. '
+      + 'The values are those read from the input file: this page aggregates and compares them, '
+      + 'and corrects nothing.';
 
     const chips = [
       '<li><b>' + M.n_months + '</b> months</li>',
@@ -3190,10 +3195,13 @@
     document.getElementById('view-grid').hidden = which !== 'grid';
     document.getElementById('view-month').hidden = which !== 'month';
     const crumbs = document.getElementById('crumbs');
+    /* The site rides with the span here, since the topbar itself now carries the product name and
+       the hero scrolls out of sight. */
+    const site = '<span class="site">' + M.site + '</span><span class="sep">·</span>';
     if (which === 'grid') {
-      crumbs.innerHTML = '<b>' + M.first_year + '–' + M.last_year + '</b>';
+      crumbs.innerHTML = site + '<b>' + M.first_year + '–' + M.last_year + '</b>';
     } else {
-      crumbs.innerHTML = '<span>' + M.first_year + '–' + M.last_year + '</span>'
+      crumbs.innerHTML = site + '<span>' + M.first_year + '–' + M.last_year + '</span>'
         + '<span class="sep">›</span><b>' + scale().title(state.span) + '</b>'
         + (state.d ? '<span class="sep">›</span><b>' + state.d + '</b>' : '');
     }

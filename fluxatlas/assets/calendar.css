@@ -32,6 +32,11 @@
           font-size: 13px; color: var(--text-muted); min-width: 0; }
 .crumbs .sep { opacity: .5; }
 .crumbs b { color: var(--text-primary); font-weight: 600; }
+.crumbs .site { color: var(--text-primary); font-weight: 600; letter-spacing: .02em; }
+
+/* Three levels deep the breadcrumb is site, span, month, day. On a narrow screen that crowds the
+   toggle off the bar, and the site is the one part the hero states anyway. */
+@media (max-width: 700px) { .crumbs .site, .crumbs .site + .sep { display: none; } }
 
 /* ---------------------------------------------------------------------------------------------
    Controls

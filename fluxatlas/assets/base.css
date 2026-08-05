@@ -165,10 +165,13 @@ a { color: var(--series-1); }
 .brand-mark { width: 24px; height: 24px; flex: none; display: block; }
 .brand-mark svg { width: 100%; height: 100%; display: block; }
 
-.brand-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-.brand-text strong { font-size: 14px; letter-spacing: .02em; }
-.brand-text span { font-size: 11.5px; color: var(--text-muted); white-space: nowrap;
-                   overflow: hidden; text-overflow: ellipsis; }
+/* The wordmark, and the only place the product names itself. The site the page is about is named
+   in the hero and carried in the breadcrumb, not here. */
+.brand-text {
+  font-size: 17px; line-height: 1; letter-spacing: -.015em; white-space: nowrap;
+  color: var(--text-primary); font-weight: 400;
+}
+.brand-text b { font-weight: 650; }
 
 /* Below this width the nav cannot fit beside the brand and the toggle without being clipped, and a
    clipped row of links reads as broken rather than as scrollable. The headings stay in the page. */
@@ -211,6 +214,13 @@ main { max-width: 1760px; margin: 0 auto; padding: 0 clamp(14px, 2.5vw, 34px) 60
 h1 {
   font-size: clamp(28px, 3.4vw, 44px); line-height: 1.1; margin: 0 0 10px;
   letter-spacing: -0.02em;
+}
+
+/* Sits above the site name and says what the page is of. The site alone is the heading, because it
+   is what a reader arriving at a bookmarked page needs to read first. */
+.eyebrow {
+  margin: 0 0 6px; font-size: 12.5px; font-weight: 600; letter-spacing: .11em;
+  text-transform: uppercase; color: var(--text-muted);
 }
 
 .lede { margin: 0 0 18px; max-width: 78ch; color: var(--text-secondary); font-size: 16px; }
