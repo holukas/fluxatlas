@@ -9,9 +9,11 @@ works from those two and never touches the file again.
 Four things are decided here rather than left to the caller.
 
 - **The timestamp.** FLUXNET stores `TIMESTAMP_START` and `TIMESTAMP_END` as `YYYYMMDDHHMM`. The
-  index used is the middle of the averaging window, which is the only one of the three that cannot
-  assign a record to the wrong day: an end stamp of `00:00` belongs to the previous day and a
-  reader that forgets it moves a day's last half-hour into the next day.
+  index used is the middle of the averaging window, which puts an averaged value at the centre of
+  the interval it was averaged over. The start stamp would assign the same calendar day, since a
+  30-minute window never crosses midnight from its start; the end stamp is the one that does not,
+  because an end stamp of `00:00` belongs to the previous day and a reader that takes it at face
+  value moves a day's last half-hour into the next day.
 - **Missing.** `-9999` is FLUXNET's missing value and becomes `NaN` before anything is computed. A
   file that leaves it in place would report a mean air temperature of several thousand below zero.
 - **Whole years.** The grid is a whole number of years and the coverage denominators are the
@@ -290,6 +292,18 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
     # the file holds is what makes a missing record and a missing row the same thing downstream,
     # which is what the coverage denominators assume.
     wanted = pd.date_range(f"{first}-01-01 00:15", f"{last}-12-31 23:45", freq=FREQ)
+
+    # A frame that arrives on its own DatetimeIndex is taken at its word, so an index stamped at the
+    # start of each window (00:00, 00:30) or at its end misses this grid entirely and every record
+    # would reindex to missing. That failure surfaces as "the column is present but empty", which
+    # sends a reader looking at the wrong thing, so it is diagnosed here by what actually caused it.
+    if len(df.index) and not len(df.index.intersection(wanted)):
+        raise ValueError(
+            f"{path.name}: none of its {len(df.index):,} timestamps land on the half-hourly grid "
+            f"this reader builds, which runs 00:15, 00:45, 01:15 and so on. The first stamp is "
+            f"{df.index[0]:%Y-%m-%d %H:%M}, so the index is the start or the end of each averaging "
+            f"window rather than its middle. Shift it by half a window before reading, e.g. "
+            f"df.index = df.index + pd.Timedelta('15min') for a start-stamped file.")
     df = df.reindex(wanted)
 
     if not quiet:
