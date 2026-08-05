@@ -105,10 +105,17 @@ def doy365(index):
     return np.where(leap & (doy > 59), doy - 1, doy)
 
 
-def rank_of(values, mask):
-    """Rank of every qualifying value, 1 = highest, with the others left out of the ranking."""
+def rank_of(values, mask, first="high"):
+    """Rank of every qualifying value, with the others left out of the ranking.
+
+    `first` names the end that takes rank 1: `"high"` for a quantity where more is more of it, and
+    `"low"` where the informative extreme is the negative one. Net ecosystem exchange is the case
+    that needs it - the micrometeorological sign convention makes the most negative month the
+    largest carbon uptake, so ranking it from the top would call the biggest sink the last of its
+    calendar month.
+    """
     ranked = values.where(mask)
-    return ranked.rank(ascending=False, method="min").astype("Int64")
+    return ranked.rank(ascending=(first == "low"), method="min").astype("Int64")
 
 
 def percentile_domain(values, lo=2, hi=98, symmetric=False):

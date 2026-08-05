@@ -183,6 +183,65 @@ def test_csv_and_parquet_give_the_same_series(csv_path, parquet_path):
     pd.testing.assert_series_equal(from_csv, from_parquet, check_freq=False)
 
 
+# -- Reading only what was selected --------------------------------------------------------------
+#
+# A FLUXNET FULLSET file is 248 columns and hundreds of megabytes, and an atlas of six variables
+# needs about twenty of them. The selection is therefore resolved against the header alone and the
+# file is read for the surviving columns only - so `available`, `resolve` and `columns_of` all have
+# to be answerable without any data, which is what these assert.
+
+
+def test_columns_of_answers_from_the_header_alone(csv_path, parquet_path, frame):
+    for source in (csv_path, parquet_path, frame, list(frame.columns)):
+        assert "TA_F" in io.columns_of(source)
+    # The CSV carries the two integer stamps; the parquet carries its index instead.
+    assert "TIMESTAMP_START" in io.columns_of(csv_path)
+    assert "TIMESTAMP_START" not in io.columns_of(parquet_path)
+
+
+def test_a_stored_index_is_not_offered_as_a_column(parquet_path):
+    """`__index_level_0__` and friends are pandas metadata, not something a caller may ask for."""
+    assert not [c for c in io.columns_of(parquet_path) if c.startswith("__index_level_")]
+
+
+def test_available_and_resolve_take_a_bare_list_of_names():
+    names = ["TIMESTAMP_START", "TA_F", "TA_F_QC", "P_F", "NEE_VUT_REF", "NEE_VUT_REF_QC"]
+    assert set(io.available(names)) == {"TA", "PREC", "NEE"}
+    assert io.resolve(names, ["TA"])["TA"]["column"] == "TA_F"
+
+
+def test_the_read_carries_only_the_selected_columns_and_the_stamps(tmp_path):
+    frame = synthetic_frame(years=2)
+    # Two hundred columns of decoys, which is the shape of a real FULLSET file.
+    decoys = pd.DataFrame(1.0, index=frame.index, columns=[f"DECOY_{i}" for i in range(200)])
+    path = to_fluxnet_csv(pd.concat([frame, decoys], axis=1), tmp_path / "wide.csv")
+
+    loaded = io.read_fluxnet(path, ["TA"], quiet=True)
+    assert set(loaded["TA"]["df"].columns) == {
+        "TIMESTAMP_START", "TIMESTAMP_END", "TA_F", "TA_F_QC"}
+
+
+def test_a_projected_read_gives_the_same_series_as_reading_everything(csv_path):
+    """The projection is an optimisation, so it has to be invisible in the result."""
+    projected = io.read_fluxnet(csv_path, ["TA"], quiet=True)["TA"]["series"]
+
+    whole = io._read_frame(csv_path)
+    whole = whole.set_index(pd.DatetimeIndex(io._timestamp_index(whole))).sort_index()
+    expected = whole["TA_F"].mask(whole["TA_F"] <= io.MISSING + 1).astype(float)
+    pd.testing.assert_series_equal(
+        projected.dropna(), expected.reindex(projected.index).dropna(),
+        check_names=False, check_freq=False)
+
+
+def test_a_qc_column_named_by_a_mapping_is_read_too(tmp_path):
+    """The projection has to ask for the flag as well, or the measured split would be lost."""
+    frame = synthetic_frame(years=2).rename(columns={"TA_F": "temp", "TA_F_QC": "temp_flag"})
+    path = to_fluxnet_csv(frame, tmp_path / "mapped.csv")
+    loaded = io.read_fluxnet(path, {"TA": dict(column="temp", qc="temp_flag")}, quiet=True)
+    assert "temp_flag" in loaded["TA"]["df"].columns
+    assert 0.0 < loaded["TA"]["measured"].mean() < 1.0
+
+
 def test_every_registry_variable_declares_columns_and_a_unit():
     for key in varreg.known():
         v = varreg.make(key)

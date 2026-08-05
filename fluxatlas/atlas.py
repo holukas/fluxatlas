@@ -79,7 +79,7 @@ class Atlas:
                 f"{'' if hourly else ', without hourly detail'} ...")
         self.payload = _build.build_payload(
             self.loaded, site=self.site, site_long=self.site_long, source=self.path.name,
-            with_hourly=hourly)
+            with_hourly=hourly, quiet=quiet)
         if not quiet:
             self.report()
 

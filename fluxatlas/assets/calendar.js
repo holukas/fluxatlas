@@ -130,6 +130,55 @@
 
   const isNum = v => v !== null && v !== undefined && !Number.isNaN(v);
   const nf = (v, d = 1) => isNum(v) ? v.toFixed(d) : '–';
+
+  /* An interval must never print as "0" - that reads as certainty, not as a small uncertainty. A
+     sensible heat interval of 0.4 W m-2 rounds away at the variable's own precision, so decimals
+     are added until it does not. */
+  const nfu = (v, d = 1) => {
+    if (!isNum(v)) return '–';
+    let k = d;
+    while (v !== 0 && Number(v.toFixed(k)) === 0 && k < d + 3) k += 1;
+    return v.toFixed(k);
+  };
+
+  /* How much of a span has to be measured before its statistics stand, for one variable. The
+     thresholds differ by how the quantity is measured - meteorology runs continuously, while u*
+     filtering rejects most nights of an eddy covariance record by design - so they travel per
+     variable and the meta values are only the fallback for a payload built before they did. */
+  const cov = key => (VARS[key] && VARS[key].cov) || {
+    badge: M.min_badge_coverage, normal: M.normal_min_coverage, warn: M.sparse_coverage
+  };
+
+  /* The decimals a monthly figure is printed to. Taken from the metric that reads the variable
+     straight off the product, so a sentence about a month states it to exactly the precision its
+     tile does; `digits` on the variable is the daily one and is finer. */
+  const monthDigits = key => {
+    const met = VARS[key] && VARS[key].metric && METRICS[VARS[key].metric];
+    return met && isNum(met.digits) ? met.digits : (VARS[key] ? VARS[key].digits : 1);
+  };
+
+  /* The variable a one-line summary is told through: air temperature where the build has it, since
+     that is the axis most of the page's structure is built on, and otherwise whichever variable
+     came first. An atlas of fluxes alone carries no temperature record, and reading one anyway is
+     what used to throw here. */
+  const leadKey = () => (VARS.TA ? 'TA' : (DATA.variables[0] || {}).key);
+
+  /* Which variables lean hardest on the gap-filling, as one sentence. The warning line differs by
+     variable - half of every eddy covariance record is rejected by u* filtering, so a flux is held
+     to a lower one than a thermometer - and a reader is told which spans fell under it rather than
+     left to infer it from the hatching. */
+  function thinNote() {
+    const thin = M.thin || {};
+    const named = Object.keys(thin).filter(k => thin[k].n > 0)
+      .sort((a, b) => thin[b].n - thin[a].n)
+      .map(k => (VARS[k] ? VARS[k].short.toLowerCase() : k) + ' in ' + thin[k].n
+        + ' of ' + thin[k].n_total + ' months, under ' + nf(thin[k].warn, 0) + ' %');
+    if (!named.length) {
+      return 'On this record no span falls under its warning line for measured share.';
+    }
+    return 'Hatched tiles are the spans that do: ' + named.join('; ')
+      + '. Read a slope against how those are distributed through the record.';
+  }
   /* A departure carries its sign, except where it rounds to nothing: "-0.0" states a direction the
      printed number does not support, and "+0.0" is the same error the other way. */
   const nfs = (v, d = 1) => {
@@ -788,7 +837,7 @@
         }
         const rgb = metricColor(met, value, 'month');
         const sparse = isNum(mo[met.var] && mo[met.var].meas)
-          && mo[met.var].meas < M.sparse_coverage;
+          && mo[met.var].meas < cov(met.var).warn;
         const shown = state.allBadges ? mo.b : mo.b.slice(0, 4);
         const cls = ['cell', inkClass(rgb)];
         if (sparse) cls.push('sparse');
@@ -1282,8 +1331,7 @@
         + ' carry the selected badge'
         + (state.filters.size === 1 ? '' : 's') + '; the rest are dimmed.';
     }
-    note += ' Hatched tiles are below ' + nf(M.sparse_coverage, 0)
-      + ' % measured. The right-hand column is each year, the foot row each ' + noun.slice(0, -1)
+    note += ' Hatched tiles are below ' + M.cov_warn_text + ' measured. The right-hand column is each year, the foot row each ' + noun.slice(0, -1)
       + ' over the whole record. Select one to open it.'
       + (state.scale === 'season'
         ? ' A winter is December to February and is labelled by the year of its January, so the '
@@ -1360,7 +1408,7 @@
     document.getElementById('badge-lede').textContent =
       'A badge marks something notable about a month and states the numbers behind it. '
       + 'Select one to keep only the months that carry it. Badges are withheld where less than '
-      + nf(M.min_badge_coverage, 0) + ' % of the variable behind them is measured. So an unbadged '
+      + M.cov_badge_text + ' of the variable behind them is measured. So an unbadged '
       + 'tile means either nothing was notable or it could not be judged. The month says which.';
   }
 
@@ -1373,18 +1421,41 @@
     MONTHS.forEach(mo => {
       const rec = mo[varKey];
       if (!rec || !isNum(rec[field])) return;
-      if (!isNum(rec.meas) || rec.meas < M.normal_min_coverage) return;
+      if (!isNum(rec.avail) || rec.avail < cov(varKey).normal) return;
       if (!best || (want === 'max' ? rec[field] > best[varKey][field]
         : rec[field] < best[varKey][field])) best = mo;
     });
     return best;
   }
 
-  function tile(label, value, unit, sub, accent) {
-    return '<div class="tile' + (accent ? ' tile-accent-' + accent : '') + '">'
+  /* `src` names the column the figure was read from and sits in the tile's bottom corner. A FULLSET
+     file carries a dozen variants of the same flux - NEE_VUT_REF, NEE_CUT_REF, NEE_VUT_USTAR50 and
+     the rest - so which one produced a number is not a detail a reader can infer from the title. */
+  function tile(label, value, unit, sub, accent, src, cls) {
+    return '<div class="tile' + (accent ? ' tile-accent-' + accent : '')
+      + (cls ? ' ' + cls : '') + '">'
       + '<span class="tile-label">' + label + '</span>'
       + '<span class="tile-value">' + value + (unit ? '<span class="unit">' + unit + '</span>' : '')
-      + '</span><span class="tile-sub">' + sub + '</span></div>';
+      + '</span><span class="tile-sub">' + sub + '</span>'
+      + (src ? '<span class="tile-src" title="read from this column">' + src + '</span>' : '')
+      + '</div>';
+  }
+
+  /* The record's annual totals for a variable that sums - the figure a flux site is usually quoted
+     by. Only years the product covers completely take part, which is the same rule the trends use,
+     so the headline and the slope below it rest on the same set of years. */
+  function annualTotals(key) {
+    if (!VARS[key] || VARS[key].agg !== 'sum') return [];
+    const by = {};
+    MONTHS.forEach(mo => {
+      const rec = mo[key];
+      if (!rec) return;
+      (by[mo.y] = by[mo.y] || [])
+        .push(isNum(rec.v) && rec.avail >= cov(key).normal ? rec.v : null);
+    });
+    return Object.keys(by)
+      .filter(y => by[y].length === 12 && by[y].every(isNum))
+      .map(y => ({ y: +y, v: by[y].reduce((a, b) => a + b, 0) }));
   }
 
   function renderHero() {
@@ -1423,20 +1494,51 @@
     }
     if (wet) {
       tiles.push(tile('Wettest month', nf(wet.PREC.v, 0), VARS.PREC.units,
-        MONTH_NAME[wet.m - 1] + ' ' + wet.y));
+        MONTH_NAME[wet.m - 1] + ' ' + wet.y, null, VARS.PREC.column));
     }
     if (dry) {
       tiles.push(tile('Driest month', nf(dry.PREC.v, 0), VARS.PREC.units,
-        MONTH_NAME[dry.m - 1] + ' ' + dry.y));
+        MONTH_NAME[dry.m - 1] + ' ' + dry.y, null, VARS.PREC.column));
     }
     tiles.push(tile('Months with a badge', String(badged), '',
       'of ' + MONTHS.length + ', ' + nf(100 * badged / MONTHS.length, 0) + ' % of the record'));
-    document.getElementById('tiles').innerHTML = tiles.join('');
+
+    /* The carbon headline, on its own row and in its own colour, exactly as the month panel does
+       it. The record's own extremes of uptake and release say more about a flux site than any
+       meteorological figure does, and the mean annual balance is the number such a site is
+       normally quoted by. The energy fluxes are left out: neither carries a single figure that
+       reads as a record the way an uptake extreme does. */
+    const flux = [];
+    const uptake = bestMonth('NEE', 'v', 'min'), release = bestMonth('NEE', 'v', 'max');
+    const productive = bestMonth('GPP', 'v', 'max');
+    if (uptake) {
+      flux.push(tile('Largest monthly uptake', nf(uptake.NEE.v, 0), VARS.NEE.units,
+        MONTH_NAME[uptake.m - 1] + ' ' + uptake.y, null, VARS.NEE.column, 'tile-flux'));
+    }
+    if (release) {
+      flux.push(tile('Largest monthly release', nfs(release.NEE.v, 0), VARS.NEE.units,
+        MONTH_NAME[release.m - 1] + ' ' + release.y, null, VARS.NEE.column, 'tile-flux'));
+    }
+    const annual = annualTotals('NEE');
+    if (annual.length) {
+      const mean = annual.reduce((a, b) => a + b.v, 0) / annual.length;
+      flux.push(tile('Mean annual carbon balance', nfs(mean, 0), VARS.NEE.units,
+        annual.length + ' complete years · ' + (mean < 0 ? 'a net sink' : 'a net source'),
+        null, VARS.NEE.column, 'tile-flux'));
+    }
+    if (productive) {
+      flux.push(tile('Most productive month', nf(productive.GPP.v, 0), VARS.GPP.units,
+        MONTH_NAME[productive.m - 1] + ' ' + productive.y, null, VARS.GPP.column, 'tile-flux'));
+    }
+    const heroFluxes = flux.length
+      ? (tiles.length ? '<div class="tiles-break"><span>Carbon</span></div>' : '') + flux.join('')
+      : '';
+    document.getElementById('tiles').innerHTML = tiles.join('') + heroFluxes;
 
     document.getElementById('footer-text').innerHTML =
-      M.site + ' — ' + M.site_long + '. Built ' + M.generated + ' from the products in '
-      + '<code>10_METEO/30_PRODUCTS</code>. Normals use the months at least '
-      + nf(M.normal_min_coverage, 0) + ' % measured, and need at least ' + M.min_normal_years
+      M.site + ' — ' + M.site_long + '. Built ' + M.generated
+      + (M.source ? ' from <code>' + M.source + '</code>' : '') + '. Normals use the months at '
+      + 'least ' + M.cov_normal_text + ' measured, and need at least ' + M.min_normal_years
       + ' such years; daily normals pool a ±' + M.clim_window + ' day window across all years.';
   }
 
@@ -1498,10 +1600,10 @@
       sub: 'Coverage rules, stated once and applied everywhere.' });
     body.innerHTML = '<p class="card-sub" style="max-width:none">A badge is a claim about a month, '
       + 'so a month that was not measured cannot make one. Every badge names the variables it '
-      + 'reads and is withheld where less than ' + nf(M.min_badge_coverage, 0) + ' % of them is '
+      + 'reads and is withheld where less than ' + M.cov_badge_text + ' of them is '
       + 'measured; the month view lists what was withheld and why. A calendar-month normal, and '
       + 'every anomaly, standard score and rank taken from it, uses only the years whose month is '
-      + 'at least ' + nf(M.normal_min_coverage, 0) + ' % measured, and is not computed at all below '
+      + 'at least ' + M.cov_normal_text + ' measured, and is not computed at all below '
       + M.min_normal_years + ' such years. A sparse month is ranked against nothing, so it can '
       + 'never come out as the driest on record.</p>';
 
@@ -1566,10 +1668,20 @@
         }))
       + '<p class="smallnote">Theil-Sen slope, which a single extreme year does not move, with '
       + 'Kendall’s tau for the test; * marks p below ' + nf(TREND_ALPHA, 2) + '. A year takes '
-      + 'part only where all twelve of its months are at least ' + nf(M.normal_min_coverage, 0)
-      + ' % measured, so a slope is never a picture of changing coverage, and no slope is stated '
-      + 'below ' + M.trend_min_years + ' such years. The two halves are the same complete years, '
+      + 'part only where the product covers all twelve of its months, and no slope is stated below '
+      + M.trend_min_years + ' such years. The two halves are the same complete years, '
       + 'split down the middle.</p>'
+      /* Every figure on this page is computed on the gap-filled product, which is the series the
+         field publishes and analyses. The cost of that is that a span measured less carries more
+         model than one measured more, and where the measured share itself trends through a record,
+         part of a slope may be that trend. Stated rather than left to be discovered. */
+      + '<p class="smallnote">Every figure here is taken from the gap-filled product, whatever '
+      + 'share of a span was measured rather than modelled — that series is what the field '
+      + 'publishes, and holding it to a measured threshold would describe a sparser record than '
+      + 'the one this page is of. What that costs is stated instead of hidden: a span measured '
+      + 'less carries more model than one measured more, so where the measured share itself trends '
+      + 'through a record, part of a slope may be that trend rather than the ecosystem. '
+      + thinNote() + '</p>'
       + '<p class="smallnote">The baseline is deliberately not selectable. Badges are decided in '
       + 'the build against the whole-record normal, and a page that let the tiles be re-based '
       + 'would show tiles and badges disagreeing about the same month. One baseline carries every '
@@ -1704,8 +1816,11 @@
      Level 2: one month
      ------------------------------------------------------------------------------------------ */
 
+  /* The meteorology first and the fluxes on a row of their own, in their own colour. They are
+     measured differently, held to different warning lines and read for different reasons, and a
+     reader after the carbon balance should not have to pick it out of the thermometers. */
   function monthTiles(mo) {
-    const out = [];
+    const met = [], flux = [];
     DATA.variables.forEach(v => {
       const rec = mo[v.key];
       if (!rec || !isNum(rec.v)) return;
@@ -1714,22 +1829,42 @@
         bits.push(nfs(rec.a, v.digits) + ' ' + v.units + ' against the normal');
       }
       if (isNum(rec.r) && isNum(rec.n)) {
-        bits.push(ord(rec.r) + ' of ' + rec.n + ' such months');
+        /* Most variables rank from the top and need no explanation. NEE ranks from the negative
+           end, because the sign convention makes the most negative month the largest uptake - so
+           where a variable ranks the unobvious way, the tile says what rank 1 means. */
+        bits.push(ord(rec.r) + ' of ' + rec.n + ' such months'
+          + (v.rank_note ? ' (1st = ' + v.rank_note + ')' : ''));
       }
       if (isNum(rec.meas) && rec.meas < 99.5) bits.push(nf(rec.meas, 0) + ' % measured');
       const accent = v.key === 'TA' && isNum(rec.a) ? (rec.a > 0 ? 'warm' : 'cold') : null;
-      out.push(tile(v.short + (v.agg === 'sum' ? ', total' : ', mean'), nf(rec.v, v.digits),
-        v.units, bits.join(' · ') || 'complete', accent));
+      /* The interval, where the file publishes one. Its components are named rather than left to
+         be assumed: a "+/-" covering the u* threshold choice is a far larger claim than one
+         covering only the random term, and for NEE the two differ by an order of magnitude. */
+      if (isNum(rec.u)) {
+        bits.unshift('± ' + nfu(rec.u, v.digits) + ' ' + v.units
+          + (v.unc_note ? ' (' + v.unc_note + ')' : ''));
+      }
+      const isFlux = v.family === 'flux';
+      const thin = isNum(rec.meas) && rec.meas < cov(v.key).warn;
+      (isFlux ? flux : met).push(tile(
+        v.short + (v.agg === 'sum' ? ', total' : ', mean'), nf(rec.v, v.digits),
+        v.units, bits.join(' · ') || 'complete', accent, v.column,
+        (isFlux ? 'tile-flux' : '') + (thin ? ' tile-thin' : '')));
     });
+
     /* The tile counts the days that met at least one threshold, not the thresholds met. A day can
        be a summer day, a hot day, a tropical night and the warmest of its date at once, so summing
        the tests reported 56 "threshold days" in a month of 31. */
     let marked = 0;
     for (let d = 1; d <= mo.n; d++) if (DAYS.flags[mo.i0 + d - 1]) marked += 1;
     const counts = FLAGS.filter(f => mo.c[f.key]).map(f => mo.c[f.key] + ' ' + f.short);
-    out.push(tile('Days meeting a threshold', String(marked),
+    met.push(tile('Days meeting a threshold', String(marked),
       'of ' + mo.n, counts.join(' · ') || 'none in this month'));
-    return out.join('');
+
+    if (!flux.length) return met.join('');
+    return met.join('')
+      + '<div class="tiles-break"><span>Fluxes</span></div>'
+      + flux.join('');
   }
 
   /**
@@ -1832,7 +1967,7 @@
     const C = M.composite;
     const pair = C.strongest;
     return head + '<dl class="kv">' + rows.join('') + '</dl>'
-      + '<p class="smallnote">An axis below ' + nf(M.min_badge_coverage, 0) + ' % measured, or '
+      + '<p class="smallnote">An axis below ' + M.cov_badge_text + ' measured, or '
       + 'without a normal for this calendar month, is dropped, not counted as ordinary. '
       + 'The axes are not independent'
       + (pair ? ': ' + VARS[pair.a].short.toLowerCase() + ' and ' + VARS[pair.b].short.toLowerCase()
@@ -1857,17 +1992,27 @@
     }
     const se = seasonOfMonth(mo);
     if (!se) return '';
-    let line = 'Part of <a href="#' + se.y + '-' + se.s + '">' + se.title.toLowerCase()
-      + '</a>, which ran ';
-    const rec = se.TA;
-    line += isNum(rec.v) ? nf(rec.v, 1) + ' ' + VARS.TA.units : 'unmeasured';
-    if (isNum(rec.a)) line += ' (' + nfs(rec.a, 1) + ' against its normal)';
-    if (isNum(rec.r) && isNum(rec.n)) {
-      line += ' and stands ' + ord(rec.r) + ' warmest of ' + rec.n + ' '
-        + se.label.toLowerCase() + 's';
+    const head = 'Part of <a href="#' + se.y + '-' + se.s + '">' + se.title.toLowerCase() + '</a>';
+
+    const key = leadKey();
+    const rec = key ? se[key] : null;
+    let line = head;
+    if (rec) {
+      const d = monthDigits(key);
+      line += ', which ran '
+        + (isNum(rec.v) ? nf(rec.v, d) + ' ' + VARS[key].units : 'unmeasured');
+      if (isNum(rec.a)) line += ' (' + nfs(rec.a, d) + ' against its normal)';
+      if (isNum(rec.r) && isNum(rec.n)) {
+        // "warmest" is a statement about temperature; anything else ranks without a superlative,
+        // since high is not better or worse for a carbon flux.
+        line += key === 'TA'
+          ? ' and stands ' + ord(rec.r) + ' warmest of ' + rec.n + ' ' + se.label.toLowerCase() + 's'
+          : ' and ranks ' + ord(rec.r) + ' of ' + rec.n + ' ' + se.label.toLowerCase() + 's';
+      }
     }
     if (se.b.length) {
-      line += '. The season carries ' + se.b.map(b => BADGES[b.k].label.toLowerCase()).join(', ');
+      line += (line === head ? ', which carries ' : '. The season carries ')
+        + se.b.map(b => BADGES[b.k].label.toLowerCase()).join(', ');
     }
     return line + '.';
   }
@@ -2575,7 +2720,7 @@
       let style = '';
       if (rgb) { cls.push(inkClass(rgb)); style = ' style="background:' + css(rgb) + '"'; }
       const meas = DAYS.meas[met.var] ? DAYS.meas[met.var][i] : null;
-      if (isNum(meas) && meas < M.sparse_coverage) cls.push('sparse');
+      if (isNum(meas) && meas < cov(met.var).warn) cls.push('sparse');
 
       const flags = DAY_MARKS.filter(m => flagSet(DAYS.flags[i], m[0]))
         .slice(0, 3).map(m => markChip(m[1], 'sm')).join('');
@@ -2650,6 +2795,23 @@
       mo.c.ice ? plural(mo.c.ice, 'ice') : null
     ].filter(Boolean);
     if (counts.length) bits.push(counts.join(', '));
+
+    /* A build carrying neither temperature nor precipitation - the fluxes on their own - is
+       summarised through whatever it does carry, rather than not at all. */
+    if (!bits.length) {
+      DATA.variables.slice(0, 3).forEach(V => {
+        const rec = mo[V.key];
+        if (!rec || !isNum(rec.v)) return;
+        const d = monthDigits(V.key);
+        let s = V.short + ' <b>' + nf(rec.v, d) + ' ' + V.units + '</b>';
+        if (isNum(rec.a)) {
+          s += ', ' + nfs(rec.a, d) + ' against the '
+            + scale().colName(scale().idOf(mo)) + ' normal';
+        }
+        if (isNum(rec.r) && isNum(rec.n)) s += ' (ranks ' + ord(rec.r) + ' of ' + rec.n + ')';
+        bits.push(s);
+      });
+    }
     if (!bits.length) return 'No variable in this month carries a monthly value.';
     return cap(bits.join('; ')) + '.';
   }

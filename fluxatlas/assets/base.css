@@ -279,6 +279,38 @@ h2.section {
 .tile-accent-cold .tile-value { color: var(--pole-cold); }
 .tile-accent-warm .tile-value { color: var(--pole-warm); }
 
+/* The column the figure was read from. `margin-top:auto` drops it to the foot of the tile rather
+   than positioning it absolutely, so it can never land on top of a sub-line that wrapped; the
+   tiles in a row are equal height, so they all sit on the same baseline. */
+.tile-src {
+  margin-top: auto; padding-top: 8px; align-self: flex-end;
+  font-family: var(--mono, ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace);
+  font-size: 10px; letter-spacing: .01em; color: var(--text-muted); opacity: .75;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* The fluxes carry their own colour, in the same token the carbon metrics colour uptake with. */
+.tile-flux { border-left: 3px solid var(--series-3); }
+.tile-flux .tile-label { color: var(--series-3); }
+.tile-flux .tile-src { color: var(--series-3); opacity: .85; }
+
+/* A span under its variable's warning line for measured share. Used exactly like any other - this
+   marks it, it does not withhold it. */
+.tile-thin .tile-src::after { content: " · thin"; opacity: .8; }
+
+/* Forces the fluxes onto a new grid row and labels why they are apart. */
+.tiles-break {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 10px;
+  margin: 2px 0 -2px;
+}
+.tiles-break span {
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600;
+  color: var(--series-3);
+}
+.tiles-break::after {
+  content: ""; flex: 1; height: 1px; background: var(--border);
+}
+
 /* ---------------------------------------------------------------------------------------------
    Cards
    --------------------------------------------------------------------------------------------- */

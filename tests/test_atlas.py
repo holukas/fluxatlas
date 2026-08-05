@@ -64,12 +64,18 @@ def test_a_normal_needs_enough_qualifying_years(full_atlas):
                 assert block["n"] >= build.MIN_NORMAL_YEARS
 
 
-def test_a_sparse_month_is_not_ranked(full_atlas):
+def test_a_month_the_record_does_not_cover_is_not_ranked(full_atlas):
+    """Ranking is gated on availability, not on how much of the month was measured.
+
+    The gap-filled product is what the page is of, so a thinly measured month is ranked like any
+    other and marked rather than withheld. A month the record does not reach at all still has
+    nothing to rank.
+    """
     for row in full_atlas.payload["months"]:
         for key in full_atlas.variables:
             block = row[key]
             if block["r"] is not None:
-                assert block["meas"] >= build.NORMAL_MIN_COVERAGE
+                assert block["avail"] >= build.NORMAL_MIN_COVERAGE
 
 
 def test_a_trend_states_the_years_it_rests_on(full_atlas):

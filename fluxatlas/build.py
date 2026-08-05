@@ -96,6 +96,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import variables as varreg
+from ._console import say
 from .io import span
 from .stats import (
     doy365, growing_season, longest_spell, percentile_domain, r, rank_of, resample_agg, rlist,
@@ -104,10 +106,18 @@ from .stats import (
 
 ASSETS = Path(__file__).parent / "assets"
 
-MIN_BADGE_COVERAGE = 80.0   # % of a month's half-hours measured, below which its badges are withheld
-NORMAL_MIN_COVERAGE = 90.0  # % measured for a month to contribute to a normal, or to be ranked
+# The coverage thresholds are per variable and live in the registry; these are its defaults, kept
+# here under their old names because the page's prose and the payload's metadata state them as the
+# general rule. `varreg.coverage(key)` is the authority.
+#
+# `MIN_BADGE_COVERAGE` and `NORMAL_MIN_COVERAGE` are read against a span's **available** share - has
+# the product got a value here - and not against how much of it was measured. `SPARSE_COVERAGE` is
+# the one that is still about measurement, and it gates nothing: it marks.
+MIN_BADGE_COVERAGE = varreg.COVERAGE_DEFAULT.badge
+NORMAL_MIN_COVERAGE = varreg.COVERAGE_DEFAULT.normal
+SPARSE_COVERAGE = varreg.COVERAGE_DEFAULT.warn
+
 MIN_NORMAL_YEARS = 8        # qualifying years below which a calendar-month normal is not computed
-SPARSE_COVERAGE = 90.0      # % measured below which a month is marked as sparsely measured
 CLIM_WINDOW = 7             # +/- days around a calendar date that go into its daily normal
 TREND_MIN_YEARS = 10        # qualifying years below which a slope is not stated
 EPOCH_MIN_YEARS = 5         # complete years each half of the record needs before the two are shown
@@ -184,6 +194,7 @@ FLAG_SHORT = {
     "clear": "clear", "overcast": "overcast", "recwarm": "warmest for its date",
     "reccold": "coldest for its date", "recwet": "wettest for its date",
     "vpdstress": "evaporative stress", "vpdsevere": "severe evaporative stress",
+    "sink": "carbon sink",
 }
 
 
@@ -243,16 +254,21 @@ def day_flags(variables):
 # ----------------------------------------------------------------------------------------------
 
 BADGES = [
+    # The threshold is the one that variable's own statistics are gated on, not a single number
+    # across the build. Measured against the meteorological 90 %, every month of every flux record
+    # is sparse - which is not a strict badge but an empty one, since a mark that appears on all
+    # 252 tiles distinguishes none of them.
     dict(key="sparse", label="Sparsely measured", group="Data quality", icon="alert",
          tone="warn", priority=0, needs=(), needs_normal=False,
-         about="Under {sparse:.0f} % of the month's half-hours are measured for at least one "
-               "of the variables in this build, so its statistics rest on filled or missing "
-               "records.",
+         about="At least one variable in this build is measured over less than the share its own "
+               "statistics require - {sparse:.0f} % for meteorology, {flux_sparse:.0f} % for the "
+               "turbulent fluxes - so those statistics rest on filled or missing records.",
          rule=lambda s: (
              "Only " + ", ".join(f"{s[k + '_meas']:.0f} % of {k}" for k in s["keys"]
-                                 if s[k + "_meas"] is not None and s[k + "_meas"] < SPARSE_COVERAGE)
+                                 if s[k + "_meas"] is not None
+                                 and s[k + "_meas"] < varreg.coverage(k).warn)
              + " is measured in this month; its statistics rest on filled or missing records.")
-         if any(s[k + "_meas"] is not None and s[k + "_meas"] < SPARSE_COVERAGE
+         if any(s[k + "_meas"] is not None and s[k + "_meas"] < varreg.coverage(k).warn
                 for k in s["keys"]) else None),
 
     dict(key="record_warm", label="Warmest on record", group="Temperature", icon="award",
@@ -454,6 +470,63 @@ BADGES = [
                          f"{s['SWC_anom']:+.1f} {s['u_SWC']} against the "
                          f"{s['month_name']} normal ({s['SWC_z']:+.1f} standard deviations)")
          if s["SWC_z"] >= 1 else None),
+
+    # -- The carbon balance ---------------------------------------------------------------------
+    # `NEE` is ranked from the negative end (`rank_first="low"` in the registry), because the sign
+    # convention makes the most negative month the largest carbon uptake and a reader takes "1st of
+    # 21" to mean the most notable one. So rank 1 is the record sink and the last rank the record
+    # source - the opposite way round from every other variable on the page, and the reason the
+    # registry states the direction rather than leaving it implied.
+    dict(key="record_sink", label="Largest uptake on record", group="Carbon", icon="award",
+         tone="grow", priority=1, needs=("NEE",),
+         about="The largest net carbon uptake recorded for this calendar month.",
+         rule=lambda s: (f"Largest net uptake of any {s['month_name']} in the record: "
+                         f"{s['NEE']:.0f} {s['u_NEE']}, {s['NEE_anom']:+.0f} {s['u_NEE']} against "
+                         f"the normal of {s['NEE_n']} years")
+         if s["NEE_rank"] == 1 else None),
+
+    dict(key="record_source", label="Largest release on record", group="Carbon", icon="award",
+         tone="warm", priority=1, needs=("NEE",),
+         about="The largest net carbon release recorded for this calendar month.",
+         rule=lambda s: (f"Largest net release of any {s['month_name']} in the record: "
+                         f"{s['NEE']:.0f} {s['u_NEE']}, {s['NEE_anom']:+.0f} {s['u_NEE']} against "
+                         f"the normal of {s['NEE_n']} years")
+         if s["NEE_rank"] == s["NEE_n"] else None),
+
+    dict(key="sink_strong", label="Stronger sink than normal", group="Carbon", icon="arrow-down",
+         tone="grow", priority=4, needs=("NEE",),
+         about="The monthly net exchange is at least one standard deviation below the "
+               "calendar-month normal, meaning more carbon taken up than usual.",
+         rule=lambda s: (f"{s['NEE']:.0f} {s['u_NEE']}, {s['NEE_anom']:+.0f} {s['u_NEE']} against "
+                         f"the {s['month_name']} normal of {s['NEE_norm']:.0f} {s['u_NEE']} "
+                         f"({s['NEE_z']:+.1f} standard deviations), on {s['n_sink']} sink days")
+         if s["NEE_z"] <= -1 else None),
+
+    dict(key="sink_weak", label="Weaker sink than normal", group="Carbon", icon="arrow-up",
+         tone="warm", priority=4, needs=("NEE",),
+         about="The monthly net exchange is at least one standard deviation above the "
+               "calendar-month normal, meaning less carbon taken up - or more released - than "
+               "usual.",
+         rule=lambda s: (f"{s['NEE']:.0f} {s['u_NEE']}, {s['NEE_anom']:+.0f} {s['u_NEE']} against "
+                         f"the {s['month_name']} normal of {s['NEE_norm']:.0f} {s['u_NEE']} "
+                         f"({s['NEE_z']:+.1f} standard deviations), on {s['n_sink']} sink days")
+         if s["NEE_z"] >= 1 else None),
+
+    dict(key="gpp_high", label="More productive than normal", group="Carbon", icon="sprout",
+         tone="grow", priority=3, needs=("GPP",),
+         about="Gross primary productivity is at least one standard deviation above the "
+               "calendar-month normal.",
+         rule=lambda s: (f"{s['GPP']:.0f} {s['u_GPP']} fixed, {s['GPP_anom']:+.0f} "
+                         f"{s['u_GPP']} against the {s['month_name']} normal "
+                         f"({s['GPP_z']:+.1f} standard deviations)") if s["GPP_z"] >= 1 else None),
+
+    dict(key="gpp_low", label="Less productive than normal", group="Carbon", icon="leaf-fall",
+         tone="dull", priority=3, needs=("GPP",),
+         about="Gross primary productivity is at least one standard deviation below the "
+               "calendar-month normal.",
+         rule=lambda s: (f"{s['GPP']:.0f} {s['u_GPP']} fixed, {s['GPP_anom']:+.0f} "
+                         f"{s['u_GPP']} against the {s['month_name']} normal "
+                         f"({s['GPP_z']:+.1f} standard deviations)") if s["GPP_z"] <= -1 else None),
 
     # -- Two things at once -------------------------------------------------------------------
     # The compound state, and the reason this page has a Compound group at all: heat and drought
@@ -671,6 +744,65 @@ METRICS = [
          about="Monthly mean volumetric soil water content, homogenised across the "
                "2020 sensor change.",
          day=dict(kind="value", stat="mean")),
+
+    # The carbon metrics. Green is uptake and red is release everywhere they appear, so the sign
+    # of the net flux reads the same on the grid, on the anomaly and on the day panel; that is
+    # also why the net flux diverges about zero rather than about the record mean, since zero is
+    # the boundary the sign convention makes meaningful and the record mean is not.
+    dict(key="NEE", var="NEE", field="value", scale="div", center=0.0,
+         poles=("--series-3", "--pole-warm"), digits=0,
+         group="Carbon", label="Net ecosystem exchange, monthly total", short="NEE",
+         about="Monthly net exchange of CO₂. Green months are a net sink, red months a net "
+               "source. A month with gaps under-reports the total in either direction, so the "
+               "measured share is worth reading beside it.",
+         day=dict(kind="value", stat="sum")),
+    dict(key="NEE_anom", var="NEE", field="anom", scale="div", center=0.0,
+         poles=("--series-3", "--pole-warm"), digits=0,
+         group="Carbon", label="Net ecosystem exchange anomaly", short="NEE anomaly",
+         about="Monthly net exchange minus the normal of that calendar month. Green is more "
+               "carbon taken up than usual, red less - which for a month that is a sink either "
+               "way is the more informative statement of the two.",
+         day=dict(kind="anom", stat="sum")),
+    dict(key="n_sink", var="NEE", field="count", count="sink", scale="seq",
+         stops=("--neutral-mid", "--series-3"), digits=0, unit="days",
+         group="Carbon", label="Sink days per month", short="Sink days",
+         about="Days closing with a negative total, where uptake over the twenty-four hours "
+               "exceeded release. The shoulders of the growing season are where this count "
+               "separates years that a monthly total does not.",
+         day=dict(kind="flag", flag="sink")),
+    dict(key="GPP", var="GPP", field="value", scale="seq",
+         stops=("--neutral-mid", "--series-3"), digits=0,
+         group="Carbon", label="Gross primary productivity, monthly total", short="GPP",
+         about="Monthly carbon fixed by photosynthesis, partitioned out of the net flux.",
+         day=dict(kind="value", stat="sum")),
+    dict(key="GPP_anom", var="GPP", field="anom", scale="div", center=0.0,
+         poles=("--series-2", "--series-3"), digits=0,
+         group="Carbon", label="Gross primary productivity anomaly", short="GPP anomaly",
+         about="Monthly productivity minus the normal of that calendar month. The seasonal cycle "
+               "dominates the absolute figure at any site with a winter, so the departure is what "
+               "identifies a poor growing season.",
+         day=dict(kind="anom", stat="sum")),
+    dict(key="RECO", var="RECO", field="value", scale="seq",
+         stops=("--neutral-mid", "--series-2"), digits=0,
+         group="Carbon", label="Ecosystem respiration, monthly total", short="RECO",
+         about="Monthly carbon returned by plant and soil respiration, partitioned out of the net "
+               "flux.",
+         day=dict(kind="value", stat="sum")),
+
+    # The energy fluxes share a group because the question either one answers is how the available
+    # energy was divided between them, which needs both on the page.
+    dict(key="LE", var="LE", field="value", scale="seq",
+         stops=("--neutral-mid", "--series-1"), digits=0,
+         group="Energy", label="Latent heat flux, monthly mean", short="LE",
+         about="Monthly mean latent heat flux, the energy leaving the surface as water vapour.",
+         day=dict(kind="value", stat="mean")),
+    dict(key="H", var="H", field="value", scale="seq",
+         stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0,
+         group="Energy", label="Sensible heat flux, monthly mean", short="H",
+         about="Monthly mean sensible heat flux, the energy leaving the surface as warm air. Read "
+               "against the latent flux it states how the available energy was partitioned.",
+         day=dict(kind="value", stat="mean")),
+
     # The two composite metrics answer the questions the per-variable ones cannot: how far from
     # normal a month was at all, and in how many independent ways at once.
     dict(key="zmax", var="TA", field="extra", extra="zmax", scale="seq",
@@ -1058,15 +1190,62 @@ def hourly_layer(loaded, first_year, last_year):
 # Monthly layer, normals and badges
 # ----------------------------------------------------------------------------------------------
 
+def aggregate_uncertainty(d, grouped, index):
+    """The uncertainty of each span, in the units of the variable.
+
+    `grouped` turns a half-hourly series into one figure per span; `index` is the span index the
+    result is reported on. Each component is aggregated by the rule its kind demands and the
+    components are then combined in quadrature.
+
+    The distinction between the kinds is the whole point. A random error is independent between
+    records, so it goes as sqrt(sum of squares) and shrinks with the length of the span. A
+    systematic one is the same choice applied to every record in the span, so it sums linearly and
+    does not shrink. Treating the second as the first is what reports a median CH-Oe2 year as
+    +/- 9 g C m-2 when the ensemble puts it at +/- 121.
+    """
+    v = d["v"]
+    if not d.get("uncertainty"):
+        return None
+    mean_like = v.agg != "sum"
+    total = None
+    for component in d["uncertainty"]:
+        if component["kind"] == varreg.ENSEMBLE:
+            # Aggregate each member over the span first, then take half the spread of the totals.
+            # A threshold choice moves the whole span together, so the spread has to be measured
+            # after the aggregation and never before it.
+            members = pd.concat([grouped(s) for s in component["series"]], axis=1)
+            part = (members.max(axis=1) - members.min(axis=1)) / 2
+        else:
+            sigma = component["series"][0]
+            n_present = grouped(sigma.notna().astype(float))
+            n_total = grouped(pd.Series(1.0, index=sigma.index))
+            if component["kind"] == varreg.QUADRATURE:
+                part = np.sqrt(grouped(sigma ** 2))
+            else:
+                part = grouped(sigma.abs())
+            # The uncertainty columns are published for about three quarters of the records, so an
+            # aggregate over what is present understates the span. Scaling by the share carried
+            # assumes the absent records resemble the present ones, which is the least the figure
+            # can assume without either overstating or quietly leaving a quarter of the span out.
+            scale = (n_total / n_present.replace(0, np.nan))
+            part = part * (np.sqrt(scale) if component["kind"] == varreg.QUADRATURE else scale)
+            if mean_like:
+                part = part / n_total
+        part = part.reindex(index)
+        total = part if total is None else np.sqrt(total ** 2 + part ** 2)
+    return total
+
+
 def monthly_frames(loaded, months):
-    """Monthly aggregate, measured share and available share, per variable."""
+    """Monthly aggregate, measured share, available share and uncertainty, per variable."""
     out = {}
     for key, d in loaded.items():
         v = d["v"]
         value = resample_agg(d["series"], "MS", v.agg).reindex(months)
         meas = (d["measured"].astype(float).resample("MS").mean() * 100).reindex(months)
         avail = (d["series"].notna().astype(float).resample("MS").mean() * 100).reindex(months)
-        out[key] = dict(value=value, meas=meas, avail=avail)
+        unc = aggregate_uncertainty(d, lambda s: s.resample("MS").sum(min_count=1), months)
+        out[key] = dict(value=value, meas=meas, avail=avail, unc=unc)
     return out
 
 
@@ -1089,7 +1268,8 @@ def seasonal_frames(loaded, spans):
                 .fillna(0) / expected * 100)
         avail = (d["series"].notna().astype(float).groupby(group).sum().reindex(index)
                  .fillna(0) / expected * 100)
-        out[key] = dict(value=value, meas=meas, avail=avail)
+        unc = aggregate_uncertainty(d, lambda s: s.groupby(group).sum(min_count=1), index)
+        out[key] = dict(value=value, meas=meas, avail=avail, unc=unc)
     return out
 
 
@@ -1108,8 +1288,11 @@ def normals(frames_by_var, groups, years):
     years = np.asarray(years)
     out = {}
     for key, frames in frames_by_var.items():
-        value, meas = frames["value"], frames["meas"]
-        qualifies = meas >= NORMAL_MIN_COVERAGE
+        # Availability, not measurement: a normal is built from every span the product covers. The
+        # gap-filled series is the one the field publishes and the one this page is of, and holding
+        # it to a measured threshold would quietly build the normal from a different, sparser
+        # record. How much of it was measured is warned about, not gated on.
+        value, qualifies = frames["value"], frames["avail"] >= varreg.coverage(key).normal
         by_group = {}
         for g in sorted(set(groups.tolist())):
             sel = (groups == g) & qualifies.to_numpy()
@@ -1126,7 +1309,7 @@ def normals(frames_by_var, groups, years):
         ranks = pd.Series(pd.NA, index=value.index, dtype="Int64")
         for g in sorted(set(groups.tolist())):
             sel = groups == g
-            ranks[sel] = rank_of(value[sel], qualifies[sel])
+            ranks[sel] = rank_of(value[sel], qualifies[sel], first=varreg.rank_first(key))
         out[key] = dict(by_group=by_group, ranks=ranks, qualifies=qualifies)
     return out
 
@@ -1168,6 +1351,8 @@ def span_stats(sp, keys, frames_by_var, norm, counts, spells, day, events, loade
         rank = n["ranks"].get(idx)
         s[key] = value
         s[f"u_{key}"] = v.units
+        unc = None if frames.get("unc") is None else frames["unc"].get(idx)
+        s[f"{key}_unc"] = None if unc is None or pd.isna(unc) else float(unc)
         s[f"{key}_meas"] = None if pd.isna(frames["meas"].get(idx)) else float(frames["meas"][idx])
         s[f"{key}_avail"] = None if pd.isna(frames["avail"].get(idx)) else float(frames["avail"][idx])
         s[f"{key}_norm"] = nm["mean"] if nm else None
@@ -1214,8 +1399,8 @@ def span_stats(sp, keys, frames_by_var, norm, counts, spells, day, events, loade
     for key in COMPOSITE_VARS:
         if key not in keys:
             continue
-        z, cov = s[f"{key}_z"], s[f"{key}_meas"]
-        if z is None or cov is None or cov < MIN_BADGE_COVERAGE:
+        z, cov = s[f"{key}_z"], s[f"{key}_avail"]
+        if z is None or cov is None or cov < varreg.coverage(key).badge:
             continue
         s["z"][key] = z
     s["x"]["nz"] = len(s["z"])
@@ -1252,9 +1437,9 @@ def evaluate_badges(s, keys, scale="month"):
                 blocked = f"{need} is not included in this build"
             elif s[need] is None:
                 blocked = f"no {need} data in this month"
-            elif s[f"{need}_meas"] is None or s[f"{need}_meas"] < MIN_BADGE_COVERAGE:
-                blocked = (f"only {s[f'{need}_meas']:.0f} % of {need} is measured, below the "
-                           f"{MIN_BADGE_COVERAGE:.0f} % a badge needs")
+            elif s[f"{need}_avail"] is None or s[f"{need}_avail"] < varreg.coverage(need).badge:
+                blocked = (f"the record covers only {s[f'{need}_avail']:.0f} % of this span for "
+                           f"{need}, below the {varreg.coverage(need).badge:.0f} % a badge needs")
             elif badge.get("needs_normal", True) and s[f"{need}_norm"] is None:
                 blocked = f"{need} has no normal for this calendar month"
             elif badge.get("needs_normal", True) and not s[f"{need}_sd"]:
@@ -1328,10 +1513,65 @@ def row_value(metric, row):
     return row[metric["var"]][dict(value="v", anom="a", pctn="p", meas="meas")[field]]
 
 
+def coverage_phrase(keys, field):
+    """The measured-share rule for this build, as one clause fit to drop into a sentence.
+
+    With meteorology alone there is a single threshold and the clause is just "90 %". Once a flux
+    is in the build there are two, and stating either on its own would be wrong about half the
+    page - so each is named with the variables it governs.
+    """
+    groups = {}
+    for key in keys:
+        groups.setdefault(getattr(varreg.coverage(key), field), []).append(key)
+    if len(groups) == 1:
+        return f"{next(iter(groups)):.0f} %"
+    parts = [f"{threshold:.0f} % for {', '.join(ks)}"
+             for threshold, ks in sorted(groups.items(), reverse=True)]
+    return " and ".join(parts)
+
+
+def thin_spans(loaded, frames_by_var, months):
+    """Per variable, the spans measured below its warning line - and how thin the thinnest is.
+
+    Nothing is withheld on account of this. The gap-filled value is used exactly as if it were
+    fully measured, because that series is the published product and is what the page is of. The
+    count is reported at build time and the spans are marked on the grid, so a reader is told what
+    a figure rests on rather than being quietly handed a shorter record.
+    """
+    out = {}
+    for key in loaded:
+        warn = varreg.coverage(key).warn
+        meas = frames_by_var[key]["meas"].reindex(months)
+        thin = meas[meas < warn].dropna()
+        out[key] = dict(warn=warn, n=int(len(thin)), n_total=int(meas.notna().sum()),
+                        lowest=None if thin.empty else float(thin.min()),
+                        worst=None if thin.empty else f"{thin.idxmin():%B %Y}")
+    return out
+
+
+def report_thin_spans(thin, quiet=False):
+    """Say which variables lean hardest on the gap-filling, once, at build time."""
+    if quiet:
+        return
+    for key, d in thin.items():
+        if not d["n"]:
+            continue
+        say(f"  warning: {key} is under {d['warn']:.0f} % measured in {d['n']} of "
+            f"{d['n_total']} months (lowest {d['lowest']:.0f} % in {d['worst']}); the gap-filled "
+            f"values are used and those months are marked on the grid")
+
+
 def row_qualifies(metric, row):
-    """Whether a span is measured well enough to take part in a trend."""
-    meas = row[metric["var"]]["meas"]
-    return meas is not None and meas >= NORMAL_MIN_COVERAGE
+    """Whether a span is covered well enough to take part in a yearly figure, and so in a trend.
+
+    Availability, as everywhere else: the year is formed wherever the product covers all twelve of
+    its months, however much of them was measured.
+    """
+    return _at_least(row[metric["var"]]["avail"], varreg.coverage(metric["var"]).normal)
+
+
+def _at_least(cover, floor):
+    return cover is not None and cover >= floor
 
 
 def trend_of(pairs):
@@ -1410,7 +1650,7 @@ def epoch_split(metric, agg, span_rows, n_cols):
 # Payload
 # ----------------------------------------------------------------------------------------------
 
-def build_payload(loaded, *, site, site_long, source=None, with_hourly=True):
+def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, quiet=False):
     keys = list(loaded)
     first_year, last_year = span(loaded)
     dates = pd.date_range(f"{first_year}-01-01", f"{last_year}-12-31", freq="D")
@@ -1444,6 +1684,11 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True):
     monthly = monthly_frames(loaded, months)
     norm = normals(monthly, [ts.month for ts in months], [ts.year for ts in months])
     events = season_events(day, dates)
+
+    # Which variables lean hardest on the gap-filling. Computed before anything is built from them,
+    # so the warning reaches the console ahead of the figures it qualifies.
+    thin = thin_spans(loaded, monthly, months)
+    report_thin_spans(thin, quiet=quiet)
 
     # -- Seasons -------------------------------------------------------------------------------
     # The second scale, built by the same machinery: a winter is judged against winters exactly as
@@ -1485,6 +1730,11 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True):
             row[key] = dict(v=r(st[key], digits), a=r(st[f"{key}_anom"], digits),
                             z=r(st[f"{key}_z"], 2), p=r(st[f"{key}_pctn"], 0),
                             r=st[f"{key}_rank"], n=st[f"{key}_n"],
+                            # Kept finer than the value it qualifies: a sensible heat interval of
+                            # 0.4 W m-2 rounds to "0" at the variable's own precision, and an
+                            # interval printed as zero reads as certainty. The page decides how
+                            # many of these decimals to show.
+                            u=r(st[f"{key}_unc"], digits + 3),
                             meas=r(st[f"{key}_meas"], 0), avail=r(st[f"{key}_avail"], 0))
         return row, st
 
@@ -1621,7 +1871,9 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True):
         n = sum(1 for row in rows for b in row["b"] if b["k"] == badge["key"])
         badge_meta.append(dict(key=badge["key"], label=badge["label"], group=badge["group"],
                                icon=badge["icon"], tone=badge["tone"],
-                               about=badge["about"].format(sparse=SPARSE_COVERAGE), n=n))
+                               about=badge["about"].format(
+                                   sparse=SPARSE_COVERAGE,
+                                   flux_sparse=varreg.FLUX_COVERAGE.warn), n=n))
 
     # -- Variables and their day flags --------------------------------------------------------
     # `metric` names the metric that reads the variable straight off the product, which is the one
@@ -1636,6 +1888,27 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True):
                               digits=v.digits, agg=v.agg, product=v.source,
                               column=v.column, ship=list(v.ship), metric=own,
                               first_year=int(v.first_year), last_year=int(v.last_year),
+                              # The page hatches sparse tiles and gates its own "best month"
+                              # search on these, so they travel per variable rather than being
+                              # re-derived in the browser from the meta defaults.
+                              cov=dict(badge=v.coverage.badge, normal=v.coverage.normal,
+                                       warn=v.coverage.warn),
+                              thin=thin.get(key, {}).get("n", 0),
+                              # The month panel groups and colours by this, and orders meteorology
+                              # before the fluxes.
+                              family=v.family,
+                              # Which end takes rank 1, and what that end is. Shipped only where it
+                              # is not the obvious one, so the page annotates the surprising case
+                              # and leaves the rest alone.
+                              rank_first=v.rank_first,
+                              rank_note=None if v.rank_first == "high" else v.rank_note,
+                              # What a "+/-" on this variable covers. A page that showed the same
+                              # symbol for an interval covering the threshold choice and one
+                              # covering only the random term would be saying two different things
+                              # with one mark.
+                              unc_note=v.uncertainty_note,
+                              unc_columns=[c for comp in loaded[key]["uncertainty"]
+                                           for c in comp["columns"]],
                               about=v.about))
 
     payload = dict(
@@ -1646,6 +1919,14 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True):
             generated=datetime.now().strftime("%Y-%m-%d %H:%M"),
             min_badge_coverage=MIN_BADGE_COVERAGE, normal_min_coverage=NORMAL_MIN_COVERAGE,
             min_normal_years=MIN_NORMAL_YEARS, sparse_coverage=SPARSE_COVERAGE,
+            # The thresholds as prose, since they are no longer one number each and the page states
+            # them in running text in several places.
+            cov_badge_text=coverage_phrase(keys, "badge"),
+            cov_normal_text=coverage_phrase(keys, "normal"),
+            cov_warn_text=coverage_phrase(keys, "warn"),
+            # Every statistic on this page is computed on the gap-filled product, so the page has to
+            # say so and say what leans hardest on it. This is the disclosure, not a gate.
+            thin=thin,
             clim_window=CLIM_WINDOW, trend_min_years=TREND_MIN_YEARS,
             epoch_min_years=EPOCH_MIN_YEARS,
             composite_vars=[k for k in COMPOSITE_VARS if k in keys],
