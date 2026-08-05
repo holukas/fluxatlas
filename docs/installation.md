@@ -43,7 +43,7 @@ output, so the file opens in any browser without a network.
 The documentation builds from the same checkout. Its dependencies are the `docs` group:
 
 ```bash
-uv sync --group docs
+uv sync --extra docs
 uv run sphinx-build -b html docs docs/_build/html
 ```
 

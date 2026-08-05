@@ -433,15 +433,16 @@ fit, keeping the full name in a `<title>`. A fixed 84 px margin was running
 ## Documentation
 
 ```bash
-uv sync --group docs
+uv sync --extra docs
 uv run sphinx-build -b html -W docs docs/_build/html
 ```
 
 `-W` matches Read the Docs, which builds with `fail_on_warning: true`. The `docs`
-dependency group in `pyproject.toml` is the **only** place the documentation
-dependencies are stated: Read the Docs installs it with `method: uv` from the
-same `uv.lock`, so there is no second requirements file. This is the one
-packaging convention that departs from `diive`, which predates that support.
+**extra** in `pyproject.toml` is the **only** place the documentation dependencies
+are stated, so there is no second requirements file. It is an extra rather than a
+dependency group because that is what Read the Docs can install - a PEP 735 group
+is not reachable from a path install, and `method: uv` is documented but rejected
+by the running instance, which fails the build before it creates an environment.
 
 `docs/other-formats.md` is the guide for reading a half-hourly file that is not
 FLUXNET-named, which is most of them. Keep it in step with `io.resolve` and with

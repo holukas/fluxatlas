@@ -68,7 +68,7 @@ it.
 ## Building the documentation
 
 ```bash
-uv sync --group docs
+uv sync --extra docs
 uv run sphinx-build -b html -W docs docs/_build/html
 ```
 
@@ -76,10 +76,15 @@ uv run sphinx-build -b html -W docs docs/_build/html
 in `.readthedocs.yaml`. Build locally with it and a broken cross-reference will not first be found
 by a hosted build.
 
-The hosted build installs the same `docs` dependency group from the same `uv.lock`, through
-`method: uv` and `command: sync`. The group in `pyproject.toml` is the only place the documentation
-dependencies are stated, so there is no second requirements file to keep in step. This is the one
-packaging convention that departs from `diive`, which predates Read the Docs' support for `uv`.
+The hosted build installs the package and its `docs` **extra** with pip, from the same
+`pyproject.toml`. That list is the only place the documentation dependencies are stated, so there
+is no second requirements file to keep in step, which is the one packaging convention that departs
+from `diive`.
+
+It is an extra rather than a PEP 735 dependency group because that is what Read the Docs can
+install: a group is not reachable from a path install, and `method: uv`, though documented, is
+rejected outright by the running instance. The property worth keeping is that the list appears
+once; which installer reads it is not.
 
 Two parts are generated rather than written, and both should stay that way. The API reference comes
 from the docstrings. The variable, column and uncertainty tables come from the registry, through

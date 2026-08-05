@@ -11,15 +11,17 @@ build:
 
 python:
   install:
-    # `uv sync` from the committed `uv.lock`, which installs the package itself along with the
-    # `docs` group. The package has to be importable: `autodoc` reads its docstrings, and the
-    # variable tables are generated from the registry rather than written out.
+    # The package and its `docs` extra, in one install. The package has to be importable:
+    # `autodoc` reads its docstrings, and the variable tables are generated from the registry
+    # rather than written out.
     #
-    # The group in `pyproject.toml` is therefore the one place the documentation dependencies are
-    # stated, and the hosted build resolves exactly what a local one does.
-    - method: uv
-      command: sync
-      groups:
+    # An extra rather than a dependency group, and pip rather than uv. `method: uv` is documented
+    # but this instance rejects the config outright, and a PEP 735 group cannot be reached from a
+    # path install anyway. `pyproject.toml` stays the one place the documentation dependencies are
+    # stated, which is the property worth keeping; the installer is not.
+    - method: pip
+      path: .
+      extra_requirements:
         - docs
 
 sphinx:

@@ -24,17 +24,11 @@ dependencies = [
 [project.scripts]
 fluxatlas = "fluxatlas.cli:main"
 
-[project.urls]
-Homepage = "https://github.com/holukas/fluxatlas"
-Repository = "https://github.com/holukas/fluxatlas"
-Documentation = "https://fluxatlas.readthedocs.io"
-
-[dependency-groups]
-dev = [
-    "pytest>=8.0",
-]
-# The documentation build, and the one place its dependencies are stated: Read the Docs installs
-# this group with `uv sync`, so a version pinned here is the version the hosted build uses.
+# The documentation build, and the one place its dependencies are stated. An extra rather than a
+# dependency group, because that is what Read the Docs can install: it resolves `.[docs]` with pip,
+# and a PEP 735 group is not reachable from a path install. `uv sync --extra docs` locally reads the
+# same list from the same lockfile.
+[project.optional-dependencies]
 docs = [
     "sphinx>=8.1",
     "furo>=2024.8.6",
@@ -43,6 +37,16 @@ docs = [
     # The CLI reference is generated from `fluxatlas.cli.build_parser` rather than copied.
     "sphinx-argparse>=0.5",
     "sphinx-copybutton>=0.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/holukas/fluxatlas"
+Repository = "https://github.com/holukas/fluxatlas"
+Documentation = "https://fluxatlas.readthedocs.io"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
 ]
 
 [tool.pytest.ini_options]
