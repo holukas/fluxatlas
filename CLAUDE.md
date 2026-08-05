@@ -11,7 +11,8 @@ sites is a later possibility, not a current requirement.
 **Status: the library and the CLI work for meteorology and for the turbulent
 fluxes; nothing is released yet.** PyPI still holds the 0.0.1 placeholder.
 `Atlas` builds and renders, and a selection of one variable produces a correct
-one-variable page. The GUI is not written.
+one-variable page. The GUI is not written. `CHANGELOG.md` carries an unreleased
+`v0.1.0` entry; the documentation is in `docs/` and builds with Sphinx.
 
 ```bash
 fluxatlas record.csv --list                                   # what the file carries
@@ -36,6 +37,7 @@ fa.build_atlas("CH-LAE_HH.csv", "atlas.html", variables=["TA"])  # TA and nothin
 | `stats.py` | Theil-Sen trend, spells, growing season, rounding — the estimators shared with the CH-LAE dashboards. |
 | `build.py` | The ported computation: metrics, badges, day tests, normals, seasons, payload, render. The large one. |
 | `assets/` | `calendar.js`, `calendar.css`, `base.css`, `template.html`, `logo.svg`, inlined into the output. |
+| `docs/` | Sphinx, MyST markdown, hosted on Read the Docs. Three parts are generated rather than written: the API reference from the docstrings, the CLI reference from `cli.build_parser` via `sphinx-argparse`, and the variable, column and uncertainty tables from the registry via `docs/_ext/registry_tables.py`. Do not write any of the three out by hand. |
 
 **Selection is the organizing principle.** A metric whose variable is absent is
 dropped, a badge whose `needs` are unmet is withheld with a reason, a day test
@@ -143,6 +145,85 @@ initials (March and May are both `M`) so it keys on the month abbreviation, and
 the payload. Anything other than the canonical four is named by its months and
 `season_note` states the scheme on the page.
 
+## The four span scales, and what each is judged against
+
+A tile is a **month**, a **season**, a **year**, or one **day** of the raster.
+The first three are spans built by the same machinery, and the only thing that
+differs between them is what a span is compared with:
+
+| Scale | Peer group | `normals` grouping |
+| --- | --- | --- |
+| month | the same calendar month of other years | 12 groups |
+| season | the same season of other years | one per season |
+| year | **every other year of the record** | one group |
+
+That last row is the whole of what the year scale is. `normals` already took the
+grouping as an argument, so a year is one group: the normal is the record mean,
+the rank is the place among all years, the anomaly is the departure from the
+record. `year_periods`, `yearly_frames` and `year_events` are the year's versions
+of the season functions beside them.
+
+`badge_at_scale` is the one place that decides whether a badge is a claim a span
+can make. Anything defined on a z-score, a percentage of normal or a rank travels
+outward; counts of days do not, because five frost days is a remarkable January
+and an unremarkable year. The four turning points travel to seasons and stop
+there: every year holds a last frost, so at the year scale they would mark all
+twenty-one tiles.
+
+**Seven badges carry `only=("year",)`**, each undefined below a year: `net_sink`
+and `net_source` (the sign of the annual carbon balance), `long_season` and
+`short_season`, `late_frost` and `early_frost`, and `swings`. Their thresholds
+were set against the record rather than picked: `swings` at 1.5 sd and three
+months marked 18 of 21 CH-LAE years, which is a badge that says nothing, so it is
+2.0 and four.
+
+Opening a year adds `row["stood"]`, a ranked account of what set it apart, built
+by `year_standout` **after every year row exists** — half of what makes a year
+notable is its place among the others, which one year cannot see. The badges are
+thresholds and this is a placing: a year can miss every badge and still be the
+third warmest of twenty-one.
+
+## A page per variable
+
+`#var-TA` is a third view beside the grid and the span panel, reached from the
+index under the grid or from any span tile's label. It is a **renderer** feature:
+everything on it is already in the payload, and nothing is computed twice.
+
+The centrepiece is the slope of each calendar month taken separately — that is
+what the page exists for, since one annual slope is the average of twelve and
+averaging them hides a record whose Januaries have moved and whose Julys have
+not. `trend_of` ships `fit`, the two endpoints of the fitted line, so a chart
+draws the slope it is stating rather than re-fitting one in the browser.
+
+The band on the annual chart is whichever of two things the file supports, and
+the chart names which it drew: the published uncertainty where there is one, and
+otherwise, for a mean-aggregated variable, one standard deviation of that year's
+own months. A **total** with no published uncertainty gets no band, because the
+spread of twelve monthly totals is not an uncertainty of their sum.
+
+## Variables whose sign means something
+
+`NEE` is signed by the micrometeorological convention, and a bare `+66` states a
+convention rather than a fact. So the registry carries
+`sign=dict(low="uptake", high="release", zero="in balance")` and every place that
+prints one of those numbers writes the direction beside it: `senseOf` and
+`senseAnomaly` in the renderer, `carbon_phrase` in `build.py`.
+
+Two rules that were got wrong once and should not be again:
+
+- **The noun follows the normal, not the value.** `+75 g C m⁻²` is *less uptake*
+  for a July that is normally a sink and *more release* for a January that is
+  normally a source.
+- **Rank 1 is not "largest uptake" where the calendar month is a source in every
+  year** — it is the smallest release. The record badges are therefore
+  `record_sink` "Best carbon balance on record" and `record_source` "Worst
+  carbon balance on record", and `sink_strong` / `sink_weak` are "Shifted toward
+  uptake" and "Shifted toward release", which hold whichever side of zero the
+  month sits on.
+
+Inside `SAME_AS_NORMAL` (a quarter of a standard deviation) a departure is
+called neither more nor less but "about the same".
+
 ## examples/ and tests/
 
 `examples/data/CH-LAE_meteo_30min_2005-2025.parquet` (9.3 MB, committed) is a
@@ -167,12 +248,17 @@ for a directory outside the repository, which is worth using since a page of thi
 record with the hourly layer is ~6 MB. One file is the point — do not add a second
 output to this script.
 
-`pytest` — 134 tests, ~60 s. Most run on **synthetic** data built by
+`pytest` — 177 tests, ~70 s. Most run on **synthetic** data built by
 `tests/conftest.py`: a twelve-year half-hourly record with seasonal and diurnal
 cycles, noise, and an imposed 0.8 K/decade warming the trend tests assert is
 recovered. Twelve years because `MIN_NORMAL_YEARS` is 8 and nothing interesting
 exists below it. The tests that read the bundled extract skip when it is absent,
 so a fresh checkout still passes.
+
+`test_years.py`, `test_variable_pages.py` and `test_renderer_syntax.py` are the
+newest three. The first two assert what the payload has to carry for the year
+scale and the variable pages, since neither can be exercised from Python
+otherwise.
 
 `add_fluxes()` puts the five fluxes on top of that record. Three properties of it
 are load-bearing:
@@ -326,13 +412,39 @@ The Python suite cannot catch this class of bug.
 markup loads, nothing draws, and no error reaches a reader. A stray `;` inside a
 `chartCard({...})` string did exactly that while all 149 tests passed.
 `test_the_renderer_has_no_statement_break_inside_a_card_literal` guards the one
-shape that caused it; there is no JS parser in the test environment, so **open
-the built page after touching `calendar.js`** and check the console.
+shape that caused it, and `tests/test_renderer_syntax.py` parses both
+`calendar.js` and the inlined copy with `node --check`, skipping where node is
+absent. That catches syntax and nothing else — a page that parses and then throws
+at run time looks identical to a blank one — so **open the built page after
+touching `calendar.js`** and check the console.
+
+The class of bug no parser sees is the renderer reading a field only one scale
+carries. `MONTH_NAME[state.m - 1]` in eight card titles produced "Every undefined
+in the record" on both the season and the year panel, and nothing failed.
+Anything a panel prints goes through `scale()`, `peerOf`, `peerWord`, `spanNoun`
+or `normalWord`; reaching for `mo.m` outside the month scale is the bug.
 
 Chart row labels are measured, not estimated: `textWidth` sizes the left margin
 off the real glyph widths and `trimText` shortens anything that still will not
 fit, keeping the full name in a `<title>`. A fixed 84 px margin was running
 "Gross primary productivity" off the edge of the card.
+
+## Documentation
+
+```bash
+uv sync --group docs
+uv run sphinx-build -b html -W docs docs/_build/html
+```
+
+`-W` matches Read the Docs, which builds with `fail_on_warning: true`. The `docs`
+dependency group in `pyproject.toml` is the **only** place the documentation
+dependencies are stated: Read the Docs installs it with `method: uv` from the
+same `uv.lock`, so there is no second requirements file. This is the one
+packaging convention that departs from `diive`, which predates that support.
+
+`docs/other-formats.md` is the guide for reading a half-hourly file that is not
+FLUXNET-named, which is most of them. Keep it in step with `io.resolve` and with
+`_timestamp_index`: those two are what it documents.
 
 ## Packaging conventions
 
@@ -389,6 +501,8 @@ favicon, where no custom property is defined, fall back to the light one.
 
 ## Hard rules
 
+- **Update `CHANGELOG.md` with the work**, under the unreleased `v0.1.0` entry,
+  in the same terms the rest of it uses.
 - **Commit only when explicitly asked**, never on your own initiative, and never
   `git push`. When asked, split the work into **logical groups** — one commit per
   coherent change, not one commit per session — and write subject + body with
