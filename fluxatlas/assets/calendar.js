@@ -1831,9 +1831,13 @@
     DATA.variables.forEach(v => {
       const rec = mo[v.key];
       if (!rec || !isNum(rec.v)) return;
+      /* The month's own precision, not the day's. A monthly carbon total is a three-figure number
+         and `v.digits` is set for a daily one, so printing it here gave "-100.31 g C m⁻²" - over
+         precise for the figure, and long enough to push the unit onto its own line. */
+      const d = monthDigits(v.key);
       const bits = [];
       if (isNum(rec.a)) {
-        bits.push(nfs(rec.a, v.digits) + ' ' + v.units + ' against the normal');
+        bits.push(nfs(rec.a, d) + ' ' + v.units + ' against the normal');
       }
       if (isNum(rec.r) && isNum(rec.n)) {
         /* Most variables rank from the top and need no explanation. NEE ranks from the negative
@@ -1848,13 +1852,13 @@
          be assumed: a "+/-" covering the u* threshold choice is a far larger claim than one
          covering only the random term, and for NEE the two differ by an order of magnitude. */
       if (isNum(rec.u)) {
-        bits.unshift('± ' + nfu(rec.u, v.digits) + ' ' + v.units
+        bits.unshift('± ' + nfu(rec.u, d) + ' ' + v.units
           + (v.unc_note ? ' (' + v.unc_note + ')' : ''));
       }
       const isFlux = v.family === 'flux';
       const thin = isNum(rec.meas) && rec.meas < cov(v.key).warn;
       (isFlux ? flux : met).push(tile(
-        v.short + (v.agg === 'sum' ? ', total' : ', mean'), nf(rec.v, v.digits),
+        v.short + (v.agg === 'sum' ? ', total' : ', mean'), nf(rec.v, d),
         v.units, bits.join(' · ') || 'complete', accent, v.column,
         (isFlux ? 'tile-flux' : '') + (thin ? ' tile-thin' : '')));
     });
