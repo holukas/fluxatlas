@@ -1,0 +1,58 @@
+# The test suite and the documentation build, on both supported Python versions.
+#
+# `uv sync --locked` fails rather than resolving, so a lockfile that has drifted from
+# `pyproject.toml` is caught here instead of in a release. The documentation is built with `-W`,
+# which is what Read the Docs does, so a broken cross-reference fails a pull request rather than a
+# hosted build.
+
+name: tests
+
+on:
+  push:
+    branches: [main, indev]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the project
+        run: uv sync --locked --group docs
+
+      - name: Run the tests
+        # Node is on the runner, so the renderer is parsed here rather than skipped.
+        run: uv run pytest
+
+      - name: Build the documentation
+        run: uv run sphinx-build -b html -W docs docs/_build/html
+
+      - name: Build the distribution
+        run: uv build
+
+      - name: Check the wheel carries the page assets
+        # A wheel without these installs cleanly and then writes a page with no styles, no
+        # renderer and no mark.
+        run: |
+          uv run python - <<'PY'
+          import glob, zipfile
+          wheel = sorted(glob.glob("dist/*.whl"))[-1]
+          names = zipfile.ZipFile(wheel).namelist()
+          wanted = ["template.html", "base.css", "calendar.css", "calendar.js", "logo.svg"]
+          missing = [n for n in wanted if f"fluxatlas/assets/{n}" not in names]
+          if missing:
+              raise SystemExit(f"{wheel} is missing {', '.join(missing)}")
+          print(f"{wheel} carries all {len(wanted)} assets")
+          PY

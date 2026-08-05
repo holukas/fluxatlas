@@ -21,7 +21,7 @@ Both planned front ends are meant to be thin wrappers, so anything either would 
 uv run pytest
 ```
 
-About 177 tests, roughly a minute. Most run on synthetic data built by `tests/conftest.py`: a
+About 182 tests, roughly a minute. Most run on synthetic data built by `tests/conftest.py`: a
 twelve-year half-hourly record with seasonal and diurnal cycles, noise, and an imposed 0.8 K/decade
 warming that the trend tests assert is recovered. Twelve years, because `MIN_NORMAL_YEARS` is 8 and
 nothing interesting exists below it. The tests that read the bundled CH-LAE extract skip when it is
@@ -102,11 +102,17 @@ aligned unless there is a reason not to:
   cap blocks installs on 3.14 and needs a release to lift;
 - `authors = [{ name = "Lukas Hörtnagl", email = "holukas@ethz.ch" }]`.
 
-```bash
-uv build
-```
+## Releasing
 
-Publishing is the author's to run, since it is public and needs their token:
+The version is declared once, in `pyproject.toml`. `fluxatlas.__version__` reads it back from the
+installed distribution and the page footer prints that, so nothing can claim a version other than
+the one that ran. A test asserts the two agree and that the changelog opens with the same number.
+
+1. Bump `version` in `pyproject.toml` and open a dated `## vX.Y.Z | D Mon YYYY` entry in
+   `CHANGELOG.md`.
+2. `uv sync`, so the installed metadata matches, then `uv run pytest`.
+3. `uv build`.
+4. Publish, which is the author's to run since it is public and needs their token:
 
 ```powershell
 $env:UV_PUBLISH_TOKEN = (Read-Host 'PyPI token'); uv publish
@@ -115,6 +121,19 @@ $env:UV_PUBLISH_TOKEN = (Read-Host 'PyPI token'); uv publish
 The `Read-Host` form keeps the token out of `ConsoleHost_history.txt`, which records anything typed
 on the command line. Use a project-scoped token. Trusted publishing from GitHub Actions is the
 intended path for real releases and is not configured yet.
+
+### What is checked, and where
+
+`.github/workflows/tests.yml` runs on both supported Python versions, on every push to `main` and
+`indev` and on every pull request. It installs with `uv sync --locked`, so a lockfile that has
+drifted from `pyproject.toml` fails there rather than in a release; runs the suite, with node
+present so the renderer is parsed rather than skipped; builds the documentation with `-W`; builds
+the distribution; and checks that the wheel carries the five files in `assets/`.
+
+That last one is worth having. The page is assembled from files beside the code, so a wheel built
+without them would install cleanly, import cleanly, and then write a page with no styles, no
+renderer and no mark. Nothing else would notice, because every other test reads the assets from the
+source tree.
 
 ## What is planned
 
