@@ -322,6 +322,18 @@ asserts the shape statically, since pytest cannot execute the renderer.
 When adding a variable, check a build of **that variable alone** in a browser.
 The Python suite cannot catch this class of bug.
 
+**The renderer is one IIFE, so any syntax error in it blanks the whole page** —
+markup loads, nothing draws, and no error reaches a reader. A stray `;` inside a
+`chartCard({...})` string did exactly that while all 149 tests passed.
+`test_the_renderer_has_no_statement_break_inside_a_card_literal` guards the one
+shape that caused it; there is no JS parser in the test environment, so **open
+the built page after touching `calendar.js`** and check the console.
+
+Chart row labels are measured, not estimated: `textWidth` sizes the left margin
+off the real glyph widths and `trimText` shortens anything that still will not
+fit, keeping the full name in a `<title>`. A fixed 84 px margin was running
+"Gross primary productivity" off the edge of the card.
+
 ## Packaging conventions
 
 Mirrored deliberately from **`diive`** (`F:\dev\diive`), the author's other

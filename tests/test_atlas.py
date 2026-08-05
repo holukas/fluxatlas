@@ -79,6 +79,37 @@ def test_a_month_the_record_does_not_cover_is_not_ranked(full_atlas):
                 assert block["avail"] >= build.NORMAL_MIN_COVERAGE
 
 
+def test_the_renderer_has_no_statement_break_inside_a_card_literal():
+    """A stray semicolon in `chartCard({...})` blanks the whole page, and nothing else catches it.
+
+    The renderer is one IIFE. A syntax error anywhere in it means the script never runs, so the
+    page loads its markup, renders nothing, and reports no error a reader would see. pytest cannot
+    execute the renderer, and a full JS parser is not a dependency worth taking on, so this asserts
+    the one shape that has actually caused it: a continuation line of a concatenated string that
+    ends the statement instead of the string.
+
+        + nf(TREND_ALPHA, 2); outlined bars are not.',      <- meant to be inside the quotes
+
+    The rule is narrow on purpose. Ending a continuation line with `;` is ordinary and correct; the
+    tell is a semicolon with prose still following it, which means the quote that should have
+    enclosed it is missing.
+    """
+    js = (Path(build.__file__).parent / "assets" / "calendar.js").read_text(encoding="utf-8")
+    offenders = []
+    for n, line in enumerate(js.splitlines(), 1):
+        body = line.strip()
+        if not body.startswith("+"):
+            continue
+        # Drop the paired string literals. An unterminated one leaves its own quote behind, which
+        # is exactly the state a swallowed quote produces.
+        outside = re.sub(r"'(?:[^'\\]|\\.)*'", "", body)
+        if re.search(r";\s*\S", outside):
+            offenders.append(f"{n}: {body[:70]}")
+    assert not offenders, (
+        "a continuation line ends its statement outside a string, which stops the whole renderer "
+        "parsing:\n  " + "\n  ".join(offenders))
+
+
 def test_a_trend_states_the_years_it_rests_on(full_atlas):
     for metric in full_atlas.payload["metrics"]:
         for trend in list((metric.get("trend") or {}).values()) + [metric.get("trend_year")]:

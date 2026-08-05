@@ -343,6 +343,34 @@
     return t;
   }
 
+  /* The width a set of labels needs, measured rather than estimated from character counts: the
+     same eleven characters are a different width in "Sensible heat" and "Wm-2 mean". Measured off
+     a hidden node so nothing has to be drawn twice to find out. */
+  function textWidth(strings, cls) {
+    const probe = el('svg', { width: 0, height: 0 });
+    probe.setAttribute('style', 'position:absolute;visibility:hidden;pointer-events:none');
+    document.body.appendChild(probe);
+    let widest = 0;
+    strings.forEach(s => {
+      widest = Math.max(widest, svgText(probe, 0, 0, s, cls).getComputedTextLength());
+    });
+    probe.remove();
+    return Math.ceil(widest);
+  }
+
+  /* Trim a label that still does not fit, and keep the whole of it in the tooltip. A name running
+     off the edge of the card reads as a broken chart; a trimmed one reads as a trimmed one. */
+  function trimText(node, limit, full) {
+    if (!node.getComputedTextLength || node.getComputedTextLength() <= limit) return node;
+    let text = full;
+    while (text.length > 1 && node.getComputedTextLength() > limit) {
+      text = text.slice(0, -1);
+      node.textContent = text.replace(/[\s.]+$/, '') + '…';
+    }
+    el('title', {}, node).textContent = full;
+    return node;
+  }
+
   function pathFrom(xs, ys, sx, sy) {
     let d = '', pen = false;
     for (let i = 0; i < xs.length; i++) {
@@ -944,8 +972,8 @@
      between its early years and its late ones. The slope is what says by how much, so it is shown
      wherever the normal it qualifies is shown, and never folded into the comparison itself.
 
-     The numbers come from the build - a Theil-Sen slope with Kendall's tau, on the same estimator
-     the per-variable dashboards draw - so nothing is fitted here.
+     The numbers come from the build - a Theil-Sen slope with Kendall's tau - so nothing is fitted
+     here.
      ------------------------------------------------------------------------------------------ */
 
   const TREND_ALPHA = 0.05;
@@ -1570,12 +1598,15 @@
       + 'tiles, Enter opens one, Escape goes back.</p>';
 
     body = cardEl(host, { title: 'Threshold days', width: 'w-4',
-      sub: 'The same definitions the per-variable dashboards use, read from one registry.' });
+      sub: 'What counts as a frost day, a wet day, and the rest. Each is one test on one daily '
+        + 'figure, defined once and applied everywhere on this page.' });
     body.innerHTML = tableHTML(['Threshold', 'Variable'],
       FLAGS.map(f => [cap(f.label), VARS[f.var].short]));
 
-    body = cardEl(host, { title: 'Products behind this page', width: 'w-4',
-      sub: 'A value here is exactly what the product notebook exported.' });
+    body = cardEl(host, { title: 'Which column each variable was read from', width: 'w-4',
+      sub: 'A file usually offers several versions of the same quantity. These are the ones this '
+        + 'page used. Values are as the file gave them: this page aggregates and compares, and '
+        + 'corrects nothing.' });
     body.innerHTML = tableHTML(['Variable', 'Column', 'Period'],
       DATA.variables.map(v => [v.short, '<code>' + v.column + '</code>',
         v.first_year + '–' + v.last_year]));
@@ -1585,10 +1616,14 @@
        what it appears to mean. Measured on the record, published beside the grid. */
     const C = M.composite;
     body = cardEl(host, {
-      title: 'The axes of the composite, and how far they overlap', width: 'w-6',
-      sub: 'Correlation between the monthly departures of every pair, over the '
-        + C.n + ' months where all ' + C.vars.length + ' could be judged. Departures are taken '
-        + 'against each calendar month’s own normal, so the seasons are already out of this.'
+      title: 'How much these variables repeat each other', width: 'w-6',
+      sub: 'Each cell is how closely two variables move together, over the ' + C.n + ' months '
+        + 'where all ' + C.vars.length + ' could be judged. Both are measured as departures from '
+        + 'each calendar month’s own normal, so the seasonal cycle is already out of it. A number '
+        + 'near 1 means the pair mostly rises and falls together and near -1 that one rises as '
+        + 'the other falls; near 0 they are independent. This matters for the count of unusual '
+        + 'axes: where a pair is strongly related, a month that is odd on both is odd in one way, '
+        + 'not two. Pairs at 0.5 or beyond, either way, are marked.'
     });
     body.innerHTML = tableHTML([''].concat(C.vars.map(k => VARS[k].short)),
       C.vars.map((a, i) => [VARS[a].short].concat(C.correlation[i].map((v, j) => {
@@ -1643,9 +1678,10 @@
     const bias = ta && ta.epoch && isNum(ta.epoch.bias) ? ta.epoch : null;
 
     const body = cardEl(host, {
-      title: 'The normal is not stationary', width: 'w-6',
-      sub: 'Every anomaly, standard score and rank on this page is measured against a mean of the '
-        + 'whole record. This is what that mean is doing.'
+      title: 'The normal is an average of the record, not a fixed climate', width: 'w-6',
+      sub: 'Every anomaly, standard score and rank on this page is measured against the mean of '
+        + 'the whole record. Where that mean is itself moving, what counts as an anomaly moves '
+        + 'with it. This is by how much, per variable.'
     });
     body.innerHTML = '<p class="card-sub" style="max-width:none">A normal drawn from '
       + M.first_year + ' to ' + M.last_year + ' is a period average, not a climate that held '
@@ -1699,16 +1735,19 @@
     const clear = items.reduce((a, v) => a + Object.values(METRICS[v.metric].trend)
       .filter(t => isNum(t.p) && t.p < TREND_ALPHA).length, 0);
     chartCard(host, {
-      title: 'Where in the year the record is moving', width: 'w-6',
-      sub: 'The same slope taken down each calendar month, divided by the spread of that month’s '
-        + 'own normal. In standard deviations per decade, so a January and a July are comparable '
-        + 'and so are a temperature and a soil water content. Filled bars clear p < '
-        + nf(TREND_ALPHA, 2),
+      title: 'Which months are changing, and which are not', width: 'w-6',
+      sub: 'One row per variable, one bar per calendar month. Each bar is how fast that month has '
+        + 'moved across the record: up means rising, down means falling, and a taller bar means a '
+        + 'faster change. The height is measured against how much that month usually varies from '
+        + 'year to year, which is what lets you compare a January with a July, or a temperature '
+        + 'with a soil water content. Filled bars are the changes the test calls real at p < '
+        + nf(TREND_ALPHA, 2) + '; outlined bars are not.',
       draw: drawTrendByMonth,
-      foot: clear + ' of the ' + monthly + ' calendar-month slopes here clear that threshold. One '
-        + 'month of one year is a small and noisy sample, and most of these slopes are undecided '
-        + 'rather than flat: the record resolves a trend over a season or a year, which is what '
-        + 'the season scale of the grid and the record row beneath it show.'
+      foot: 'Here ' + clear + ' of ' + monthly + ' bars are filled. That is expected rather than '
+        + 'disappointing. One calendar month gives one value a year, so each bar rests on a short '
+        + 'and noisy series, and most come out undecided rather than flat. Change shows up sooner '
+        + 'over a season or a whole year: the season scale above the grid and the record row at '
+        + 'its foot are where to look for it.'
     });
   }
 
@@ -1716,9 +1755,15 @@
 
   function drawTrendByMonth(host) {
     const items = trendVars();
+    /* The rows are named by variable and some of those names are long. At the fixed 84px this used
+       to sit at, "Gross primary productivity" ran off the left edge of the card. The margin is now
+       the width the names actually need, capped at two fifths so the bars keep their room. */
+    const width = Math.max(260, host.clientWidth || 640);
+    const left = Math.min(textWidth(items.map(v => v.short), 'ax-text') + 14,
+      Math.round(width * 0.4));
     const f = frame(host, {
       height: 22 + items.length * TREND_ROW + 30,
-      margin: { top: 22, right: 14, bottom: 30, left: 84 },
+      margin: { top: 22, right: 14, bottom: 30, left: Math.max(46, left) },
       ariaLabel: 'Trend per calendar month, in standard deviations per decade, by variable'
     });
 
@@ -1753,8 +1798,8 @@
             { 'text-anchor': 'end' });
         }
       });
-      svgText(f.svg, f.m.left - 6, top + TREND_ROW / 2 + 4, v.short, 'ax-text',
-        { 'text-anchor': 'end' });
+      trimText(svgText(f.svg, f.m.left - 6, top + TREND_ROW / 2 + 4, v.short, 'ax-text',
+        { 'text-anchor': 'end' }), f.m.left - 10, v.short);
       for (let m = 1; m <= 12; m++) {
         const value = at(v, m);
         if (!isNum(value)) continue;
