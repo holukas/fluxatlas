@@ -7,16 +7,18 @@ rather than modelled. Everything downstream works from those two and never touch
 
 ## What the reader decides
 
-**The timestamp.** FLUXNET stores `TIMESTAMP_START` and `TIMESTAMP_END` as `YYYYMMDDHHMM`. The
-index used is the middle of the averaging window, which puts an averaged value at the centre of the
-interval it was averaged over. A start stamp would serve the calendar equally well, since a
-30-minute window never crosses midnight from its start. The end stamp is the one that does not: an
-end stamp of `00:00` belongs to the previous day, and a reader that takes it at face value moves a
-day's last half-hour into the next day. A file carrying only one of the two stamps is shifted half
-a window onto the middle, and a frame that already arrives on a `DatetimeIndex` is taken as it is.
+**The timestamp.** FLUXNET stores `TIMESTAMP_START` and `TIMESTAMP_END` as `YYYYMMDDHHMM`, and the
+index is the start, which the file already holds. A 30-minute window falls inside one day, one month
+and one hour whichever end of it is named, so nothing computed depends on the choice.
+
+The end stamp is the exception, and the reason it is never used as it stands: a window ending at
+`00:00` belongs to the previous day, so taking that stamp at face value moves a day's last half-hour
+into the next day. A file carrying only `TIMESTAMP_END` has one window subtracted from it, and a
+frame arriving on its own `DatetimeIndex` is floored onto the window, which maps a start-stamped and
+a middle-stamped file onto the same index.
 
 **Missing values.** `-9999` is FLUXNET's missing value and becomes `NaN` before anything is
-computed. Left in place it would give a mean air temperature of several thousand below zero.
+computed.
 
 **Whole years.** The grid is a whole number of years, and coverage denominators are the half-hours
 a month should hold. A partial first or last year is therefore dropped rather than averaged in, and
@@ -26,9 +28,19 @@ the reader reports what it dropped. `first_year` and `last_year` narrow the reco
 `limits` are checked after conversion. A wrong factor then fails the read and names the column,
 instead of producing an atlas whose thresholds all read the same way.
 
-`limits` are a unit check, not a quality check, so they sit well outside the observed span.
-Nighttime partitioning does return negative GPP (-49 µmol m⁻² s⁻¹ on the CH-Oe2 record), and
-half-hourly `LE_F_MDS` and `H_F_MDS` reach ±1000 W m⁻².
+```{admonition} Nothing is filtered, clipped or dropped
+:class: important
+
+The file is used as it is. `limits` is an assertion, not a filter: if every value falls inside the
+bounds the read carries on and the series is exactly the column times its factor, and if any value
+falls outside them the read **stops with an error**. There is no third outcome in which a value is
+removed or altered.
+
+The bounds exist to catch a wrong unit, so they are set far outside anything an ecosystem
+produces rather than around what one usually does. Nighttime partitioning returns negative GPP,
+and that is a real value that belongs in the record: it is read, summed into its month, and
+coloured on the grid like any other.
+```
 
 ## What counts as FLUXNET-standardized
 
@@ -48,21 +60,14 @@ is not missing, which is as much as can be concluded from it.
 
 ## The file is read twice, and the header comes first
 
-A FULLSET file is wide and long. The CH-Oe2 record is 248 columns over twenty-one years of
-half-hours, 552 MB, and an atlas of six variables needs about twenty of those columns. So the
-header is read first, the selection is resolved against the column names alone, and only then is
-the file read for the columns that survived.
+A FULLSET file is wide and long, and an atlas of six variables needs about twenty of its couple of
+hundred columns. So the header is read first, the selection is resolved against the column names
+alone, and only then is the file read for the columns that survived.
 
-| The CSV read step | Time | Memory |
-| --- | --- | --- |
-| Header only | 0.18 s | |
-| The selected columns | **0.61 s** | **59 MB** |
-| All 248 columns | 21.07 s | 697 MB |
-
-The bytes stream off disk either way. What the projection removes is the tokenizing, converting and
-allocating of the 228 columns nothing asked for. End to end, including resolution, timestamps,
-reindexing onto the 30-minute grid, unit conversion and the measured split, `read_fluxnet` on that
-file takes about 2.6 s, whether one variable is selected or all eleven.
+On a record of several hundred megabytes that is the difference between a second and half a minute,
+and between tens and hundreds of megabytes held. The bytes stream off disk either way; what the
+projection removes is the tokenizing, converting and allocating of the columns nothing asked for.
+The read then costs much the same whether one variable is selected or all of them.
 
 This has a consequence for anyone extending the package. {func}`fluxatlas.io.available` and
 {func}`fluxatlas.io.resolve` take column names, not data, so nothing that needs to look at values

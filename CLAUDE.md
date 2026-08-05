@@ -39,7 +39,7 @@ fa.build_atlas("CH-LAE_HH.csv", "atlas.html", variables=["TA"])  # TA and nothin
 | --- | --- |
 | `atlas.py` | The public API — `Atlas`, `build_atlas`, `available`. Everything a front end would need belongs here, so they stay thin. |
 | `cli.py` | The command line, a thin wrapper over `atlas.py`. `__main__.py` and the `fluxatlas` entry point both land here. |
-| `io.py` | Reading one half-hourly FLUXNET file: timestamp, `-9999`, whole years, unit conversion, the measured/modelled split. Reads the header first and projects the read onto the selected columns. |
+| `io.py` | Reading one half-hourly FLUXNET file: timestamp, `-9999`, whole years, unit conversion, the measured/modelled split. Reads the header first and projects the read onto the selected columns. The index is the **start** of the window, floored from a `DatetimeIndex`, so a start-stamped and a middle-stamped file read alike; anything not half-hourly is refused by its spacing. |
 | `variables.py` | The registry, keyed by canonical key (`TA`, `PREC`, …), each with the candidate FLUXNET columns that can supply it and the factor onto the canonical unit. |
 | `stats.py` | Theil-Sen trend, spells, growing season, rounding — the estimators shared with the CH-LAE dashboards. |
 | `build.py` | The ported computation: metrics, badges, day tests, normals, seasons, payload, render. The large one. |

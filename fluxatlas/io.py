@@ -8,14 +8,13 @@ works from those two and never touches the file again.
 
 Four things are decided here rather than left to the caller.
 
-- **The timestamp.** FLUXNET stores `TIMESTAMP_START` and `TIMESTAMP_END` as `YYYYMMDDHHMM`. The
-  index used is the middle of the averaging window, which puts an averaged value at the centre of
-  the interval it was averaged over. The start stamp would assign the same calendar day, since a
-  30-minute window never crosses midnight from its start; the end stamp is the one that does not,
-  because an end stamp of `00:00` belongs to the previous day and a reader that takes it at face
-  value moves a day's last half-hour into the next day.
-- **Missing.** `-9999` is FLUXNET's missing value and becomes `NaN` before anything is computed. A
-  file that leaves it in place would report a mean air temperature of several thousand below zero.
+- **The timestamp.** FLUXNET stores `TIMESTAMP_START` and `TIMESTAMP_END` as `YYYYMMDDHHMM`, and
+  the index is the start, which the file already holds. A 30-minute window falls inside one day,
+  one month and one hour whichever end of it is named, so nothing on the page depends on the
+  choice. The end stamp is the exception, and is why it is never used as it stands: an end of
+  `00:00` belongs to the previous day, so taking it at face value moves a day's last half-hour into
+  the next day.
+- **Missing.** `-9999` is FLUXNET's missing value and becomes `NaN` before anything is computed.
 - **Whole years.** The grid is a whole number of years and the coverage denominators are the
   half-hours a month *should* hold, so a partial first or last year is dropped rather than
   averaged in. What was dropped is reported.
@@ -107,26 +106,33 @@ def _read_frame(path, usecols=None):
 
 
 def _timestamp_index(df):
-    """A `TIMESTAMP_MIDDLE` DatetimeIndex, from whichever stamps the file carries.
+    """The start of each averaging window, from whichever stamps the file carries.
 
-    A frame that already arrives on a DatetimeIndex is taken at its word - that is the shape the
-    upstream CH-LAE parquet files are stored in - and only the FLUXNET integer stamps are parsed.
+    `TIMESTAMP_START` is what a FLUXNET file already holds, so it is what the index is: no derived
+    value to explain, and the label a reader sees is the one in the column they read. Every figure
+    on the page would be the same on any of the three stamps, because a 30-minute window falls
+    inside one day, one month and one hour whichever end of it is named. The exception is the end
+    stamp, which is why it is the one stamp that is never used as it stands: an end of `00:00`
+    belongs to the previous day, so a reader taking it at face value moves a day's last half-hour
+    into the next day.
+
+    A frame that already arrives on a DatetimeIndex is floored onto the window grid rather than
+    taken at its word. Local products are stamped at the start of the window or at its middle, and
+    flooring maps both onto the same start; without it, a middle-stamped file would land between
+    the grid's points and read as empty.
     """
     if isinstance(df.index, pd.DatetimeIndex):
-        return df.index
+        return df.index.floor(FREQ)
 
     def parse(col):
         return pd.to_datetime(df[col].astype("int64").astype(str), format="%Y%m%d%H%M")
 
-    if "TIMESTAMP_START" in df.columns and "TIMESTAMP_END" in df.columns:
-        start, end = parse("TIMESTAMP_START"), parse("TIMESTAMP_END")
-        return start + (end - start) / 2
     if "TIMESTAMP_START" in df.columns:
-        return parse("TIMESTAMP_START") + pd.Timedelta(FREQ) / 2
+        return parse("TIMESTAMP_START")
     if "TIMESTAMP_END" in df.columns:
-        return parse("TIMESTAMP_END") - pd.Timedelta(FREQ) / 2
+        return parse("TIMESTAMP_END") - pd.Timedelta(FREQ)
     if "TIMESTAMP" in df.columns:
-        return parse("TIMESTAMP")
+        return parse("TIMESTAMP").dt.floor(FREQ)
     raise ValueError("no TIMESTAMP_START/TIMESTAMP_END column and no DatetimeIndex - this does not "
                      "look like a FLUXNET-standardized file")
 
@@ -283,6 +289,20 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
     df = df.set_index(pd.DatetimeIndex(index))
     df = df[~df.index.duplicated(keep="first")].sort_index()
 
+    # Half-hourly is what this reads, and an hourly file lands on the half-hourly grid rather than
+    # missing it: every hour is also a half hour. Reindexed onto 30 minutes it would come out as a
+    # record that is half missing, with every coverage figure on the page halved and nothing to say
+    # why, so the spacing is checked rather than inferred. The mode rather than the mean, because a
+    # record with genuine gaps still has 30 minutes as its commonest step.
+    if len(df.index) > 1:
+        steps = pd.Series(df.index).diff().dropna()
+        common = steps.mode()
+        if len(common) and common.iloc[0] != pd.Timedelta(FREQ):
+            raise ValueError(
+                f"{path.name}: its records are {common.iloc[0]} apart, and this reads half-hourly "
+                f"records. Resample to 30 minutes first, or see the documentation on input that is "
+                f"not half-hourly.")
+
     first, last = _whole_years(df.index, first_year, last_year)
     dropped = sorted(set(df.index.year) - set(range(first, last + 1)))
     if dropped and not quiet:
@@ -291,19 +311,18 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
     # One continuous 30-minute index over whole years. Reindexing onto it rather than onto whatever
     # the file holds is what makes a missing record and a missing row the same thing downstream,
     # which is what the coverage denominators assume.
-    wanted = pd.date_range(f"{first}-01-01 00:15", f"{last}-12-31 23:45", freq=FREQ)
+    wanted = pd.date_range(f"{first}-01-01 00:00", f"{last}-12-31 23:30", freq=FREQ)
 
-    # A frame that arrives on its own DatetimeIndex is taken at its word, so an index stamped at the
-    # start of each window (00:00, 00:30) or at its end misses this grid entirely and every record
-    # would reindex to missing. That failure surfaces as "the column is present but empty", which
-    # sends a reader looking at the wrong thing, so it is diagnosed here by what actually caused it.
+    # A DatetimeIndex is floored onto this grid, so the only way to miss it is to be on a different
+    # frequency altogether - hourly records, say, or ten-minute ones. That failure would otherwise
+    # surface as "the column is present but empty", which sends a reader looking at the wrong
+    # thing, so it is diagnosed here by what actually caused it.
     if len(df.index) and not len(df.index.intersection(wanted)):
         raise ValueError(
             f"{path.name}: none of its {len(df.index):,} timestamps land on the half-hourly grid "
-            f"this reader builds, which runs 00:15, 00:45, 01:15 and so on. The first stamp is "
-            f"{df.index[0]:%Y-%m-%d %H:%M}, so the index is the start or the end of each averaging "
-            f"window rather than its middle. Shift it by half a window before reading, e.g. "
-            f"df.index = df.index + pd.Timedelta('15min') for a start-stamped file.")
+            f"this reader builds, which runs 00:00, 00:30, 01:00 and so on. The first stamp is "
+            f"{df.index[0]:%Y-%m-%d %H:%M}. Half-hourly records are what this reads; an hourly or "
+            f"ten-minute file needs resampling to 30 minutes first.")
     df = df.reindex(wanted)
 
     if not quiet:

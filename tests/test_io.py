@@ -12,13 +12,22 @@ from fluxatlas import io, variables as varreg
 
 # -- Timestamps ----------------------------------------------------------------------------------
 
-def test_reads_fluxnet_csv_and_indexes_on_the_window_middle(csv_path):
+def test_reads_fluxnet_csv_and_indexes_on_the_window_start(csv_path):
+    """The stamp the file already holds, so the label is the one the reader read."""
     loaded = io.read_fluxnet(csv_path, ["TA"], quiet=True)
     index = loaded["TA"]["series"].index
     assert isinstance(index, pd.DatetimeIndex)
-    # The middle of a 00:00-00:30 window is 00:15, which is the point of indexing this way.
-    assert index[0].minute == 15
+    assert index[0] == pd.Timestamp(f"{index[0].year}-01-01 00:00")
     assert (index[1] - index[0]) == pd.Timedelta("30min")
+
+
+def test_the_start_stamp_is_used_even_where_both_are_present():
+    index = pd.date_range("2020-06-01 00:00", periods=4, freq="30min")
+    df = pd.DataFrame({"TIMESTAMP_START": index.strftime("%Y%m%d%H%M").astype("int64"),
+                       "TIMESTAMP_END": (index + pd.Timedelta("30min"))
+                       .strftime("%Y%m%d%H%M").astype("int64"),
+                       "TA_F": [1.0, 2.0, 3.0, 4.0]})
+    assert io._timestamp_index(df)[0] == pd.Timestamp("2020-06-01 00:00")
 
 
 def test_end_stamp_alone_still_lands_on_the_right_day():
@@ -26,12 +35,27 @@ def test_end_stamp_alone_still_lands_on_the_right_day():
     index = pd.date_range("2020-01-01 00:30", periods=4, freq="30min")
     df = pd.DataFrame({"TIMESTAMP_END": index.strftime("%Y%m%d%H%M").astype("int64"),
                        "TA_F": [1.0, 2.0, 3.0, 4.0]})
-    middles = io._timestamp_index(df)
-    assert middles[0] == pd.Timestamp("2020-01-01 00:15")
+    assert io._timestamp_index(df)[0] == pd.Timestamp("2020-01-01 00:00")
 
 
-def test_a_frame_already_on_a_datetimeindex_is_taken_as_is(frame):
-    assert io._timestamp_index(frame).equals(frame.index)
+def test_a_datetimeindex_is_floored_onto_the_window_grid(frame):
+    """Local products stamp the start or the middle, and both mean the same window."""
+    assert io._timestamp_index(frame).equals(frame.index.floor("30min"))
+
+    middles = frame.index[:4]
+    starts = middles.floor("30min")
+    assert list(starts.minute) == [0, 30, 0, 30]
+    assert io._timestamp_index(pd.DataFrame(index=middles)).equals(starts)
+    assert io._timestamp_index(pd.DataFrame(index=starts)).equals(starts)
+
+
+def test_a_file_on_the_wrong_frequency_says_so(tmp_path):
+    """Hourly input is not read, and the reason given is the frequency rather than the column."""
+    frame = synthetic_frame(years=2).resample("h").mean()
+    path = tmp_path / "hourly.parquet"
+    frame.to_parquet(path)
+    with pytest.raises(ValueError, match="reads half-hourly records"):
+        io.read_fluxnet(path, ["TA"], quiet=True)
 
 
 def test_a_file_without_any_timestamp_is_refused():

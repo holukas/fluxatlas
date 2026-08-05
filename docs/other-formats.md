@@ -1,8 +1,8 @@
 # Files that are not FLUXNET-standardized
 
-**Yes, this works, and it is the normal case.** Most real files are named to a local convention.
-The registry's candidate column names are a convenience for files that happen to use FLUXNET names;
-everything else is read by naming the columns yourself.
+Most real files are named to a local convention, and reading one is the normal case rather than a
+special one. The registry's candidate column names are a convenience for files that happen to use
+FLUXNET names; everything else is read by naming the columns yourself.
 
 What the reader will not do is invent a variable. The canonical key has to be one the registry
 describes, because that is where the unit, the plausible range, the aggregation and the thresholds
@@ -23,22 +23,22 @@ fa.Atlas("my_tower.parquet", {
 Five things, and only the first two are hard to change after the fact.
 
 **1. Half-hourly records.** Everything assumes a 30-minute averaging window: the reader builds a
-`30min` index and coverage denominators are `n_days * 48`. Hourly or daily input is
-[planned, not present](development.md#what-is-planned).
+`30min` index and coverage denominators are `n_days * 48`. A file on any other spacing is refused
+with its own spacing named, rather than read as a record that is half missing. Hourly or daily
+input is [planned, not present](development.md#what-is-planned).
 
-**2. A timestamp the reader can build an index from.** Four forms work:
+**2. A timestamp the reader can build an index from.** The index is the **start** of each window:
 
 | What the file carries | What is used |
 | --- | --- |
-| `TIMESTAMP_START` and `TIMESTAMP_END` | the midpoint of the two |
-| `TIMESTAMP_START` alone | the stamp plus 15 minutes |
-| `TIMESTAMP_END` alone | the stamp minus 15 minutes |
-| `TIMESTAMP` | taken as it is |
-| a parquet file already on a `DatetimeIndex` | taken as it is |
+| `TIMESTAMP_START`, with or without `TIMESTAMP_END` | the start stamp |
+| `TIMESTAMP_END` alone | the stamp minus one window |
+| `TIMESTAMP` | floored onto the window |
+| a parquet file already on a `DatetimeIndex` | floored onto the window |
 
 The stamp columns are parsed as the integer `YYYYMMDDHHMM` that FLUXNET writes. An ISO string
-column such as `2016-01-01 00:15` will not parse: convert it, or write the file as parquet with a
-`DatetimeIndex` instead. See [below](#the-timestamp-is-the-thing-that-usually-bites).
+column such as `2016-01-01 00:00` will not parse: convert it, or write the file as parquet with a
+`DatetimeIndex` instead. See [timestamps](#timestamps).
 
 **3. One column per variable, numeric.** Text is coerced to numbers and anything that fails becomes
 missing.
@@ -93,7 +93,8 @@ datetime,           air_temp, rain_mm, vpd_pa, temp_filled
 2016-01-01 00:30,        2.02,     0.2,  175.0,           1
 ```
 
-Three of those need converting, so the file is prepared once with pandas and read from memory:
+The timestamp needs no work: it is already the start of each window, and an ISO one is fine once
+the file is parquet. Two things do, so it is prepared once with pandas:
 
 ```python
 import pandas as pd
@@ -101,14 +102,10 @@ import fluxatlas as fa
 
 df = pd.read_csv("tower_2016_2024.csv", parse_dates=["datetime"], index_col="datetime")
 
-# 1. The index is the middle of the averaging window, and this file is stamped at the start.
-df.index = df.index + pd.Timedelta("15min")
-df.index.name = "TIMESTAMP_MIDDLE"
-
-# 2. This file's sentinel is not FLUXNET's.
+# 1. This file's sentinel is not FLUXNET's.
 df = df.replace(-999, pd.NA)
 
-# 3. The flag runs the other way: 1 means filled, and the reader wants 0 to mean measured.
+# 2. The flag runs the other way: 1 means filled, and the reader wants 0 to mean measured.
 df["temp_qc"] = df["temp_filled"]
 
 df.to_parquet("tower.parquet")
@@ -120,28 +117,24 @@ fa.build_atlas("tower.parquet", "atlas.html", variables={
 })
 ```
 
-Point 3 is worth reading twice: the flag is used as it is, and `0` is the only code that counts as
-measured. A flag where `1` means good will report the record as entirely modelled, and every span
-will carry the sparse badge.
+Read the second one twice. The flag is used as it is, and `0` is the only code that counts as
+measured, so a flag where `1` means good reports the record as entirely modelled and puts the
+sparse badge on every span.
 
-## The timestamp is the thing that usually bites
+## Timestamps
 
-A parquet file that arrives on a `DatetimeIndex` is **taken at its word**. The reader does not guess
-whether the stamps are the start, the middle or the end of the averaging window, because a wrong
-guess moves data between days silently.
+The index is the start of each averaging window, which is the stamp a FLUXNET file already carries.
+A 30-minute window falls inside one day, one month and one hour whichever end of it is named, so no
+figure on the page depends on the choice.
 
-The index it builds runs `00:15, 00:45, 01:15, …`, the middle of each half-hour. An index stamped at
-`00:00, 00:30` therefore lands nowhere on it, and the read stops with the reason:
+A parquet file that arrives on its own `DatetimeIndex` is floored onto that grid. Local products
+stamp either the start of the window or its middle, and flooring maps both onto the same start, so
+neither needs converting first.
 
-```text
-tower.parquet: none of its 368,160 timestamps land on the half-hourly grid this reader builds,
-which runs 00:15, 00:45, 01:15 and so on. The first stamp is 2016-01-01 00:00, so the index is
-the start or the end of each averaging window rather than its middle. Shift it by half a window
-before reading, e.g. df.index = df.index + pd.Timedelta('15min') for a start-stamped file.
-```
-
-The fix is the one the message states. If instead your file carries FLUXNET's integer
-`TIMESTAMP_START` and `TIMESTAMP_END` columns, nothing needs doing: the reader takes their midpoint.
+The end stamp is the exception, and the reason the reader never uses it as it stands. A window
+ending at `00:00` belongs to the previous day, so a reader taking that stamp at face value moves a
+day's last half-hour into the next day. Where a file carries only `TIMESTAMP_END`, one window is
+subtracted from it.
 
 ## What you give up
 
