@@ -219,3 +219,8 @@ __marimo__/
 
 # Example output: regenerate with examples/build_lae_meteo_atlas.py
 examples/output/
+
+# Full FLUXNET files kept in examples/data for development. A FULLSET record is
+# hundreds of megabytes - the CH-Oe2 one is 552 MB, well past GitHub's 100 MB
+# limit - so only the cut-down .parquet extract is committed.
+examples/data/*.csv
