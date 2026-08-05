@@ -698,7 +698,9 @@
       + '<div class="control"><label for="scale-pick">Scale</label>'
       + '<select class="picker narrow" id="scale-pick">'
       + '<option value="month">Months</option>'
-      + '<option value="season">Seasons (DJF, MAM, JJA, SON)</option>'
+      + (SEASON_DEFS.length
+        ? '<option value="season">Seasons (' + SEASON_DEFS.map(d => d.key).join(', ') + ')</option>'
+        : '')
       + '<option value="day">Days (every day of the record)</option></select></div>'
       + '<p class="control-note" id="metric-about"></p>';
     host.innerHTML = html;
@@ -1333,10 +1335,10 @@
     }
     note += ' Hatched tiles are below ' + M.cov_warn_text + ' measured. The right-hand column is each year, the foot row each ' + noun.slice(0, -1)
       + ' over the whole record. Select one to open it.'
-      + (state.scale === 'season'
-        ? ' A winter is December to February and is labelled by the year of its January, so the '
-          + 'first winter is short of its December and the last December belongs to a winter the '
-          + 'record does not reach.' : '');
+      /* Generated from the scheme, because the seasons are the caller's. A season that reaches
+         back over the new year is short at one end of the record and hangs off the other, and
+         that has to be said whichever season it is. */
+      + (state.scale === 'season' ? ' ' + M.season_note + seasonEdgeNote() : '');
     /* The trend closes the note because it qualifies everything above it: the foot row's means are
        the normals the tiles are compared against, and a slope through the record says that those
        normals are a period average rather than a climate that held still. The coverage metric is
@@ -2766,8 +2768,27 @@
     return tableHTML(columns, rows);
   }
 
-  const SEASON = ['Winter', 'Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer',
-    'Autumn', 'Autumn', 'Autumn', 'Winter'];
+  /* The two consequences of a season that crosses the new year, stated for whichever season does.
+     It is labelled by the year of its later months, so the record's first one is short at the
+     front and its last December-or-equivalent belongs to a season the record does not reach. */
+  function seasonEdgeNote() {
+    const wrapping = SEASON_DEFS.find(d => d.months.some((m, i) => i && m < d.months[i - 1]));
+    if (!wrapping) return '';
+    const first = MONTH_NAME[wrapping.months[0] - 1];
+    const last = MONTH_NAME[wrapping.months[wrapping.months.length - 1] - 1];
+    return ' ' + wrapping.label + ' runs ' + first + ' to ' + last + ' and is labelled by the year '
+      + 'of its ' + last + ', so the first one in the record is short of its ' + first
+      + ' and the last ' + first + ' belongs to one the record does not reach.';
+  }
+
+  /* Which season each calendar month falls in, read from the scheme the atlas was built with
+     rather than assumed to be the four meteorological ones. A build with `seasons=none` has no
+     entry for any month, and the chip is simply left off. */
+  const SEASON = (function () {
+    const out = {};
+    SEASON_DEFS.forEach(d => d.months.forEach(m => { out[m] = d.label; }));
+    return out;
+  })();
 
   /**
    * One sentence stating what the month was, assembled from the statistics the tiles carry.
@@ -2827,12 +2848,12 @@
     const host = document.getElementById('month-body');
     compactCharts();
     document.getElementById('month-title').innerHTML = sc.title(mo)
-      + (state.scale === 'month'
-        ? '<span class="season">' + SEASON[mo.m - 1] + '</span>' : '');
+      + (state.scale === 'month' && SEASON[mo.m]
+        ? '<span class="season">' + SEASON[mo.m] + '</span>' : '');
 
     const list = sc.spans();
     const idx = list.indexOf(mo);
-    const yearStep = state.scale === 'season' ? 4 : 12;
+    const yearStep = state.scale === 'season' ? SEASON_DEFS.length : 12;
     document.getElementById('month-prev').disabled = idx <= 0;
     document.getElementById('month-next').disabled = idx >= list.length - 1;
     document.getElementById('year-prev').disabled = idx - yearStep < 0;
@@ -3260,7 +3281,7 @@
     };
     document.getElementById('month-prev').addEventListener('click', () => step(-1));
     document.getElementById('month-next').addEventListener('click', () => step(1));
-    const yearStep = () => (state.scale === 'season' ? 4 : 12);
+    const yearStep = () => (state.scale === 'season' ? SEASON_DEFS.length : 12);
     document.getElementById('year-prev').addEventListener('click', () => step(-yearStep()));
     document.getElementById('year-next').addEventListener('click', () => step(yearStep()));
 

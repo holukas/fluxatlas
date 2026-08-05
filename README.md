@@ -30,6 +30,19 @@ name them:
 fluxatlas record.parquet -o atlas.html --var TA=Lufttemperatur --qc TA=TA_ISFILLED
 ```
 
+Seasons default to the four meteorological ones. Define the first and the rest
+follow from it:
+
+```bash
+fluxatlas record.csv -o atlas.html --seasons DJFMAM
+```
+
+`DJF` gives the usual four, `DJFMAM` gives two half-years, `12,1,2` is the same
+as `DJF`, and `none` drops the seasonal scale for a site whose year has no
+seasons. A season has to be 1, 2, 3, 4, 6 or 12 months long so the derived
+seasons cover the year exactly once, and anything other than the usual four is
+stated on the page: a tile labelled `JJASON` is half a year, not a quarter.
+
 `--qc` names the quality flag beside a column (0 measured, above 0 modelled) and
 `--factor` converts it onto the canonical unit, e.g. `--factor VPD=0.001` for Pa
 to kPa. Both forms combine, so registry-found and hand-named variables can appear

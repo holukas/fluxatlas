@@ -63,11 +63,12 @@ class Atlas:
     """
 
     def __init__(self, path, variables=None, *, site=None, site_long="", first_year=None,
-                 last_year=None, hourly=True, quiet=False):
+                 last_year=None, hourly=True, quiet=False, seasons=_build.DEFAULT_SEASONS):
         self.path = Path(path)
         self.site = site or _guess_site(path)
         self.site_long = site_long
         self.hourly = hourly
+        self.seasons = seasons
 
         self.loaded = _io.read_fluxnet(self.path, variables, first_year=first_year,
                                        last_year=last_year, quiet=quiet)
@@ -79,7 +80,7 @@ class Atlas:
                 f"{'' if hourly else ', without hourly detail'} ...")
         self.payload = _build.build_payload(
             self.loaded, site=self.site, site_long=self.site_long, source=self.path.name,
-            with_hourly=hourly, quiet=quiet)
+            with_hourly=hourly, quiet=quiet, seasons=seasons)
         if not quiet:
             self.report()
 
@@ -118,8 +119,9 @@ class Atlas:
 
 
 def build_atlas(path, out, variables=None, *, site=None, site_long="", first_year=None,
-                last_year=None, hourly=True, title=None, quiet=False):
+                last_year=None, hourly=True, title=None, quiet=False,
+                seasons=_build.DEFAULT_SEASONS):
     """Read, build and write in one call, returning the path written."""
     atlas = Atlas(path, variables, site=site, site_long=site_long, first_year=first_year,
-                  last_year=last_year, hourly=hourly, quiet=quiet)
+                  last_year=last_year, hourly=hourly, quiet=quiet, seasons=seasons)
     return atlas.write(out, title=title, quiet=quiet)

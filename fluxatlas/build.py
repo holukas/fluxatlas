@@ -1027,17 +1027,129 @@ COMPOSITE_MIN_AXES = 4
 # reach, so it appears in no season tile. Coverage is measured against the half-hours the season
 # *should* hold rather than the ones the file happens to carry, which is what makes both visible.
 #
-# `Q-NOV` quarters end in February, May, August and November, so pandas' own period arithmetic
-# produces exactly these four seasons and labels the winter the same way.
+# The four meteorological seasons are only the default. A site whose year does not divide that way
+# says how it does: `seasons="DJFMAM"` gives two half-years, `seasons="none"` drops the scale
+# entirely. Only the first season is stated and the rest follow from it, because seasons that
+# overlap or leave a month out are not a scheme anyone wants to be able to express.
 # ----------------------------------------------------------------------------------------------
 
-SEASONS = [
-    dict(key="DJF", quarter=1, label="Winter", name="winter", months=(12, 1, 2)),
-    dict(key="MAM", quarter=2, label="Spring", name="spring", months=(3, 4, 5)),
-    dict(key="JJA", quarter=3, label="Summer", name="summer", months=(6, 7, 8)),
-    dict(key="SON", quarter=4, label="Autumn", name="autumn", months=(9, 10, 11)),
-]
-SEASON_FREQ = "Q-NOV"
+MONTH_INITIAL = "JFMAMJJASOND"
+
+# The four that have names in English. Anything else is named by its months, which is the honest
+# label for a division this page invented at the caller's request.
+CANONICAL_SEASONS = {
+    (12, 1, 2): ("Winter", "winter"),
+    (3, 4, 5): ("Spring", "spring"),
+    (6, 7, 8): ("Summer", "summer"),
+    (9, 10, 11): ("Autumn", "autumn"),
+}
+
+DEFAULT_SEASONS = "DJF"
+NO_SEASONS = ("none", "off", "no", "")
+
+
+def season_key(months):
+    """`DJF` for December-January-February."""
+    return "".join(MONTH_INITIAL[m - 1] for m in months)
+
+
+def parse_season_spec(spec):
+    """The months of the first season, from `DJF` or `12,1,2`, or None for a record without any.
+
+    Month initials are ambiguous on their own - three of them name two months each - so they are
+    read as a run of consecutive months rather than letter by letter. `JJA` is June-July-August
+    because those three are consecutive and no other reading is.
+    """
+    text = str(spec if spec is not None else "").strip()
+    if text.lower() in NO_SEASONS:
+        return None
+    if any(ch.isdigit() for ch in text):
+        months = [int(x) for x in re.split(r"[,\s]+", text) if x]
+        outside = [m for m in months if not 1 <= m <= 12]
+        if outside:
+            raise ValueError(f"seasons={spec!r}: {outside} is not a month number")
+        if len(set(months)) != len(months):
+            raise ValueError(f"seasons={spec!r} names the same month twice")
+        return tuple(months)
+
+    letters = text.upper()
+    if not letters.isalpha() or len(letters) > 12:
+        raise ValueError(
+            f"seasons={spec!r} is not a run of month initials. Give the first season as its "
+            f"initials (DJF, JJA, DJFMAM), as month numbers (12,1,2), or 'none'.")
+    for start in range(1, 13):
+        if all(MONTH_INITIAL[(start - 1 + i) % 12] == ch for i, ch in enumerate(letters)):
+            return tuple(((start - 1 + i) % 12) + 1 for i in range(len(letters)))
+    raise ValueError(
+        f"seasons={spec!r}: no run of consecutive months has those initials. Month initials are "
+        f"{MONTH_INITIAL} read around the year, so DJF and JJA work and 'DFJ' does not.")
+
+
+def season_shift(months):
+    """Which months of a season fall in the calendar year before the one it is labelled by.
+
+    A season that crosses the new year is labelled by the year of its last month - a winter is the
+    winter of its January, the usual convention - so the months before the boundary carry a one.
+    """
+    wraps = any(months[i] < months[i - 1] for i in range(1, len(months)))
+    if not wraps:
+        return {m: 0 for m in months}
+    out, before_boundary = {}, True
+    for i, m in enumerate(months):
+        if i and m < months[i - 1]:
+            before_boundary = False
+        out[m] = 1 if before_boundary else 0
+    return out
+
+
+def season_scheme(spec=DEFAULT_SEASONS):
+    """Every season of the year, derived from the definition of the first one.
+
+    The rest follow by stepping through the year in blocks of the same length, so a scheme always
+    covers all twelve months exactly once. That is why the length has to divide the year: a season
+    of five months would leave a remainder with nowhere to go.
+    """
+    first = parse_season_spec(spec)
+    if first is None:
+        return []
+    n = len(first)
+    if 12 % n:
+        raise ValueError(
+            f"seasons={spec!r} defines a season of {n} months, which does not divide the year. "
+            f"A season has to be 1, 2, 3, 4, 6 or 12 months long, so that the seasons derived "
+            f"from it cover the year exactly once.")
+    out = []
+    for g in range(12 // n):
+        months = tuple(((first[0] - 1 + g * n + i) % 12) + 1 for i in range(n))
+        if n == 1:
+            # Initials are not unique one month at a time - March and May are both `M` - and the
+            # key identifies the span in the payload, so a one-month scheme is named by the month.
+            key, label = calendar.month_abbr[months[0]], calendar.month_name[months[0]]
+        else:
+            key = season_key(months)
+            label, _ = CANONICAL_SEASONS.get(months, (key, key))
+        out.append(dict(key=key, group=g + 1, label=label, name=label.lower(), months=months,
+                        shift=season_shift(months)))
+    keys = [s["key"] for s in out]
+    assert len(set(keys)) == len(keys), f"season keys are not unique: {keys}"
+    return out
+
+
+def season_note(scheme):
+    """One sentence stating the scheme, for a page whose seasons the caller chose.
+
+    The default needs no explanation; anything else does, because a reader has no way to know from
+    a tile labelled `JJASON` that it is half a year rather than a quarter of one.
+    """
+    if not scheme:
+        return None
+    names = ", ".join(s["key"] for s in scheme)
+    if [s["key"] for s in scheme] == ["DJF", "MAM", "JJA", "SON"]:
+        return f"The four meteorological seasons: {names}."
+    n = len(scheme[0]["months"])
+    return (f"{len(scheme)} season{'s' if len(scheme) > 1 else ''} of {n} months, derived from "
+            f"the first one this atlas was built with: {names}. This is not the usual four-season "
+            f"division; every figure on this scale is taken over the months named.")
 
 # The badges that mean the same thing over three months as over one. Everything defined on a
 # z-score, a percentage of normal or a rank is scale-free and travels; everything defined on a
@@ -1051,29 +1163,45 @@ SEASON_BADGES = {
 }
 
 
-def season_periods(first_year, last_year):
+def season_periods(first_year, last_year, scheme):
     """The season spans of the record, as dictionaries the rest of the build can treat like months.
 
     A season is contiguous in the daily arrays, so it needs only an offset and a length; the offset
-    of the first winter is clipped to the start of the record, and its coverage carries the rest of
-    the story.
+    of a season that reaches back into the previous year is clipped to the start of the record, and
+    its coverage carries the rest of the story.
     """
     out = []
     for year in range(first_year, last_year + 1):
-        for season in SEASONS:
-            if season["key"] == "DJF":
-                start = pd.Timestamp(year - 1, 12, 1)
-                end = pd.Timestamp(year, 2, 1) + pd.offsets.MonthEnd(0)
-            else:
-                m0 = season["months"][0]
-                start = pd.Timestamp(year, m0, 1)
-                end = pd.Timestamp(year, season["months"][-1], 1) + pd.offsets.MonthEnd(0)
-            out.append(dict(y=year, skey=season["key"], group=season["quarter"],
+        for season in scheme:
+            months, shift = season["months"], season["shift"]
+            start = pd.Timestamp(year - shift[months[0]], months[0], 1)
+            end = (pd.Timestamp(year - shift[months[-1]], months[-1], 1)
+                   + pd.offsets.MonthEnd(0))
+            out.append(dict(y=year, skey=season["key"], group=season["group"],
                             name=season["name"], label=season["label"],
                             title=f"{season['label']} {year}", start=start, end=end,
                             n_days=int((end - start).days) + 1,
-                            period=pd.Period(f"{year}Q{season['quarter']}", freq=SEASON_FREQ)))
+                            months=months, shift=shift,
+                            # The span's own id, replacing the pandas quarter the four-season
+                            # scheme used to borrow: a year and a slot, which any scheme has.
+                            period=year * 100 + season["group"]))
     return out
+
+
+def season_ids(index, scheme):
+    """The season span every record belongs to, as the same id `season_periods` assigns.
+
+    Built from the month rather than from a pandas period frequency, because a frequency exists
+    only for the four-quarter case and this has to group two half-years or twelve single months by
+    the same rule.
+    """
+    ids = np.zeros(len(index), dtype="int64")
+    month, year = index.month.to_numpy(), index.year.to_numpy()
+    for season in scheme:
+        for m in season["months"]:
+            sel = month == m
+            ids[sel] = (year[sel] + season["shift"][m]) * 100 + season["group"]
+    return pd.Series(ids, index=index)
 
 
 def composite_correlation(all_stats, months, keys, titles):
@@ -1250,19 +1378,19 @@ def monthly_frames(loaded, months):
     return out
 
 
-def seasonal_frames(loaded, spans):
+def seasonal_frames(loaded, spans, scheme):
     """The same three frames per season, with coverage measured against a whole season.
 
     A share of the records the file happens to hold would report the first winter, which has no
     December, as complete. The denominator here is the half-hours the season should contain, so a
     season the record only partly reaches is short by exactly as much as it is missing.
     """
-    index = pd.PeriodIndex([sp["period"] for sp in spans])
+    index = pd.Index([sp["period"] for sp in spans], dtype="int64")
     expected = pd.Series([sp["n_days"] * 48 for sp in spans], index=index, dtype=float)
     out = {}
     for key, d in loaded.items():
         v = d["v"]
-        group = d["series"].index.to_period(SEASON_FREQ)
+        group = season_ids(d["series"].index, scheme)
         value = (d["series"].groupby(group).sum(min_count=1) if v.agg == "sum"
                  else d["series"].groupby(group).mean()).reindex(index)
         meas = (d["measured"].astype(float).groupby(group).sum().reindex(index)
@@ -1651,7 +1779,8 @@ def epoch_split(metric, agg, span_rows, n_cols):
 # Payload
 # ----------------------------------------------------------------------------------------------
 
-def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, quiet=False):
+def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, quiet=False,
+                  seasons=DEFAULT_SEASONS):
     keys = list(loaded)
     first_year, last_year = span(loaded)
     dates = pd.date_range(f"{first_year}-01-01", f"{last_year}-12-31", freq="D")
@@ -1692,20 +1821,25 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     report_thin_spans(thin, quiet=quiet)
 
     # -- Seasons -------------------------------------------------------------------------------
-    # The second scale, built by the same machinery: a winter is judged against winters exactly as
-    # a July is judged against Julys.
-    season_spans = season_periods(first_year, last_year)
-    seasonal = seasonal_frames(loaded, season_spans)
-    season_index = pd.PeriodIndex([sp["period"] for sp in season_spans])
-    season_norm = normals(seasonal, [sp["group"] for sp in season_spans],
-                          [sp["y"] for sp in season_spans])
-    season_counts = {k: pd.Series(v.groupby(v.index.to_period(SEASON_FREQ)).sum())
-                     .reindex(season_index).fillna(0) for k, v in hits.items()}
+    # The second scale, built by the same machinery: a season is judged against the same season of
+    # other years exactly as a July is judged against Julys. Which seasons those are is the
+    # caller's, and a record with none skips the scale altogether.
+    scheme = season_scheme(seasons)
+    season_spans = season_periods(first_year, last_year, scheme) if scheme else []
+    seasonal = seasonal_frames(loaded, season_spans, scheme) if scheme else {}
+    season_index = pd.Index([sp["period"] for sp in season_spans], dtype="int64")
+    season_norm = (normals(seasonal, [sp["group"] for sp in season_spans],
+                           [sp["y"] for sp in season_spans]) if scheme else {})
+    season_counts = {}
     season_spells = {}
-    for name, mask in spell_defs.items():
-        season_spells[name] = pd.Series(
-            {sp["period"]: longest_spell(mask.loc[sp["start"]:sp["end"]])[0]
-             for sp in season_spans}, dtype="int64")
+    if scheme:
+        ids = season_ids(dates, scheme)
+        season_counts = {k: pd.Series(v.groupby(ids).sum())
+                         .reindex(season_index).fillna(0) for k, v in hits.items()}
+        for name, mask in spell_defs.items():
+            season_spells[name] = pd.Series(
+                {sp["period"]: longest_spell(mask.loc[sp["start"]:sp["end"]])[0]
+                 for sp in season_spans}, dtype="int64")
 
     def span_row(sp, frames_by_var, group_norm, counts, spell_set, scale):
         """One tile's worth of payload, for either scale."""
@@ -1753,12 +1887,12 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
 
     season_rows = []
     for sp in season_spans:
-        sp = dict(sp, idx=sp["period"], event_keys=[(sp["y"] - 1, 12) if mm == 12 else (sp["y"], mm)
-                                                    for mm in SEASONS[sp["group"] - 1]["months"]])
+        # A month of a season that reaches back over the new year belongs to the previous calendar
+        # year, which the scheme's own shift states rather than a hard-coded December.
+        calendar_months = [[sp["y"] - sp["shift"][mm], mm] for mm in sp["months"]]
+        sp = dict(sp, idx=sp["period"], event_keys=[(y, mm) for y, mm in calendar_months])
         row, _ = span_row(sp, seasonal, season_norm, season_counts, season_spells, "season")
-        row.update(s=sp["skey"], label=sp["label"], title=sp["title"],
-                   months=[[sp["y"] - 1 if mm == 12 else sp["y"], mm]
-                           for mm in SEASONS[sp["group"] - 1]["months"]])
+        row.update(s=sp["skey"], label=sp["label"], title=sp["title"], months=calendar_months)
         season_rows.append(row)
 
     # -- Metric domains ----------------------------------------------------------------------
@@ -1788,7 +1922,11 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
             # mean is it, which is what makes an absolute temperature tile separate the seasons.
             center = metric["center"]
             if center is None:
-                center = float(np.nanmean([x for x in values if x is not None]))
+                # A build with no seasons has no season values to take a centre from, and neither
+                # has a metric whose variable is missing throughout. Zero is the honest fallback:
+                # nothing is coloured on that scale anyway.
+                present = [x for x in values if x is not None and not pd.isna(x)]
+                center = float(np.mean(present)) if present else 0.0
             spread = percentile_domain([(x - center) if x is not None else None for x in values],
                                        symmetric=True)
             domain = [center + spread[0], center + spread[1]]
@@ -1925,6 +2063,10 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
             cov_badge_text=coverage_phrase(keys, "badge"),
             cov_normal_text=coverage_phrase(keys, "normal"),
             cov_warn_text=coverage_phrase(keys, "warn"),
+            # The seasons are the caller's, so the page states which scheme it is on rather than
+            # letting a tile labelled `JJASON` be read as a quarter of a year.
+            season_note=season_note(scheme),
+            season_months=len(scheme[0]["months"]) if scheme else 0,
             # Every statistic on this page is computed on the gap-filled product, so the page has to
             # say so and say what leans hardest on it. This is the disclosure, not a gate.
             thin=thin,
@@ -1944,7 +2086,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         months=rows,
         seasons=season_rows,
         season_defs=[dict(key=x["key"], label=x["label"], name=x["name"],
-                          months=list(x["months"])) for x in SEASONS],
+                          months=list(x["months"])) for x in scheme],
         days=dict(
             start=f"{dates[0]:%Y-%m-%d}", n=len(dates),
             flags=[int(x) for x in word.to_numpy()],
@@ -1956,15 +2098,15 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         normals=normals_payload(daily_norm),
         climatology={key: {str(m): norm[key]["by_group"][m] for m in range(1, 13)}
                      for key in keys},
-        season_climatology={key: {x["key"]: season_norm[key]["by_group"][x["quarter"]]
-                                  for x in SEASONS} for key in keys},
+        season_climatology={key: {x["key"]: season_norm[key]["by_group"][x["group"]]
+                                  for x in scheme} for key in keys} if scheme else {},
         hourly=hourly_layer(loaded, first_year, last_year) if with_hourly else None,
     )
 
     # The grid is the page, so its shape is asserted rather than assumed: one tile per month of
     # every year, and every tile addressing a real window of the daily arrays.
     assert len(rows) == (last_year - first_year + 1) * 12, "the grid is not a whole number of years"
-    assert len(season_rows) == (last_year - first_year + 1) * 4, \
+    assert len(season_rows) == (last_year - first_year + 1) * len(scheme), \
         "the season grid is not a whole number of years"
     assert all(row["i0"] + row["n"] <= len(dates) for row in rows), "a month runs past the days"
     return payload

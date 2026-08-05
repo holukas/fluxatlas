@@ -27,6 +27,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
+from . import build as _build
 from . import io as _io
 from . import variables as _variables
 from ._console import say
@@ -142,6 +143,11 @@ def main(argv=None):
     parser.add_argument("--factor", action="append", metavar="KEY=NUMBER",
                         help="multiply a --var column onto the canonical unit, e.g. "
                              "--factor VPD=0.001 for Pa to kPa. Repeatable.")
+    parser.add_argument("--seasons", default="DJF", metavar="MONTHS",
+                        help="the first season, as month initials (DJF, JJA) or numbers (12,1,2). "
+                             "The rest of the year is divided into seasons of the same length, so "
+                             "DJF gives the usual four and DJFMAM gives two half-years. Use "
+                             "'none' for a site whose year has no seasons. Default: DJF")
     parser.add_argument("--site", help="site identifier; the default is read from the file name")
     parser.add_argument("--site-long", default="", help="longer site description for the page")
     parser.add_argument("--first-year", type=int, help="first year to include")
@@ -163,9 +169,17 @@ def main(argv=None):
     if args.list:
         return show(source)
 
+    # Checked before the file is opened. The season spec is a string the caller typed, and a typo
+    # in it should not cost a read of several hundred megabytes and a screen of coverage warnings
+    # before it is mentioned.
+    try:
+        _build.season_scheme(args.seasons)
+    except ValueError as exc:
+        raise SystemExit(f"--seasons: {exc}") from None
+
     atlas = Atlas(source, build_mapping(args), site=args.site, site_long=args.site_long,
                   first_year=args.first_year, last_year=args.last_year,
-                  hourly=not args.no_hourly, quiet=args.quiet)
+                  hourly=not args.no_hourly, quiet=args.quiet, seasons=args.seasons)
     out = Path(args.out) if args.out else source.parent / f"{atlas.site}_atlas.html"
     path = atlas.write(out, title=args.title, quiet=args.quiet)
     if args.open_browser:

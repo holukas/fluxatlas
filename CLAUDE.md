@@ -123,6 +123,26 @@ much, via `thinNote()`.
 are genuinely missing rather than filled, its `avail` is 73.5 %, and its trend is
 still withheld at 6 complete years. Correctly.
 
+## Seasons are derived, not fixed
+
+`--seasons DJF` (the default) names only the **first** season; the rest follow by
+stepping through the year in blocks of the same length. `DJFMAM` gives two
+half-years, `none` drops the scale, and the length has to divide 12 so the scheme
+tiles the year exactly once.
+
+This replaced `SEASON_FREQ = "Q-NOV"`, which borrowed pandas' quarters and so
+could only ever express four equal seasons. Spans are now grouped by
+`season_ids`, an integer `year * 100 + slot` built from the month, and a season
+that crosses the new year carries a `shift` map saying which of its months belong
+to the previous calendar year — `season_shift` derives that, so nothing
+hard-codes December any more.
+
+Two things that bite when adding to this: a **one-month** scheme cannot key on
+initials (March and May are both `M`) so it keys on the month abbreviation, and
+`season_scheme` asserts the keys are unique because the key is the span's id in
+the payload. Anything other than the canonical four is named by its months and
+`season_note` states the scheme on the page.
+
 ## examples/ and tests/
 
 `examples/data/CH-LAE_meteo_30min_2005-2025.parquet` (9.3 MB, committed) is a
