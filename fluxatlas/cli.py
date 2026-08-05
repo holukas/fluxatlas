@@ -122,8 +122,8 @@ def build_parser():
   fluxatlas record.csv --list
   fluxatlas record.csv -o atlas.html
   fluxatlas record.csv -o atlas.html --vars TA,PREC
-  fluxatlas record.parquet -o atlas.html --var TA=Lufttemperatur --qc TA=TA_FLAG
-  fluxatlas record.parquet -o atlas.html --var VPD=vpd_pascal --factor VPD=0.001
+  fluxatlas record.parquet -o atlas.html --var TA=air_temp --qc TA=TA_FLAG
+  fluxatlas record.parquet -o atlas.html --var VPD=vpd_pa --factor VPD=0.001
 """)
     parser.add_argument("input", help="the half-hourly input file (.csv or .parquet)")
     parser.add_argument("-o", "--out", help="output HTML file; the default is <SITE>_atlas.html "

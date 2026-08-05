@@ -16,7 +16,7 @@ one-variable page. The GUI is not written. `CHANGELOG.md` carries an unreleased
 
 ```bash
 fluxatlas record.csv --list                                   # what the file carries
-fluxatlas record.parquet -o atlas.html --var TA=Lufttemperatur --qc TA=TA_FLAG
+fluxatlas record.parquet -o atlas.html --var TA=air_temp --qc TA=TA_FLAG
 ```
 
 ```python
@@ -50,7 +50,7 @@ in `variables.py` are how a FLUXNET-named file is read without being told
 anything. Any other half-hourly series is read by passing an explicit mapping:
 
 ```python
-fa.Atlas(path, {"TA": {"column": "Lufttemperatur", "qc": "TA_FLAG"}})
+fa.Atlas(path, {"TA": {"column": "air_temp", "qc": "TA_FLAG"}})
 ```
 
 The canonical key still has to be one the registry describes, because that is

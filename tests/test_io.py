@@ -154,13 +154,13 @@ def test_resolve_accepts_an_explicit_mapping(frame):
 
 def test_a_mapping_makes_a_non_fluxnet_file_readable(tmp_path):
     """The point of the mapping: columns that were never named for FLUXNET."""
-    frame = synthetic_frame(years=10).rename(columns={"TA_F": "Lufttemperatur"})
+    frame = synthetic_frame(years=10).rename(columns={"TA_F": "air_temp"})
     path = tmp_path / "local.parquet"
     frame.to_parquet(path)
     with pytest.raises(KeyError, match="carries no column for TA"):
         io.read_fluxnet(path, ["TA"], quiet=True)
-    loaded = io.read_fluxnet(path, {"TA": "Lufttemperatur"}, quiet=True)
-    assert loaded["TA"]["v"].column == "Lufttemperatur"
+    loaded = io.read_fluxnet(path, {"TA": "air_temp"}, quiet=True)
+    assert loaded["TA"]["v"].column == "air_temp"
 
 
 def test_unknown_keys_and_missing_columns_are_named_in_the_error(frame):

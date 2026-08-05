@@ -99,16 +99,16 @@ Most real files do not use FLUXNET names. Name the columns instead:
 
 ```python
 fa.Atlas("local_record.parquet", {
-    "TA":   {"column": "Lufttemperatur", "qc": "TA_FLAG"},
-    "PREC": {"column": "Niederschlag"},
-    "VPD":  {"column": "vpd_pascal", "factor": 0.001},   # into kPa
+    "TA":   {"column": "air_temp", "qc": "TA_FLAG"},
+    "PREC": {"column": "rain_mm"},
+    "VPD":  {"column": "vpd_pa", "factor": 0.001},   # into kPa
 })
 ```
 
 ```bash
 fluxatlas local_record.parquet -o atlas.html \
-    --var TA=Lufttemperatur --qc TA=TA_FLAG \
-    --var VPD=vpd_pascal --factor VPD=0.001
+    --var TA=air_temp --qc TA=TA_FLAG \
+    --var VPD=vpd_pa --factor VPD=0.001
 ```
 
 The canonical key still has to be one the registry describes, since that is where the units,

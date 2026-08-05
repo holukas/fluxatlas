@@ -12,9 +12,9 @@ come from. The column behind it is yours.
 import fluxatlas as fa
 
 fa.Atlas("my_tower.parquet", {
-    "TA":   {"column": "Lufttemperatur", "qc": "TA_FLAG"},
-    "PREC": {"column": "Niederschlag"},
-    "VPD":  {"column": "vpd_pascal", "factor": 0.001},   # Pa into the canonical kPa
+    "TA":   {"column": "air_temp", "qc": "TA_FLAG"},
+    "PREC": {"column": "rain_mm"},
+    "VPD":  {"column": "vpd_pa", "factor": 0.001},   # Pa into the canonical kPa
 })
 ```
 
@@ -53,12 +53,12 @@ and the reader says which.
 ## The three fields of a mapping
 
 ```python
-{"TA": {"column": "Lufttemperatur", "qc": "TA_FLAG", "factor": 1.0}}
+{"TA": {"column": "air_temp", "qc": "TA_FLAG", "factor": 1.0}}
 ```
 
 `column`
 : The column to read. The only required field. A bare string is shorthand for it:
-  `{"TA": "Lufttemperatur"}`.
+  `{"TA": "air_temp"}`.
 
 `qc`
 : The quality flag beside it, in the FLUXNET convention: **0 measured, anything above 0 modelled**.

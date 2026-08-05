@@ -25,7 +25,7 @@ def test_list_prints_what_the_registry_finds(parquet_path, capsys):
 
 
 def test_list_on_a_file_with_local_names_says_so(tmp_path, capsys):
-    frame = synthetic_frame(years=2).rename(columns={"TA_F": "Lufttemperatur"})
+    frame = synthetic_frame(years=2).rename(columns={"TA_F": "air_temp"})
     path = tmp_path / "local.parquet"
     frame.to_parquet(path)
     assert run([str(path), "--list"]) == 0
@@ -67,17 +67,17 @@ def test_vars_is_repeatable_and_comma_separated():
 
 
 def test_var_names_the_column():
-    assert parse(["--var", "TA=Lufttemperatur"]) == {"TA": dict(column="Lufttemperatur")}
+    assert parse(["--var", "TA=air_temp"]) == {"TA": dict(column="air_temp")}
 
 
 def test_qc_and_factor_refine_a_var():
-    mapping = parse(["--var", "VPD=vpd_pascal", "--qc", "VPD=vpd_flag", "--factor", "VPD=0.001"])
-    assert mapping == {"VPD": dict(column="vpd_pascal", qc="vpd_flag", factor=0.001)}
+    mapping = parse(["--var", "VPD=vpd_pa", "--qc", "VPD=vpd_flag", "--factor", "VPD=0.001"])
+    assert mapping == {"VPD": dict(column="vpd_pa", qc="vpd_flag", factor=0.001)}
 
 
 def test_the_two_forms_combine():
-    mapping = parse(["--vars", "PREC", "--var", "TA=Lufttemperatur"])
-    assert mapping == {"PREC": None, "TA": dict(column="Lufttemperatur")}
+    mapping = parse(["--vars", "PREC", "--var", "TA=air_temp"])
+    assert mapping == {"PREC": None, "TA": dict(column="air_temp")}
 
 
 def test_a_flag_without_its_var_is_refused():
@@ -112,11 +112,11 @@ def test_a_build_by_canonical_key(parquet_path, tmp_path):
 def test_a_build_by_named_column(tmp_path):
     """The case the CLI exists for: a file whose columns were never named for FLUXNET."""
     frame = synthetic_frame(years=10).rename(
-        columns={"TA_F": "Lufttemperatur", "TA_F_QC": "TA_ISFILLED"})
+        columns={"TA_F": "air_temp", "TA_F_QC": "TA_ISFILLED"})
     path = tmp_path / "local.parquet"
     frame.to_parquet(path)
     out = tmp_path / "atlas.html"
-    assert run([str(path), "-o", str(out), "--var", "TA=Lufttemperatur",
+    assert run([str(path), "-o", str(out), "--var", "TA=air_temp",
                 "--qc", "TA=TA_ISFILLED", "--no-hourly", "-q"]) == 0
     assert out.stat().st_size > 100_000
 

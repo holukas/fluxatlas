@@ -3,7 +3,7 @@
 ```bash
 fluxatlas INPUT --list
 fluxatlas INPUT -o atlas.html --vars TA,PREC
-fluxatlas INPUT -o atlas.html --var TA=Lufttemperatur --qc TA=TA_FLAG
+fluxatlas INPUT -o atlas.html --var TA=air_temp --qc TA=TA_FLAG
 ```
 
 `python -m fluxatlas` is the same entry point.
@@ -41,10 +41,10 @@ fluxatlas record.csv
 fluxatlas record.csv -o atlas.html --vars TA,PREC
 
 # A file with its own column names
-fluxatlas record.parquet -o atlas.html --var TA=Lufttemperatur --qc TA=TA_FLAG
+fluxatlas record.parquet -o atlas.html --var TA=air_temp --qc TA=TA_FLAG
 
 # A column published in Pa, converted onto the canonical kPa
-fluxatlas record.parquet -o atlas.html --var VPD=vpd_pascal --factor VPD=0.001
+fluxatlas record.parquet -o atlas.html --var VPD=vpd_pa --factor VPD=0.001
 
 # Two half-years instead of four seasons, and a smaller file
 fluxatlas record.csv -o atlas.html --seasons DJFMAM --no-hourly
