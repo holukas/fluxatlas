@@ -1,12 +1,12 @@
 # Changelog
 
-## v0.1.0 | unreleased
+## v0.1.0 | 6 Aug 2026
 
 **First release.** Builds a standalone, browsable HTML page from the half-hourly
 FLUXNET-standardized record of one eddy covariance site: fluxes, meteorology and their quality
 flags, from the whole record down to the single day. The library and the command line work; the
-desktop GUI is not written. PyPI still holds the 0.0.1 placeholder, so this version is installed
-from source.
+desktop GUI is not written. This is the first version with any content: `0.0.1` on PyPI was a name
+placeholder and carried none of this.
 
 ### Added
 
@@ -151,6 +151,6 @@ from source.
 
 ### Tests
 
-- About 177 tests, most on synthetic data built in `tests/conftest.py`: twelve half-hourly years
+- About 182 tests, most on synthetic data built in `tests/conftest.py`: twelve half-hourly years
   with seasonal and diurnal cycles and an imposed 0.8 K/decade warming the trend tests recover. The
   tests that read the bundled CH-LAE extract skip when it is missing.

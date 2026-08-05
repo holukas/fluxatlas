@@ -5,7 +5,8 @@ will be needed to lift it for 3.14.
 
 ## From source
 
-Only the `0.0.1` placeholder is on PyPI, so install from a checkout.
+Until v0.1.0 reaches PyPI, which still holds only the `0.0.1` name placeholder, install from a
+checkout.
 
 ```bash
 git clone https://github.com/holukas/fluxatlas.git
@@ -55,6 +56,6 @@ tables are generated from the registry. `uv sync` installs it, so one command co
 uv run pytest
 ```
 
-About 177 tests, roughly a minute. Most of them run on synthetic data built in `tests/conftest.py`,
+About 182 tests, roughly a minute. Most of them run on synthetic data built in `tests/conftest.py`,
 so a fresh checkout passes with no data file present. The tests that read the bundled CH-LAE
 extract skip when it is missing.

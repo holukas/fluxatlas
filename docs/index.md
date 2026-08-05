@@ -6,12 +6,12 @@
 It reads fluxes (NEE, GPP, RECO, H, LE), meteorology and their quality flags. Every month of the
 record sits on one grid, and the grid opens down to the season, the month and the single day.
 
-```{admonition} In preparation
+```{admonition} Version 0.1.0
 :class: note
 
-The library and the command line build atlases for meteorology and for the turbulent fluxes. There
-is no desktop GUI yet, and PyPI still holds the 0.0.1 placeholder, so [installation](installation.md)
-is from source.
+This is v0.1.0, the first release with any content. The library and the command line build atlases
+for meteorology and for the turbulent fluxes, and there is no desktop GUI yet. Until the release
+reaches PyPI, [installation](installation.md) is from source.
 ```
 
 ```bash

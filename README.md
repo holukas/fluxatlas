@@ -12,9 +12,9 @@ the month and the single day. Fluxes, meteorology and their quality flags.
 The output is a single file. It carries its own scripts and styles, so it opens from a
 memory stick with no server and no network.
 
-> **In preparation.** The library and the command line work for meteorology and for the
-> turbulent fluxes. There is no desktop GUI yet, and PyPI holds only the 0.0.1
-> placeholder, so install from source.
+> **v0.1.0, the first release with any content.** The library and the command line work for
+> meteorology and for the turbulent fluxes. There is no desktop GUI yet. Until the release
+> reaches PyPI, install from source.
 
 **Documentation: [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io)**
 
