@@ -108,15 +108,12 @@ def show(path):
     return 0
 
 
-def main(argv=None):
-    # A CLI owns its own process, so reconfiguring the stream is fair here in a way it would not be
-    # inside the library: units carry superscripts and a legacy console code page cannot encode
-    # them. `say()` still covers the streams that cannot be reconfigured.
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, ValueError):  # a redirected stream may not support it
-        pass
+def build_parser():
+    """The argument parser, built apart from `main` so the documentation can render it.
 
+    Nothing is parsed here and no stream is touched, so a documentation build gets the options and
+    their help without running the command.
+    """
     parser = argparse.ArgumentParser(
         prog="fluxatlas",
         description="Build an atlas page from a half-hourly FLUXNET-standardized file.",
@@ -161,7 +158,19 @@ def main(argv=None):
     parser.add_argument("--open", dest="open_browser", action="store_true",
                         help="open the finished page in the default browser")
     parser.add_argument("-q", "--quiet", action="store_true", help="print nothing but errors")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv=None):
+    # A CLI owns its own process, so reconfiguring the stream is fair here in a way it would not be
+    # inside the library: units carry superscripts and a legacy console code page cannot encode
+    # them. `say()` still covers the streams that cannot be reconfigured.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # a redirected stream may not support it
+        pass
+
+    args = build_parser().parse_args(argv)
 
     source = Path(args.input)
     if not source.exists():

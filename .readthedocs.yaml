@@ -1,0 +1,35 @@
+# Read the Docs build configuration.
+# https://docs.readthedocs.io/en/stable/config-file/v2.html
+
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    # The lower bound of `requires-python`. Nothing in the docs build needs more.
+    python: "3.12"
+
+python:
+  install:
+    # `uv sync` from the committed `uv.lock`, which installs the package itself along with the
+    # `docs` group. The package has to be importable: `autodoc` reads its docstrings, and the
+    # variable tables are generated from the registry rather than written out.
+    #
+    # The group in `pyproject.toml` is therefore the one place the documentation dependencies are
+    # stated, and the hosted build resolves exactly what a local one does.
+    - method: uv
+      command: sync
+      groups:
+        - docs
+
+sphinx:
+  configuration: docs/conf.py
+  fail_on_warning: true
+
+# HTML only. A PDF is a LaTeX build, and the units on these pages are heavy in characters
+# (`W m⁻²`, `µmol`, `°C`) that need xelatex and a font that carries them; `conf.py` sets the
+# engine, so adding `- pdf` here is what remains if a PDF is ever wanted.
+formats: []
+
+search:
+  enabled: true

@@ -1,0 +1,17 @@
+{#-
+  The sidebar brand: the mark beside the name, on one line, with "atlas" in bold.
+
+  Furo's own template stacks a centred logo above the project name. The name here is a wordmark
+  rather than a title, so it sits next to the mark instead, and `_static/custom.css` lays the two
+  out. The version keeps its own line under them.
+-#}
+<a class="sidebar-brand" href="{{ pathto(master_doc) }}">
+  {%- block brand_content %}
+  <span class="brand-row">
+    {%- if logo_url %}
+    <img class="sidebar-logo" src="{{ logo_url }}" alt=""/>
+    {%- endif %}
+    <span class="sidebar-brand-text">flux<strong>atlas</strong></span>
+  </span>
+  {% endblock brand_content %}
+</a>

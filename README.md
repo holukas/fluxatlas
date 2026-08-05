@@ -10,6 +10,11 @@ record on one grid, drilling down to the season, the month and the single day.
 > meteorology and the turbulent fluxes. A desktop GUI is not written yet, and
 > nothing beyond the 0.0.1 placeholder is on PyPI.
 
+Documentation: [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io).
+Built from `docs/` with Sphinx; see
+[Development](https://fluxatlas.readthedocs.io/en/latest/development.html) for a
+local build.
+
 ## Command line
 
 ```bash
@@ -134,6 +139,15 @@ fa.Atlas("local_record.parquet", {
 
 The canonical key still has to be one the registry describes — that is where the
 units, thresholds and aggregation come from — but the column is yours to choose.
+
+Four things the file still has to satisfy: half-hourly records, a timestamp the
+reader can build an index from, `-9999` or empty for missing, and a quality flag
+in the convention 0 = measured where one is given. A parquet file already on a
+`DatetimeIndex` is taken at its word, so its stamps have to be the **middle** of
+each averaging window; a start-stamped index is refused with the shift that fixes
+it rather than read as an empty file.
+[Files that are not FLUXNET-standardized](https://fluxatlas.readthedocs.io/en/latest/other-formats.html)
+works this through with a converted example.
 
 ## Variables
 

@@ -1,0 +1,40 @@
+/* Adjustments to furo. */
+
+/* The brand: the mark beside the wordmark, on one line, left aligned. Furo centres a logo above
+   the project name; the name here is a wordmark, so the two sit together instead. */
+.brand-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.sidebar-brand {
+    text-align: left;
+}
+
+.sidebar-brand .sidebar-logo {
+    width: 2.1rem;
+    margin: 0;
+}
+
+.sidebar-brand-text {
+    font-size: 1.4rem;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    margin: 0;
+}
+
+.sidebar-brand-text strong {
+    font-weight: 700;
+}
+
+/* The tables generated from the registry are wide, and at the default size a candidate-column
+   list wraps after two names. */
+article table.docutils {
+    font-size: 0.85rem;
+}
+
+article table.docutils td,
+article table.docutils th {
+    vertical-align: top;
+}

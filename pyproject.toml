@@ -27,10 +27,22 @@ fluxatlas = "fluxatlas.cli:main"
 [project.urls]
 Homepage = "https://github.com/holukas/fluxatlas"
 Repository = "https://github.com/holukas/fluxatlas"
+Documentation = "https://fluxatlas.readthedocs.io"
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+]
+# The documentation build, and the one place its dependencies are stated: Read the Docs installs
+# this group with `uv sync`, so a version pinned here is the version the hosted build uses.
+docs = [
+    "sphinx>=8.1",
+    "furo>=2024.8.6",
+    "myst-parser>=4.0",
+    "sphinx-autodoc-typehints>=2.5",
+    # The CLI reference is generated from `fluxatlas.cli.build_parser` rather than copied.
+    "sphinx-argparse>=0.5",
+    "sphinx-copybutton>=0.5",
 ]
 
 [tool.pytest.ini_options]
