@@ -15,10 +15,9 @@ python:
     # `autodoc` reads its docstrings, and the variable tables are generated from the registry
     # rather than written out.
     #
-    # An extra rather than a dependency group, and pip rather than uv. `method: uv` is documented
-    # but this instance rejects the config outright, and a PEP 735 group cannot be reached from a
-    # path install anyway. `pyproject.toml` stays the one place the documentation dependencies are
-    # stated, which is the property worth keeping; the installer is not.
+    # An extra rather than a PEP 735 dependency group, because a group is not reachable from a
+    # path install, which is how a project is installed here. `pyproject.toml` stays the one place
+    # the documentation dependencies are stated, which is the property worth keeping.
     - method: pip
       path: .
       extra_requirements:
@@ -32,6 +31,3 @@ sphinx:
 # (`W m⁻²`, `µmol`, `°C`) that need xelatex and a font that carries them; `conf.py` sets the
 # engine, so adding `- pdf` here is what remains if a PDF is ever wanted.
 formats: []
-
-search:
-  enabled: true

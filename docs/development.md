@@ -81,10 +81,11 @@ The hosted build installs the package and its `docs` **extra** with pip, from th
 is no second requirements file to keep in step, which is the one packaging convention that departs
 from `diive`.
 
-It is an extra rather than a PEP 735 dependency group because that is what Read the Docs can
-install: a group is not reachable from a path install, and `method: uv`, though documented, is
-rejected outright by the running instance. The property worth keeping is that the list appears
-once; which installer reads it is not.
+It is an extra rather than a PEP 735 dependency group because a group is not reachable from a path
+install, which is how Read the Docs installs a project. The property worth keeping is that the list
+appears once; which installer reads it is not. The cost is that the hosted build resolves the
+documentation dependencies fresh rather than from `uv.lock`, so it can pick up a newer Sphinx than
+a local build has.
 
 Two parts are generated rather than written, and both should stay that way. The API reference comes
 from the docstrings. The variable, column and uncertainty tables come from the registry, through

@@ -440,9 +440,15 @@ uv run sphinx-build -b html -W docs docs/_build/html
 `-W` matches Read the Docs, which builds with `fail_on_warning: true`. The `docs`
 **extra** in `pyproject.toml` is the **only** place the documentation dependencies
 are stated, so there is no second requirements file. It is an extra rather than a
-dependency group because that is what Read the Docs can install - a PEP 735 group
-is not reachable from a path install, and `method: uv` is documented but rejected
-by the running instance, which fails the build before it creates an environment.
+dependency group because a PEP 735 group is not reachable from a path install,
+which is how Read the Docs installs a project.
+
+**A key Read the Docs does not know fails the build before it starts.** The log
+clones, checks out, prints `.readthedocs.yaml` and stops, with no environment and
+no install, which reads like a mysterious silence rather than a validation error.
+`search: enabled: true` cost two builds that way: `search` takes `ranking` and
+`ignore` and nothing else. Check any new key against the schema rather than
+against what looks reasonable.
 
 `docs/other-formats.md` is the guide for reading a half-hourly file that is not
 FLUXNET-named, which is most of them. Keep it in step with `io.resolve` and with
