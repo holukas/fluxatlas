@@ -52,6 +52,10 @@
     <p class="lede small" id="badge-lede"></p>
     <div class="badgelegend" id="badgelegend"></div>
 
+    <h2 class="section" id="s-vars">The variables</h2>
+    <p class="lede small" id="var-lede-index"></p>
+    <div class="varindex" id="varindex"></div>
+
     <h2 class="section" id="s-about">About this page</h2>
     <div class="grid" id="g-about"></div>
   </section>
@@ -71,6 +75,19 @@
       </div>
     </div>
     <div id="month-body"></div>
+  </section>
+
+  <!-- One variable, over the whole record -->
+  <section id="view-var" hidden>
+    <div class="monthbar">
+      <button type="button" class="btn back" id="var-back">All months</button>
+      <div class="monthnav">
+        <button type="button" class="btn icon" id="var-prev" aria-label="Previous variable">‹</button>
+        <h1 class="monthtitle" id="var-title">—</h1>
+        <button type="button" class="btn icon" id="var-next" aria-label="Next variable">›</button>
+      </div>
+    </div>
+    <div id="var-body"></div>
   </section>
 
 </main>

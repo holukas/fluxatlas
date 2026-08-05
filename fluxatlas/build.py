@@ -478,38 +478,49 @@ BADGES = [
     # 21" to mean the most notable one. So rank 1 is the record sink and the last rank the record
     # source - the opposite way round from every other variable on the page, and the reason the
     # registry states the direction rather than leaving it implied.
-    dict(key="record_sink", label="Largest uptake on record", group="Carbon", icon="award",
+    dict(key="record_sink", label="Best carbon balance on record", group="Carbon", icon="award",
          tone="grow", priority=1, needs=("NEE",),
-         about="The largest net carbon uptake recorded for this calendar month.",
-         rule=lambda s: (f"Largest net uptake of any {s['month_name']} in the record: "
-                         f"{s['NEE']:.0f} {s['u_NEE']}, {s['NEE_anom']:+.0f} {s['u_NEE']} against "
-                         f"the normal of {s['NEE_n']} years")
+         about="The most carbon this site has gained in this calendar month, or where the month is "
+               "a source in every year of the record, the least it has lost.",
+         rule=lambda s: (
+             f"The best carbon balance of any {s['month_name']} in the record: "
+             + carbon_phrase(s["NEE"], s["u_NEE"], varreg.make("NEE").sign)
+             + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
+             + ("more uptake" if s["NEE_norm"] <= 0 else "less release")
+             + f" than the normal of {s['NEE_n']} years")
          if s["NEE_rank"] == 1 else None),
 
-    dict(key="record_source", label="Largest release on record", group="Carbon", icon="award",
-         tone="warm", priority=1, needs=("NEE",),
-         about="The largest net carbon release recorded for this calendar month.",
-         rule=lambda s: (f"Largest net release of any {s['month_name']} in the record: "
-                         f"{s['NEE']:.0f} {s['u_NEE']}, {s['NEE_anom']:+.0f} {s['u_NEE']} against "
-                         f"the normal of {s['NEE_n']} years")
+    dict(key="record_source", label="Worst carbon balance on record", group="Carbon",
+         icon="award", tone="warm", priority=1, needs=("NEE",),
+         about="The most carbon this site has lost in this calendar month, or where the month is a "
+               "sink in every year of the record, the least it has gained.",
+         rule=lambda s: (
+             f"The worst carbon balance of any {s['month_name']} in the record: "
+             + carbon_phrase(s["NEE"], s["u_NEE"], varreg.make("NEE").sign)
+             + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
+             + ("more release" if s["NEE_norm"] > 0 else "less uptake")
+             + f" than the normal of {s['NEE_n']} years")
          if s["NEE_rank"] == s["NEE_n"] else None),
 
-    dict(key="sink_strong", label="Stronger sink than normal", group="Carbon", icon="arrow-down",
+    dict(key="sink_strong", label="Shifted toward uptake", group="Carbon", icon="arrow-down",
          tone="grow", priority=4, needs=("NEE",),
-         about="The monthly net exchange is at least one standard deviation below the "
-               "calendar-month normal, meaning more carbon taken up than usual.",
-         rule=lambda s: (f"{s['NEE']:.0f} {s['u_NEE']}, {s['NEE_anom']:+.0f} {s['u_NEE']} against "
-                         f"the {s['month_name']} normal of {s['NEE_norm']:.0f} {s['u_NEE']} "
+         about="The net exchange is at least one standard deviation below the calendar-month "
+               "normal: more carbon taken up than usual, or less released.",
+         rule=lambda s: (carbon_phrase(s["NEE"], s["u_NEE"], varreg.make("NEE").sign)
+                         + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
+                         f"{'more uptake' if s['NEE_norm'] <= 0 else 'less release'} than the "
+                         f"{s['month_name']} normal of {s['NEE_norm']:.0f} {s['u_NEE']} "
                          f"({s['NEE_z']:+.1f} standard deviations), on {s['n_sink']} sink days")
          if s["NEE_z"] <= -1 else None),
 
-    dict(key="sink_weak", label="Weaker sink than normal", group="Carbon", icon="arrow-up",
+    dict(key="sink_weak", label="Shifted toward release", group="Carbon", icon="arrow-up",
          tone="warm", priority=4, needs=("NEE",),
-         about="The monthly net exchange is at least one standard deviation above the "
-               "calendar-month normal, meaning less carbon taken up - or more released - than "
-               "usual.",
-         rule=lambda s: (f"{s['NEE']:.0f} {s['u_NEE']}, {s['NEE_anom']:+.0f} {s['u_NEE']} against "
-                         f"the {s['month_name']} normal of {s['NEE_norm']:.0f} {s['u_NEE']} "
+         about="The net exchange is at least one standard deviation above the calendar-month "
+               "normal: less carbon taken up than usual, or more released.",
+         rule=lambda s: (carbon_phrase(s["NEE"], s["u_NEE"], varreg.make("NEE").sign)
+                         + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
+                         f"{'less uptake' if s['NEE_norm'] <= 0 else 'more release'} than the "
+                         f"{s['month_name']} normal of {s['NEE_norm']:.0f} {s['u_NEE']} "
                          f"({s['NEE_z']:+.1f} standard deviations), on {s['n_sink']} sink days")
          if s["NEE_z"] >= 1 else None),
 
@@ -646,6 +657,99 @@ BADGES = [
          about="Eight or more days duller than the 10th percentile for their date.",
          rule=lambda s: (f"{s['n_overcast']} days in the dullest tenth for their date")
          if s["n_overcast"] >= 8 else None),
+
+    # -- What only a whole year can say --------------------------------------------------------
+    # Every badge above states something a month can be judged on, and travels outward to the
+    # longer spans where the statement still holds. These run the other way: each is undefined
+    # below a year, so each is marked `only` and appears at that scale alone.
+    dict(key="net_sink", label="Net carbon sink", group="Carbon", icon="sprout", tone="grow",
+         priority=1, needs=("NEE",), needs_normal=False, only=("year",),
+         about="Over the whole year the site took up more carbon than it released. This is a "
+               "statement no month can make: at this site nearly every summer month is a sink and "
+               "nearly every winter month a source, so the sign of the balance belongs to the year.",
+         rule=lambda s: (
+             f"Net uptake of {abs(s['NEE']):.0f} {s['u_NEE']} over the year"
+             + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
+             + (f", {ordinal(s['NEE_rank'])} largest uptake of {s['NEE_n']} years"
+                if s["NEE_rank"] else ""))
+         if s["NEE"] is not None and s["NEE"] < 0 else None),
+
+    dict(key="net_source", label="Net carbon source", group="Carbon", icon="leaf-fall",
+         tone="warm", priority=1, needs=("NEE",), needs_normal=False, only=("year",),
+         about="Over the whole year the site released more carbon than it took up. For a managed "
+               "site this is the year a harvest, a ploughing or a drought outweighed the growing "
+               "season, and it is visible at no shorter scale.",
+         rule=lambda s: (
+             f"Net release of {s['NEE']:.0f} {s['u_NEE']} over the year"
+             + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
+             + (f", {ordinal(s['NEE_n'] - s['NEE_rank'] + 1)} largest release of {s['NEE_n']} years"
+                if s["NEE_rank"] else ""))
+         if s["NEE"] is not None and s["NEE"] > 0 else None),
+
+    dict(key="long_season", label="Long growing season", group="Season", icon="sprout",
+         tone="grow", priority=2, needs=("TA",), needs_normal=False, only=("year",),
+         about="The growing season ran at least ten days longer than the record median. The dates "
+               "it began and ended are stated on their own months; only the year carries how long "
+               "it lasted.",
+         rule=lambda s: (
+             f"The growing season ran {s['ev_gslen']['days']} days, "
+             f"{s['ev_gslen']['delta']} more than the usual {s['ev_gslen']['normal']:.0f}")
+         if (s["ev_gslen"] and s["ev_gslen"]["delta"] is not None
+             and s["ev_gslen"]["delta"] >= SEASON_LENGTH_DELTA) else None),
+
+    dict(key="short_season", label="Short growing season", group="Season", icon="leaf-fall",
+         tone="cold", priority=2, needs=("TA",), needs_normal=False, only=("year",),
+         about="The growing season ran at least ten days shorter than the record median.",
+         rule=lambda s: (
+             f"The growing season ran {s['ev_gslen']['days']} days, "
+             f"{abs(s['ev_gslen']['delta'])} fewer than the usual "
+             f"{s['ev_gslen']['normal']:.0f}")
+         if (s["ev_gslen"] and s["ev_gslen"]["delta"] is not None
+             and s["ev_gslen"]["delta"] <= -SEASON_LENGTH_DELTA) else None),
+
+    dict(key="late_frost", label="Late spring frost", group="Season", icon="snowflake",
+         tone="cold", priority=3, needs=("TA",), needs_normal=False, only=("year",),
+         about="The last frost of spring fell at least a fortnight later than usual, so the risk "
+               "to new growth ran later into the year than the site is used to.",
+         rule=lambda s: (
+             f"The last frost of spring fell on {s['ev_last_frost']['date']}, "
+             f"{s['ev_last_frost']['delta']} days later than usual"
+             + (f"; the frost-free period was {s['ev_frostfree']['days']} days"
+                if s["ev_frostfree"] else ""))
+         if (s["ev_last_frost"] and s["ev_last_frost"]["delta"] is not None
+             and s["ev_last_frost"]["delta"] >= FROST_DATE_DELTA) else None),
+
+    dict(key="early_frost", label="Early autumn frost", group="Season", icon="icicles",
+         tone="cold", priority=3, needs=("TA",), needs_normal=False, only=("year",),
+         about="The first frost of autumn fell at least a fortnight earlier than usual, cutting "
+               "the frost-free period short at the other end.",
+         rule=lambda s: (
+             f"The first frost of autumn fell on {s['ev_first_frost']['date']}, "
+             f"{abs(s['ev_first_frost']['delta'])} days earlier than usual"
+             + (f"; the frost-free period was {s['ev_frostfree']['days']} days"
+                if s["ev_frostfree"] else ""))
+         if (s["ev_first_frost"] and s["ev_first_frost"]["delta"] is not None
+             and s["ev_first_frost"]["delta"] <= -FROST_DATE_DELTA) else None),
+
+    # The badge that exists because an annual mean hides exactly this. A year of two extremes and a
+    # year of twelve ordinary months can carry the same figure, and only one of them was a year
+    # worth opening.
+    dict(key="swings", label="A year of extremes", group="Records", icon="thermo-swing",
+         tone="warn", priority=2, needs=(), needs_normal=False, only=("year",),
+         about="In four or more of the year's months, some variable stood at least two standard "
+               "deviations from its own normal for that calendar month, measured against how far "
+               "that variable varies between the record's other Januaries, Februaries and so on. "
+               "An annual figure can average out to nothing while the months inside it swing at "
+               "both ends, and this is the mark that tells the two apart.",
+         rule=lambda s: (
+             f"In {s['x']['nx']} months of this year, a variable stood at least "
+             f"{EXTREME_MONTH_Z:g} standard deviations from its own normal for that calendar "
+             f"month, taken against its spread across the other years"
+             + (f". The furthest was {s['worst_month']['name']}: "
+                f"{varreg.make(s['worst_month']['key']).short.lower()} "
+                f"{s['worst_month']['z']:+.1f}"
+                if s["worst_month"] else ""))
+         if s["x"]["nx"] >= EXTREME_MONTHS else None),
 
     dict(key="saturated", label="In cloud", group="Radiation", icon="fog", tone="dull",
          priority=3, needs=("RH",), needs_normal=False,
@@ -809,18 +913,20 @@ METRICS = [
     dict(key="zmax", var="TA", field="extra", extra="zmax", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=1, unit="sd",
          group="Across the variables", label="How unusual the month was", short="Unusualness",
-         about="The largest departure from the calendar-month normal, in standard deviations, "
-               "across the five axes and in either direction. One dimensionless scale, so a "
-               "strange February and a strange July are comparable.",
+         about="The furthest any one variable stood from its own normal for this calendar month, "
+               "counted in standard deviations of that variable across the record and in either "
+               "direction. One dimensionless scale, so a strange February and a strange July are "
+               "comparable.",
          day=dict(kind="none")),
     dict(key="nsd", var="TA", field="extra", extra="nsd", scale="seq",
-         stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0, unit="axes",
+         stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0, unit="variables",
          group="Across the variables",
-         label="How many things were unusual at once", short="Unusual axes",
-         about="How many of the five axes (temperature, precipitation, radiation, evaporative "
-               "demand, soil water) stood at least one standard deviation from their "
-               "calendar-month normal. The axes are not independent; the correlation between "
-               "them is measured and shown beside the grid.",
+         label="How many things were unusual at once", short="Unusual variables",
+         about="How many of the five variables that can be compared this way (temperature, "
+               "precipitation, radiation, evaporative demand, soil water) stood at least one "
+               "standard deviation from their own normal for this calendar month. They do not "
+               "move independently; the correlation between them is measured and shown beside "
+               "the grid.",
          day=dict(kind="none")),
     dict(key="dtr", var="TA", field="extra", extra="dtr", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=1,
@@ -1162,6 +1268,41 @@ SEASON_BADGES = {
     "soil_dry", "soil_wet", "hot_dry", "gs_start", "gs_end", "last_frost", "first_frost",
 }
 
+# The same rule one scale further out, with two differences from the seasonal set.
+#
+# The four turning points drop out. Every year holds a last frost and a growing season, so at this
+# scale the four of them would land on all twenty-one tiles and distinguish none of them; what a
+# year has to say about its season is how long it ran and how late it began, which is what the
+# year-only badges below state instead.
+#
+# The carbon badges come in. A year is the scale the carbon balance is normally quoted at, and the
+# sign of the annual figure is a statement no month can make: every summer month is a sink and
+# every winter month a source.
+YEAR_BADGES = {
+    "sparse", "record_warm", "record_cold", "warm", "cold", "record_wet", "record_dry",
+    "wet", "dry", "sunny", "dull", "vpd_record", "vpd_high", "vpd_low", "vpd_soil",
+    "soil_dry", "soil_wet", "hot_dry",
+    "record_sink", "record_source", "sink_strong", "sink_weak", "gpp_high", "gpp_low",
+}
+
+
+def badge_at_scale(badge, scale):
+    """Whether a badge is a claim this span can make.
+
+    A badge marked `only` belongs to one scale and is withheld everywhere else; the rest travel as
+    far as the sets above allow. Stated once here rather than at each call site, because a badge
+    appearing at a scale its rule was not written for is the failure that is hard to see: it does
+    not raise, it just marks every tile.
+    """
+    only = badge.get("only")
+    if only:
+        return scale in only
+    if scale == "season":
+        return badge["key"] in SEASON_BADGES
+    if scale == "year":
+        return badge["key"] in YEAR_BADGES
+    return True
+
 
 def season_periods(first_year, last_year, scheme):
     """The season spans of the record, as dictionaries the rest of the build can treat like months.
@@ -1288,6 +1429,281 @@ def season_events(day, dates):
                 else int(doy365(pd.DatetimeIndex([when]))[0] - median),
                 length=events.get("gs_length"))
     return out
+
+
+# ----------------------------------------------------------------------------------------------
+# Years
+#
+# The third span scale, and the one that answers a different question from the other two. A month
+# and a season are judged against the same month or season of other years; a year has no such peer
+# group, so it is judged against every other year of the record. That is a single group rather than
+# a cycle of twelve or four, and `normals` already takes the grouping as an argument, so the same
+# machinery serves it: the normal is the record mean, the rank is the place among all years, and
+# the anomaly is the departure from the record.
+#
+# Two things belong to a year and to nothing shorter, and they are the reason this scale is not
+# just a coarser grid: the sign of the annual carbon balance, and how long the growing season ran.
+# A month holds the date the season began; only the year holds how long it lasted.
+# ----------------------------------------------------------------------------------------------
+
+YEAR_SLUG = "YEAR"           # how a year is addressed in the page's URL: #2016-YEAR
+# A month counts as extreme at two standard deviations rather than one and a half, and four of them
+# make a year rather than three. The looser pair marked 18 of the 21 CH-LAE years, which is a badge
+# that says nothing: the composite takes the largest departure across five axes, so any one axis
+# reaching 1.5 in a month is ordinary. At 2.0 and four months it marks 4 years of 21, which is the
+# rate the record badges run at.
+EXTREME_MONTH_Z = 2.0        # the departure a month has to reach to count as an extreme one
+EXTREME_MONTHS = 4           # how many of them make a year of extremes
+SEASON_LENGTH_DELTA = 10     # days a growing season has to differ by before it is worth stating
+FROST_DATE_DELTA = 14        # days a frost boundary has to move by before it is worth stating
+
+
+def year_periods(first_year, last_year):
+    """The record's years, as spans the rest of the build can treat like months and seasons."""
+    out = []
+    for year in range(first_year, last_year + 1):
+        start, end = pd.Timestamp(year, 1, 1), pd.Timestamp(year, 12, 31)
+        out.append(dict(y=year, group=1, name="year", label=str(year), title=str(year),
+                        start=start, end=end, n_days=int((end - start).days) + 1, period=year))
+    return out
+
+
+def yearly_frames(loaded, spans):
+    """The same three frames per calendar year, with coverage measured against a whole year.
+
+    The denominator is the half-hours a year should hold, so a leap year is not reported as 100.3 %
+    covered and the first year of a record that starts in March is short by exactly what it misses.
+    """
+    index = pd.Index([sp["y"] for sp in spans], dtype="int64")
+    expected = pd.Series([sp["n_days"] * 48 for sp in spans], index=index, dtype=float)
+    out = {}
+    for key, d in loaded.items():
+        v = d["v"]
+        group = pd.Series(d["series"].index.year, index=d["series"].index)
+        value = (d["series"].groupby(group).sum(min_count=1) if v.agg == "sum"
+                 else d["series"].groupby(group).mean()).reindex(index)
+        meas = (d["measured"].astype(float).groupby(group).sum().reindex(index)
+                .fillna(0) / expected * 100)
+        avail = (d["series"].notna().astype(float).groupby(group).sum().reindex(index)
+                 .fillna(0) / expected * 100)
+        unc = aggregate_uncertainty(d, lambda s: s.groupby(group).sum(min_count=1), index)
+        out[key] = dict(value=value, meas=meas, avail=avail, unc=unc)
+    return out
+
+
+def year_events(day, dates):
+    """Per year, how long the growing season and the frost-free period ran, against the record.
+
+    `season_events` dates the four turning points and is keyed by the month each falls in, which is
+    what a month tile needs. These two are lengths rather than dates: they exist only once the year
+    is complete, they are the quantities a reader compares between years, and neither can be read
+    off a month at all.
+
+    Each is returned against the record median, for the same reason the dates are: 194 days of
+    growing season says nothing until it is set beside the 178 the site usually gets.
+    """
+    if "TA" not in day:
+        return {}
+    tmean, tmin = day["TA"]["mean"], day["TA"]["min"]
+    raw = {}
+    for year, block in tmean.groupby(dates.year):
+        block = block.dropna()
+        found = {}
+        if not block.empty:
+            season = growing_season(block, base=GROWING_SEASON_BASE)
+            if season is not None:
+                found["gslen"] = int(season["length"])
+        frost = tmin.loc[f"{year}"].dropna()
+        frost = frost[frost < 0]
+        spring, autumn = frost[frost.index.month <= 6], frost[frost.index.month >= 7]
+        if not spring.empty and not autumn.empty:
+            found["frostfree"] = int((autumn.index[0] - spring.index[-1]).days)
+        if found:
+            raw[int(year)] = found
+
+    medians = {}
+    for name in ("gslen", "frostfree"):
+        values = [found[name] for found in raw.values() if name in found]
+        medians[name] = float(np.median(values)) if len(values) >= MIN_NORMAL_YEARS else None
+
+    out = {}
+    for year, found in raw.items():
+        out[year] = {name: dict(days=value, normal=medians[name],
+                                delta=None if medians[name] is None
+                                else int(round(value - medians[name])))
+                     for name, value in found.items()}
+    return out
+
+
+def year_extras(st, months_in_year, lengths):
+    """The statistics a year carries that a month or a season cannot, written onto its stats.
+
+    Two of them are lengths taken from `year_events`. The third is a count of the year's own months
+    that departed far from their normals, which is what separates a year that was uniformly mild
+    from one that averaged out to nothing while swinging at both ends. Only a scale that contains
+    months can ask it.
+    """
+    for name in ("gslen", "frostfree"):
+        st[f"ev_{name}"] = lengths.get(name)
+
+    extreme = [s for s in months_in_year
+               if s["x"]["zmax"] is not None and s["x"]["zmax"] >= EXTREME_MONTH_Z]
+    st["x"]["nx"] = len(extreme)
+    st["x"]["gslen"] = lengths.get("gslen", {}).get("days")
+    st["x"]["frostfree"] = lengths.get("frostfree", {}).get("days")
+
+    # The month that departed furthest, and on which axis, so a year can point at where its
+    # unusualness came from rather than only stating that it had some.
+    judged = [s for s in months_in_year if s["x"]["zmax"] is not None]
+    st["worst_month"] = None
+    if judged:
+        worst = max(judged, key=lambda s: s["x"]["zmax"])
+        axis, z = max(worst["z"].items(), key=lambda kv: abs(kv[1]))
+        st["worst_month"] = dict(name=worst["month_name"], key=axis, z=z,
+                                 n=sum(1 for v in worst["z"].values() if abs(v) >= 1),
+                                 nz=len(worst["z"]))
+    return st
+
+
+def ordinal(n):
+    """`1` as `1st`. The rank is read as a placing, and a placing is written as one."""
+    if n is None:
+        return ""
+    suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def place_among(value, values, first="high"):
+    """Where `value` places among `values`, counting from whichever end is the notable one.
+
+    Returned as (rank, n) so a caller can say "3rd of 21" and decide whether that is worth saying.
+    Ties take the same rank, which is what stops two identical growing seasons being reported as
+    first and second.
+    """
+    kept = [v for v in values if v is not None]
+    if value is None or not kept:
+        return None, 0
+    better = sum(1 for v in kept if (v > value if first == "high" else v < value))
+    return better + 1, len(kept)
+
+
+def year_standout(st, peers, keys, loaded):
+    """What set this year apart from the others, strongest first.
+
+    The badges say what a year earned against fixed thresholds. This says where it *placed*, which
+    is the other half of the question and the one a threshold cannot answer: a year can miss every
+    badge and still be the third warmest of twenty-one, and a reader looking for what made a year
+    special is owed both.
+
+    Each entry is ranked by how far the year stood from the rest, so the list opens with the
+    strongest statement the record supports rather than with whichever variable happens to be first
+    in the registry.
+    """
+    out = []
+
+    for key in keys:
+        v = loaded[key]["v"]
+        value, z, rank, n = st[key], st[f"{key}_z"], st[f"{key}_rank"], st[f"{key}_n"]
+        if value is None or rank is None or n is None:
+            continue
+        # Distance from whichever end of the ranking is nearer: 2nd of 21 and 20th of 21 are both
+        # remarkable, and the middle of the ranking is what is not.
+        place = min(rank, n - rank + 1)
+        strength = abs(z) if z is not None else 0.0
+        if strength < 1 and place > 3:
+            continue
+        note = f"{ordinal(rank)} of {n} years"
+        if v.rank_first == "low":
+            # NEE is ranked from the negative end, so "1st" means the largest uptake rather than
+            # the largest number, and a list of placings has to say so where it is not obvious.
+            note += f" ({ordinal(1)} = {v.rank_note})"
+        detail = f"{value:.{v.digits}f} {v.units}"
+        anomaly = st[f"{key}_anom"]
+        if anomaly is not None and v.sign:
+            # A signed figure states a convention, so the direction is written out beside it
+            # rather than left to a reader who may not carry it.
+            detail = (f"{abs(value):.{v.digits}f} {v.units} net "
+                      f"{v.sign['low'] if value < 0 else v.sign['high']}")
+            normal = value - anomaly
+            noun = v.sign["low"] if normal <= 0 else v.sign["high"]
+            more = anomaly < 0 if normal <= 0 else anomaly > 0
+            z = st[f"{key}_z"]
+            detail += (f", about the same {noun} as the record"
+                       if z is not None and abs(z) < 0.25 else
+                       f", {abs(anomaly):.{v.digits}f} {'more' if more else 'less'} {noun} than "
+                       f"the record")
+        elif anomaly is not None:
+            detail += f", {anomaly:+.{v.digits}f} against the record"
+        out.append(dict(k=v.short, v=f"{note}. {detail}", tone="rank", s=strength + 3.0 / place))
+
+    # The carbon balance leads whatever its placing, because the sign of the annual figure is the
+    # headline statement of a flux year and is true of no shorter span.
+    if "NEE" in keys and st["NEE"] is not None:
+        v = loaded["NEE"]["v"]
+        total = st["NEE"]
+        line = (f"The site was a net {'sink' if total < 0 else 'source'} of "
+                f"{abs(total):.0f} {v.units}")
+        if st["NEE_unc"] is not None:
+            line += f" ± {st['NEE_unc']:.0f}"
+        if st["NEE_rank"] is not None:
+            line += f", {ordinal(st['NEE_rank'])} of {st['NEE_n']} years"
+        out.append(dict(k="Carbon balance", v=line + ".", tone="carbon", s=99.0))
+
+    if st["worst_month"] is not None and st["worst_month"]["n"]:
+        worst = st["worst_month"]
+        title = loaded[worst["key"]]["v"].short if worst["key"] in loaded else worst["key"]
+        # Written out rather than named as a count of axes. "On 4 axes at once" is the composite
+        # card's own shorthand and means nothing away from it; what a reader needs is which
+        # variable moved furthest and how much else moved with it.
+        out.append(dict(
+            k="Most unusual month",
+            v=(f"{worst['name']}: {title.lower()} stood {worst['z']:+.1f} standard deviations "
+               f"from its {worst['name']} normal"
+               + (f", and {worst['n']} of the {worst['nz']} variables that could be judged stood "
+                  f"at least 1 from theirs" if worst["n"] > 1 else
+                  ", the only variable that far from normal that month")
+               + "."),
+            tone="rank", s=abs(worst["z"])))
+
+    # The three that are only interesting against the other years of this record. A growing season
+    # of 225 days and 58 record days are numbers; the longest of twenty-one and 4th of twenty-one
+    # are statements, and which of the two a reader gets is the difference between a page that
+    # reports and a page that says something.
+    for name, label, unit in (("gslen", "Growing season", "days long"),
+                              ("frostfree", "Frost-free period", "days")):
+        found = st[f"ev_{name}"]
+        if not found:
+            continue
+        rank, n = place_among(found["days"], [p["x"][name] for p in peers])
+        place = min(rank, n - rank + 1) if rank else None
+        line = f"{found['days']} {unit}"
+        if found["delta"]:
+            line += (f", {abs(found['delta'])} days "
+                     f"{'longer' if found['delta'] > 0 else 'shorter'} than usual "
+                     f"({found['normal']:.0f})")
+        elif found["delta"] == 0:
+            line += ", the usual length"
+        if rank and place <= 3:
+            line += (f". {ordinal(rank)} longest of {n} years" if rank <= place
+                     else f". {ordinal(n - rank + 1)} shortest of {n} years")
+        out.append(dict(k=label, v=line + ".", tone="season",
+                        s=abs(found["delta"] or 0) / 10.0 + (3.0 / place if place else 0)))
+
+    if st["x"]["nx"]:
+        n_extreme = st["x"]["nx"]
+        out.append(dict(k="Months that stood out", v=(
+            f"In {n_extreme} month{'s' if n_extreme > 1 else ''} of this year, a variable stood at "
+            f"least {EXTREME_MONTH_Z:g} standard deviations from its own normal for that calendar "
+            f"month."), tone="rank", s=0.8 * n_extreme))
+
+    rank, n = place_among(st["x"]["nrec"], [p["x"]["nrec"] for p in peers])
+    if st["x"]["nrec"] and rank and min(rank, n - rank + 1) <= 3:
+        out.append(dict(k="Record days", v=(
+            f"{st['x']['nrec']} days were the warmest, coldest or wettest occurrence of their own "
+            f"calendar date, {ordinal(rank)} of {n} years."), tone="rank", s=3.0 / rank))
+
+    out.sort(key=lambda item: -item["s"])
+    return [dict(k=item["k"], v=item["v"], tone=item["tone"]) for item in out]
 
 
 def hourly_layer(loaded, first_year, last_year):
@@ -1550,27 +1966,48 @@ def span_stats(sp, keys, frames_by_var, norm, counts, spells, day, events, loade
     return s
 
 
+def carbon_phrase(value, units, sign):
+    """A signed exchange as a figure and its direction: "25 g C m-2 net uptake".
+
+    Every badge that quotes one of these numbers goes through here, because a bare "+25" states a
+    convention rather than a fact, and a badge that assumed the sign - "25 taken up" of a month
+    that released 25 - was worse than one that said nothing.
+    """
+    if value is None:
+        return "no figure"
+    if not sign:
+        return f"{value:.0f} {units}"
+    # A figure that rounds to zero is not a release of nothing: at the precision the page prints,
+    # the span came out level, and that is what it should say.
+    if round(abs(value)) == 0:
+        return f"{sign['zero']}, within 1 {units}"
+    return f"{abs(value):.0f} {units} net {sign['low'] if value < 0 else sign['high']}"
+
+
 def evaluate_badges(s, keys, scale="month"):
     """Which badges this month earns, and what each of them rests on.
 
     A rule that reads a key the statistics do not carry is a bug in the registry, not a month
     without a badge, so the KeyError is re-raised naming the badge rather than swallowed.
     """
+    noun = {"month": "month", "season": "season", "year": "year"}[scale]
+    peers = "this calendar month" if scale == "month" else \
+        "this season in other years" if scale == "season" else "the record's years"
     earned, suppressed = [], []
     for badge in BADGES:
-        if scale == "season" and badge["key"] not in SEASON_BADGES:
+        if not badge_at_scale(badge, scale):
             continue
         blocked = None
         for need in badge["needs"]:
             if need not in keys:
                 blocked = f"{need} is not included in this build"
             elif s[need] is None:
-                blocked = f"no {need} data in this month"
+                blocked = f"no {need} data in this {noun}"
             elif s[f"{need}_avail"] is None or s[f"{need}_avail"] < varreg.coverage(need).badge:
                 blocked = (f"the record covers only {s[f'{need}_avail']:.0f} % of this span for "
                            f"{need}, below the {varreg.coverage(need).badge:.0f} % a badge needs")
             elif badge.get("needs_normal", True) and s[f"{need}_norm"] is None:
-                blocked = f"{need} has no normal for this calendar month"
+                blocked = f"{need} has no normal across {peers}"
             elif badge.get("needs_normal", True) and not s[f"{need}_sd"]:
                 # A normal can exist and still have no spread - a sensor stuck at one reading, or a
                 # variable that is zero throughout the same month of every year. Every badge phrased
@@ -1709,13 +2146,18 @@ def trend_of(pairs):
     Returning the count rather than nothing is what lets the page say *why* a column carries no
     slope - "eight qualifying years" is an answer, an empty cell is not.
     """
-    series = pd.Series({y: v for y, v in pairs if v is not None}, dtype=float).dropna()
+    series = pd.Series({y: v for y, v in pairs if v is not None}, dtype=float).dropna().sort_index()
     if len(series) < TREND_MIN_YEARS:
         return dict(n=int(len(series)))
     t = trend(series)
+    fit = t["fit"]
     return dict(slope=r(t["slope"], 4), lo=r(t["low"], 4), hi=r(t["high"], 4),
                 p=r(t["pvalue"], 4), tau=r(t["tau"], 3), n=int(len(series)),
-                y0=int(series.index.min()), y1=int(series.index.max()))
+                y0=int(series.index.min()), y1=int(series.index.max()),
+                # The two ends of the fitted line, so a chart can draw the slope it is stating
+                # rather than re-fitting one in the browser and risking a line that disagrees with
+                # the number printed beside it.
+                fit=[r(float(fit.iloc[0]), 4), r(float(fit.iloc[-1]), 4)])
 
 
 def yearly_figures(metric, agg, span_rows, n_cols):
@@ -1841,10 +2283,17 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                 {sp["period"]: longest_spell(mask.loc[sp["start"]:sp["end"]])[0]
                  for sp in season_spans}, dtype="int64")
 
-    def span_row(sp, frames_by_var, group_norm, counts, spell_set, scale):
-        """One tile's worth of payload, for either scale."""
+    def span_row(sp, frames_by_var, group_norm, counts, spell_set, scale, extra=None):
+        """One tile's worth of payload, for any of the three span scales.
+
+        `extra` writes the statistics that belong to one scale alone onto the span before its
+        badges are judged, which is how the year-only rules reach the lengths and counts that no
+        month carries.
+        """
         st = span_stats(sp, keys, frames_by_var, group_norm, counts, spell_set, day, events,
                         loaded)
+        if extra is not None:
+            extra(st)
         earned, suppressed = evaluate_badges(st, keys, scale=scale)
         # A span may start before the record does, in which case it is clipped and its coverage
         # already says so.
@@ -1894,6 +2343,40 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         row, _ = span_row(sp, seasonal, season_norm, season_counts, season_spells, "season")
         row.update(s=sp["skey"], label=sp["label"], title=sp["title"], months=calendar_months)
         season_rows.append(row)
+
+    # -- Years ---------------------------------------------------------------------------------
+    # The third scale, and the one whose peer group is the record itself: a year is judged against
+    # every other year rather than against the same slot of the cycle, which is `normals` with one
+    # group. Its months are already computed, so what a year adds over a coarser aggregate is what
+    # it can say about them - how many of them departed, and which departed furthest.
+    year_spans = year_periods(first_year, last_year)
+    yearly = yearly_frames(loaded, year_spans)
+    year_index = pd.Index([sp["y"] for sp in year_spans], dtype="int64")
+    year_norm = normals(yearly, [1] * len(year_spans), [sp["y"] for sp in year_spans])
+    year_counts = {k: pd.Series(v.groupby(dates.year).sum()).reindex(year_index).fillna(0)
+                   for k, v in hits.items()}
+    year_spells = {name: pd.Series({sp["y"]: longest_spell(mask.loc[sp["start"]:sp["end"]])[0]
+                                    for sp in year_spans}, dtype="int64")
+                   for name, mask in spell_defs.items()}
+    lengths = year_events(day, dates)
+
+    year_rows, year_stats = [], []
+    for i, sp in enumerate(year_spans):
+        sp = dict(sp, idx=sp["y"], event_keys=[(sp["y"], m) for m in range(1, 13)])
+        months_in_year = all_stats[i * 12:(i + 1) * 12]
+        row, st = span_row(
+            sp, yearly, year_norm, year_counts, year_spells, "year",
+            extra=lambda s, mm=months_in_year, found=lengths.get(sp["y"], {}):
+                year_extras(s, mm, found))
+        row.update(s=YEAR_SLUG, label=str(sp["y"]), title=str(sp["y"]))
+        year_rows.append(row)
+        year_stats.append(st)
+
+    # What set each year apart, ranked, and computed once every year is known: half of what makes a
+    # year notable is its place among the others, which a single year cannot see. The badges are
+    # thresholds and this is a placing - a year can miss every badge and still be the third warmest.
+    for row, st in zip(year_rows, year_stats):
+        row["stood"] = year_standout(st, year_stats, keys, loaded)
 
     # -- Metric domains ----------------------------------------------------------------------
     # Computed here rather than in the browser so the scale bar, the tiles and the day strips all
@@ -1972,6 +2455,8 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
             metric, span_values(metric, rows, field), daily_values, field, var)
         _, season_domain, _ = domains_for(
             metric, span_values(metric, season_rows, field), daily_values, field, var)
+        _, year_domain, _ = domains_for(
+            metric, span_values(metric, year_rows, field), daily_values, field, var)
 
         entry = {k: metric[k] for k in ("key", "label", "short", "about", "scale", "digits", "day",
                                        "group")}
@@ -1986,6 +2471,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                      poles=list(metric.get("poles", [])), stops=list(metric.get("stops", [])),
                      center=r(center, 3), domain=[r(domain[0], 3), r(domain[1], 3)],
                      season_domain=[r(season_domain[0], 3), r(season_domain[1], 3)],
+                     year_domain=[r(year_domain[0], 3), r(year_domain[1], 3)],
                      day_domain=[r(day_domain[0], 3), r(day_domain[1], 3)])
 
         # The trend down each column of the grid, on both scales, and the one through the years.
@@ -1995,7 +2481,14 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         col_trend, year_trend = metric_trends(metric, entry["agg"], rows, lambda x: x["m"], 12)
         season_col_trend, _ = metric_trends(metric, entry["agg"], season_rows,
                                             lambda x: x["s"], 4)
+        # The year scale has one column, and its slope is fitted through the year tiles themselves
+        # rather than inherited from `trend_year`. The two are close but not the same series: a
+        # year aggregated from twelve monthly means weights a 28-day February like a 31-day July,
+        # and the figure the year tile shows does not.
+        year_col_trend, _ = metric_trends(metric, entry["agg"], year_rows,
+                                          lambda x: YEAR_SLUG, 1)
         entry.update(trend=col_trend, season_trend=season_col_trend, trend_year=year_trend,
+                     year_trend=year_col_trend,
                      epoch=epoch_split(metric, entry["agg"], rows, 12))
         metrics.append(entry)
 
@@ -2007,12 +2500,20 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         assert badge["icon"] in icons, (
             f"badge {badge['key']!r} asks for icon {badge['icon']!r}, which calendar.js does not "
             f"draw - it would render as an empty box")
-        n = sum(1 for row in rows for b in row["b"] if b["k"] == badge["key"])
+        # Counted per scale, because a badge means a different number of things at each: the legend
+        # says "18 months" beside a month grid and "4 years" beside a year grid, and a year-only
+        # badge would otherwise report zero of a thing it cannot be.
+        def earned_by(span_rows, key=badge["key"]):
+            return sum(1 for row in span_rows for b in row["b"] if b["k"] == key)
+
         badge_meta.append(dict(key=badge["key"], label=badge["label"], group=badge["group"],
                                icon=badge["icon"], tone=badge["tone"],
+                               scales=list(badge.get("only", ("month", "season", "year"))),
                                about=badge["about"].format(
                                    sparse=SPARSE_COVERAGE,
-                                   flux_sparse=varreg.FLUX_COVERAGE.warn), n=n))
+                                   flux_sparse=varreg.FLUX_COVERAGE.warn),
+                               n=earned_by(rows), n_season=earned_by(season_rows),
+                               n_year=earned_by(year_rows)))
 
     # -- Variables and their day flags --------------------------------------------------------
     # `metric` names the metric that reads the variable straight off the product, which is the one
@@ -2041,6 +2542,14 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                               # and leaves the rest alone.
                               rank_first=v.rank_first,
                               rank_note=None if v.rank_first == "high" else v.rank_note,
+                              # What each end of this variable's range is called. The variable page
+                              # lists its highest and lowest months, and "highest NEE" is the
+                              # largest release rather than anything a reader would call a high.
+                              word_high=v.extremes["high"], word_low=v.extremes["low"],
+                              # The words for either side of zero. The page writes the direction
+                              # out beside every figure of a variable that has them, because a
+                              # signed number states a convention the reader may not carry.
+                              sign=v.sign,
                               # What a "+/-" on this variable covers. A page that showed the same
                               # symbol for an interval covering the threshold choice and one
                               # covering only the random term would be saying two different things
@@ -2054,7 +2563,9 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         meta=dict(
             site=site, site_long=site_long,
             first_year=int(first_year), last_year=int(last_year),
-            n_months=len(rows), n_days=len(dates),
+            n_months=len(rows), n_days=len(dates), n_years=len(year_rows),
+            year_slug=YEAR_SLUG,
+            extreme_month_z=EXTREME_MONTH_Z, extreme_months=EXTREME_MONTHS,
             generated=datetime.now().strftime("%Y-%m-%d %H:%M"),
             min_badge_coverage=MIN_BADGE_COVERAGE, normal_min_coverage=NORMAL_MIN_COVERAGE,
             min_normal_years=MIN_NORMAL_YEARS, sparse_coverage=SPARSE_COVERAGE,
@@ -2085,6 +2596,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                     short=FLAG_SHORT[f["key"]]) for f in flags],
         months=rows,
         seasons=season_rows,
+        years=year_rows,
         season_defs=[dict(key=x["key"], label=x["label"], name=x["name"],
                           months=list(x["months"])) for x in scheme],
         days=dict(
@@ -2108,6 +2620,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     assert len(rows) == (last_year - first_year + 1) * 12, "the grid is not a whole number of years"
     assert len(season_rows) == (last_year - first_year + 1) * len(scheme), \
         "the season grid is not a whole number of years"
+    assert len(year_rows) == last_year - first_year + 1, "one tile per year of the record"
     assert all(row["i0"] + row["n"] <= len(dates) for row in rows), "a month runs past the days"
     return payload
 

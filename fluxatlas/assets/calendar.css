@@ -200,7 +200,15 @@ select.picker:focus-visible { outline: 2px solid var(--series-1); outline-offset
 .calgrid.seasons .cell { min-height: 74px; }
 .calgrid.seasons .cell-strip { height: 18px; }
 
-select.picker.narrow { min-width: 210px; }
+/* One column, so the grid becomes a strip: a year to the row, its months in the margin. The tile
+   is as wide as the page, which is what makes the daily strip inside it a legible year. */
+.calgrid.years { grid-template-columns: 50px minmax(0, 1fr) 132px; min-width: 420px; }
+.calgrid.years .cell { min-height: 60px; }
+.calgrid.years .cell-strip { height: 20px; }
+/* The margin is the only place the year's own months appear, so it gets room to be read. */
+.calgrid.years .calsummary svg { height: 22px; }
+
+select.picker.narrow { min-width: 260px; }
 
 .seasonline {
   margin: 14px 0 0; font-size: 13px; color: var(--text-secondary); max-width: 82ch;
@@ -429,6 +437,9 @@ select.picker.narrow { min-width: 210px; }
   padding: 6px 8px; margin: 0 0 2px; cursor: pointer; font: inherit; color: var(--text-primary);
 }
 .badgetoggle:hover { background: var(--wash); }
+/* A badge that is not judged at the active scale stays in place and fades, so the list does not
+   reshuffle under a reader who changed scale. */
+.badgetoggle.off { opacity: .45; }
 .badgetoggle[aria-pressed="true"] { border-color: var(--text-primary); background: var(--wash); }
 .badgetoggle .chip { margin-top: 1px; }
 .badgetoggle .bl { font-size: 13.5px; font-weight: 600; }
@@ -532,6 +543,55 @@ select.picker.narrow { min-width: 210px; }
 /* An axis that reached one standard deviation is what the count is counting, so it is
    marked in the list the count is taken from. */
 .kv dd.strong { color: var(--pole-warm); }
+
+/* ---------------------------------------------------------------------------------------------
+   The variable pages, and the index into them
+   --------------------------------------------------------------------------------------------- */
+
+.varindex {
+  display: grid; gap: 10px; margin-top: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.varcard {
+  display: block; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); text-decoration: none; color: inherit;
+}
+.varcard:hover { background: var(--wash); border-color: var(--axis); }
+.varcard .vk {
+  display: inline-block; font-size: 10.5px; letter-spacing: .08em; font-weight: 700;
+  color: var(--text-muted); font-family: var(--mono, ui-monospace, monospace);
+}
+.varcard .vt { display: block; font-size: 15px; font-weight: 600; margin-top: 2px; }
+.varcard .vu { display: block; font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+.varcard .vtr {
+  display: block; font-size: 12.5px; color: var(--series-1); margin-top: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The month tile's label opens the variable's own page, so it is a link that does not shout. */
+.tile-label a { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--axis); }
+.tile-label a:hover { color: var(--series-1); }
+
+.twocol { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+.twocol h4 { margin: 0 0 6px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+             color: var(--text-muted); font-weight: 600; }
+.ranklist { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.ranklist li { padding: 3px 0; border-bottom: 1px solid var(--grid);
+               font-variant-numeric: tabular-nums; }
+.ranklist li:last-child { border-bottom: 0; }
+.ranklist a { color: var(--series-1); }
+
+/* A two-column list of sentences rather than of figures: the key stays narrow, the value runs. */
+.kv.wide { grid-template-columns: minmax(120px, auto) 1fr; gap: 5px 18px; }
+.kv.wide dd { text-align: left; font-weight: 500; }
+.kv.wide code { font-size: 11.5px; color: var(--text-muted); }
+
+/* The year's standout list is sentences rather than figures, so it reads left to right and drops
+   the tabular weight the figure lists use. */
+.kv.stood { gap: 6px 18px; align-items: baseline; }
+.kv.stood dt { white-space: nowrap; font-weight: 600; color: var(--text-primary); }
+.kv.stood dd { text-align: left; font-weight: 400; color: var(--text-secondary); }
+.kv.stood dd.tone-carbon { color: var(--text-primary); font-weight: 600; }
 
 .smallnote { font-size: 12px; color: var(--text-muted); margin: 10px 0 0; }
 

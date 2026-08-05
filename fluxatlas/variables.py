@@ -322,6 +322,13 @@ VARIABLES = {
         # the top, the biggest carbon sink of a calendar month would come out last of its month,
         # which is the opposite of what a reader takes "1st of 21" to mean.
         rank_first="low",
+        # The one variable whose zero means something, and the words for either side of it. A
+        # figure of "+66" and a departure of "+75" say nothing to a reader who is not already
+        # carrying the sign convention, so the page writes the direction out wherever it prints
+        # one: "net release", "less uptake than normal". Any later variable whose sign is
+        # meaningful gets the same treatment by adding this field rather than by naming NEE in the
+        # renderer.
+        sign=dict(low="uptake", high="release", zero="in balance"),
         # The only flux the file gives both halves of. `*_JOINTUNC` combines these two already, but
         # only per record - aggregating it would put the systematic half through a sqrt(n) that
         # does not apply to it, and report a median year as +/- 9 g C m-2 where the ensemble says
@@ -511,6 +518,10 @@ class Variable:
         self.rank_first = cfg.get("rank_first", "high")
         assert self.rank_first in ("high", "low"), f"{key}: rank_first must be 'high' or 'low'"
         self.rank_note = self.extremes["low" if self.rank_first == "low" else "high"]
+
+        # The words for either side of zero, where zero means something. None for every variable
+        # whose sign carries no information, which is all of them but the net exchange.
+        self.sign = cfg.get("sign")
 
         # `agg` is the statistic a month is summarised by; `daily_agg` the one a day is.
         self.daily_agg = "sum" if self.agg == "sum" else "mean"

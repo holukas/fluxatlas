@@ -32,6 +32,7 @@
   const FLAGS = DATA.flags;
   const MONTHS = DATA.months;
   const SEASONS = DATA.seasons;
+  const YEAR_ROWS = DATA.years;
   const SEASON_DEFS = DATA.season_defs;
   const DAYS = DATA.days;
   const NORM = DATA.normals;
@@ -45,6 +46,9 @@
   const WEEKDAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const WEEKDAY_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
     'Sunday'];
+  // A season is as many months as the caller defined it as, and the page writes small numbers out.
+  const NUMBER_WORD = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
+    'nine', 'ten', 'eleven', 'twelve'];
 
   /* Which day tests are worth a mark on a day cell, in the order a cell fills its three slots.
      The frequent ones (a summer day, a wet day) are left out: a mark that is on half the cells of
@@ -257,8 +261,13 @@
    */
   function activeDomain(metric, which) {
     if (which === 'day') return metric.day_domain;
-    return (state.scale === 'season' && metric.season_domain) ? metric.season_domain
-      : metric.domain;
+    /* The margin's sparkline is twelve months whatever the grid beside it is drawn at, so it asks
+       for the monthly domain by name. Colouring months on the season or year domain put every one
+       of them at the low end of a ramp built for spans three and twelve times as long. */
+    if (which === 'monthly') return metric.domain;
+    if (state.scale === 'season' && metric.season_domain) return metric.season_domain;
+    if (state.scale === 'year' && metric.year_domain) return metric.year_domain;
+    return metric.domain;
   }
 
   /** Whether the grid's marks are days or spans, which is what selects the domain they read. */
@@ -552,9 +561,18 @@
   SEASONS.forEach((se, i) => { seasonIndex[se.y + '-' + se.s] = i; });
   const seasonAt = (y, key) => SEASONS[seasonIndex[y + '-' + key]];
 
-  /* The two scales differ in four things and nothing else: the list of spans, the columns of the
+  const yearIndex = {};
+  YEAR_ROWS.forEach((yr, i) => { yearIndex[yr.y] = i; });
+  const yearAt = y => YEAR_ROWS[yearIndex[y]];
+
+  /* The three scales differ in four things and nothing else: the list of spans, the columns of the
      grid, how a span is addressed in the URL, and what a span is called. Everything downstream
-     reads these rather than asking which scale is active. */
+     reads these rather than asking which scale is active.
+
+     The year is the degenerate case of the same shape: one column, so the grid becomes a single
+     strip and the foot row states the record. It is worth having as a scale rather than as a
+     separate view precisely because everything else - the metric picker, the badge filter, the
+     colour domain, the span panel - then works on it unchanged. */
   const SCALES = {
     month: {
       spans: () => MONTHS,
@@ -575,9 +593,37 @@
       title: se => se.title,
       peerName: se => se.label.toLowerCase() + 's',
       colName: id => (SEASON_DEFS.find(d => d.key === id) || { label: id }).label
+    },
+    year: {
+      spans: () => YEAR_ROWS,
+      cols: () => [{ label: 'The year', id: M.year_slug }],
+      at: y => yearAt(+y),
+      idOf: () => M.year_slug,
+      slug: () => M.year_slug,
+      title: yr => String(yr.y),
+      peerName: () => 'years',
+      // Lower case, because every use of it sits inside a sentence: "against the record normal",
+      // "in every record of the record" is not one of them, so the year scale reads "record".
+      colName: () => 'record'
     }
   };
   const scale = () => SCALES[state.scale];
+  /* What the spans a span is compared against are called. At the month and season scales that is
+     the column it sits in - "January", "winter" - and at the year scale the peers are simply the
+     other years, so it is not the column's name ("record") that belongs in the sentence. */
+  const peerOf = mo => (state.scale === 'year' ? 'year' : scale().colName(scale().idOf(mo)));
+
+  /* The same word as it appears mid-sentence. A season's label is capitalised for the grid's
+     column head and is an ordinary noun in running text: "every summer of the record". */
+  const peerWord = mo => (state.scale === 'season' ? peerOf(mo).toLowerCase() : peerOf(mo));
+
+  /** What the normal behind the active scale is, in the words the page uses for it. */
+  const normalWord = () => (state.scale === 'month' ? 'calendar-month normal'
+    : state.scale === 'season' ? 'normal for this season across the record'
+      : 'record normal');
+  /** What one span is called, for the running text that has to name it. */
+  const spanNoun = () => (state.scale === 'season' ? 'season'
+    : state.scale === 'year' ? 'year' : 'month');
 
   /** The season a month sits in, and the month's place within it. */
   function seasonOfMonth(mo) {
@@ -659,6 +705,58 @@
     return mo[metric.var] ? mo[metric.var][short] : null;
   }
 
+  /* ------------------------------------------------------------------------------------------
+     Variables whose sign means something
+     ------------------------------------------------------------------------------------------
+     Net CO2 exchange is signed by the micrometeorological convention: negative is carbon taken up
+     by the ecosystem, positive is carbon released to the atmosphere. A tile reading "66 g C m-2"
+     and "+75 against the normal" therefore says nothing at all to a reader who is not already
+     carrying that convention, and says the opposite of the truth to one who assumes more is
+     better.
+
+     So wherever the page prints one of those numbers it writes the direction beside it, in words.
+     Which words is a registry fact rather than a test for `NEE` here, so a later variable whose
+     zero is meaningful is covered by adding the field.
+     ------------------------------------------------------------------------------------------ */
+
+  /* Inside this band a departure is called neither more nor less. A quarter of a standard
+     deviation is small next to the one-standard-deviation line every badge on this page is
+     defined at, and "+2 g C m-2 less uptake than normal" is a distinction without a difference. */
+  const SAME_AS_NORMAL = 0.25;
+
+  /** "net uptake", "net release", or the word for a variable that came out level. */
+  function senseOf(v, value) {
+    if (!v.sign || !isNum(value)) return null;
+    if (value === 0) return v.sign.zero;
+    return 'net ' + (value < 0 ? v.sign.low : v.sign.high);
+  }
+
+  /**
+   * How a departure from the normal reads when the sign of the variable means something.
+   *
+   * Which side of zero the *normal* sits on decides the noun, so a month that is normally a sink
+   * is described in uptake and one that is normally a source in release. The sign of the departure
+   * then decides more or less. Both are needed: "+75 g C m-2" is less uptake for a July and more
+   * release for a January, and they are the same number.
+   */
+  function senseAnomaly(v, rec) {
+    if (!v.sign || !isNum(rec.a) || !isNum(rec.v)) return null;
+    if (isNum(rec.z) && Math.abs(rec.z) < SAME_AS_NORMAL) {
+      return 'about the same ' + (rec.v <= 0 ? v.sign.low : v.sign.high) + ' as normal';
+    }
+    const normal = rec.v - rec.a;
+    const noun = normal <= 0 ? v.sign.low : v.sign.high;
+    const more = normal <= 0 ? rec.a < 0 : rec.a > 0;
+    return (more ? 'more ' : 'less ') + noun + ' than normal';
+  }
+
+  /** The departure with its direction spelled out, for the places that print both. */
+  function anomalyPhrase(v, rec, digits) {
+    const figure = nfs(rec.a, digits) + ' ' + v.units;
+    const sense = senseAnomaly(v, rec);
+    return sense ? figure + ', ' + sense : figure + ' against the normal';
+  }
+
   /* A departure is written with its sign wherever it appears: "2.8" and "+2.8" are the same number
      only if the reader already knows which of the two the tile is showing. */
   const metricFormat = (metric, value) =>
@@ -690,6 +788,7 @@
     allBadges: false,
     filters: new Set(),
     y: null, m: null, d: null, span: null,
+    variable: null,
     cursor: null
   };
   const metric = () => METRICS[state.metric];
@@ -729,6 +828,7 @@
       + (SEASON_DEFS.length
         ? '<option value="season">Seasons (' + SEASON_DEFS.map(d => d.key).join(', ') + ')</option>'
         : '')
+      + '<option value="year">Years (each year against the record)</option>'
       + '<option value="day">Days (every day of the record)</option></select></div>'
       + '<p class="control-note" id="metric-about"></p>';
     host.innerHTML = html;
@@ -774,9 +874,11 @@
     if (which !== 'day') state.scale = which;
     const grid = document.getElementById('calgrid');
     grid.classList.toggle('seasons', which === 'season');
+    grid.classList.toggle('years', which === 'year');
     grid.classList.toggle('raster', which === 'day');
     grid.setAttribute('aria-label', which === 'day' ? 'Every day of the record'
-      : which === 'season' ? 'Seasons of the record' : 'Months of the record');
+      : which === 'season' ? 'Seasons of the record'
+        : which === 'year' ? 'Years of the record' : 'Months of the record');
     const detail = document.getElementById('detail-control');
     if (detail) detail.hidden = which === 'day';
     const pick = document.getElementById('scale-pick');
@@ -789,7 +891,12 @@
       const rec = mo[v.key];
       if (!rec || !isNum(rec.v)) return;
       let line = nf(rec.v, v.digits) + ' ' + v.units;
-      if (isNum(rec.a)) line += ' (' + nfs(rec.a, v.digits) + ')';
+      const sense = senseOf(v, rec.v);
+      if (sense) line += ', ' + sense;
+      if (isNum(rec.a)) {
+        line += senseAnomaly(v, rec) ? ' (' + senseAnomaly(v, rec) + ')'
+          : ' (' + nfs(rec.a, v.digits) + ')';
+      }
       rows.push({ k: v.short, v: line });
     });
     if (mo.c.hot || mo.c.frost || mo.c.wet) {
@@ -798,7 +905,8 @@
           mo.c.wet ? mo.c.wet + ' wet' : null].filter(Boolean).join(', ') });
     }
     if (isNum(mo.x.nsd)) {
-      rows.push({ k: 'Unusual axes', v: mo.x.nsd + ' of ' + mo.x.nz });
+      rows.push({ k: 'Far from normal',
+        v: mo.x.nsd + ' of ' + mo.x.nz + ' variables, by at least one standard deviation' });
     }
     /* Every badge, always - the tile shows four unless asked otherwise, so this is where a
        reader finds the rest without opening the month. */
@@ -841,6 +949,8 @@
     document.getElementById('metric-about').textContent = metric().about;
     renderScaleBar();
     renderGridNote();
+    // The legend counts per scale, so it is redrawn with the grid rather than once at load.
+    renderBadgeLegend();
   }
 
   function renderTileGrid() {
@@ -852,7 +962,8 @@
     const cols = sc.cols();
     parts.push('<div class="calhead corner">Year</div>');
     cols.forEach(c => parts.push('<div class="calhead">' + c.label + '</div>'));
-    parts.push('<div class="calhead total">' + (summarises(met) ? 'Total' : 'Mean') + '</div>');
+    parts.push('<div class="calhead total">'
+      + (state.scale === 'year' ? 'Months' : summarises(met) ? 'Total' : 'Mean') + '</div>');
 
     YEARS.forEach(y => {
       parts.push('<div class="calyear' + (y % 5 === 0 ? ' decade' : '') + '">' + y + '</div>');
@@ -888,9 +999,14 @@
           + css(rgb) + '" data-y="' + y + '" data-c="' + col.id + '" '
           + 'aria-label="' + sc.title(mo) + '">' + inner + '</button>');
       }
+      /* At the year scale the row is one tile, so the margin would print its number twice. The
+         sparkline is the part that still says something there - the shape of the year behind the
+         one figure - so the number goes and the months stay. */
       const summary = summarise(met, yearValues);
-      parts.push('<div class="calsummary"><span class="v">' + metricFormat(met, summary)
-        + '</span><span class="k">' + (summarises(met) ? 'total' : 'mean') + '</span>'
+      parts.push('<div class="calsummary">'
+        + (state.scale === 'year' ? '<span class="k">its months</span>'
+          : '<span class="v">' + metricFormat(met, summary) + '</span>'
+            + '<span class="k">' + (summarises(met) ? 'total' : 'mean') + '</span>')
         + yearSparkline(met, y) + '</div>');
     });
 
@@ -953,7 +1069,7 @@
       const record = col === 'record';
       const t = record ? met.trend_year : trendFor(met, col);
       const what = record ? (summarises(met) ? 'The mean year' : 'The record')
-        : sc.colName(state.scale === 'month' ? +col : col);
+        : cap(sc.colName(state.scale === 'month' ? +col : col));
       node.addEventListener('mousemove', ev => tip.show(
         tipRows(what, [{ k: summarises(met) && record ? 'Mean year' : 'Mean',
           v: metricFormat(met, record ? whole : columnMeans[cols.findIndex(c =>
@@ -980,7 +1096,8 @@
 
   /** The trend down one column of the grid, at whichever scale the grid is drawn. */
   function trendFor(met, colId) {
-    const map = state.scale === 'season' ? met.season_trend : met.trend;
+    const map = state.scale === 'season' ? met.season_trend
+      : state.scale === 'year' ? met.year_trend : met.trend;
     return map ? map[String(colId)] : null;
   }
 
@@ -1271,7 +1388,7 @@
     for (let m = 1; m <= 12; m++) {
       const mo = monthAt(y, m);
       const value = mo ? monthValue(met, mo) : null;
-      const rgb = isNum(value) ? metricColor(met, value, 'month') : null;
+      const rgb = isNum(value) ? metricColor(met, value, 'monthly') : null;
       if (!rgb) continue;
       parts.push('<rect x="' + ((m - 1) * w).toFixed(2) + '" y="0" width="' + (w * 0.8).toFixed(2)
         + '" height="10" rx="1" fill="' + css(rgb) + '"/>');
@@ -1352,7 +1469,7 @@
       return;
     }
     const spans = scale().spans();
-    const noun = state.scale === 'season' ? 'seasons' : 'months';
+    const noun = state.scale === 'season' ? 'seasons' : state.scale === 'year' ? 'years' : 'months';
     const shown = spans.filter(mo => isNum(monthValue(met, mo))).length;
     const filtered = state.filters.size ? spans.filter(matchesFilter).length : null;
     let note = shown + ' of ' + spans.length + ' ' + noun + ' carry a value on this metric.';
@@ -1361,8 +1478,14 @@
         + ' carry the selected badge'
         + (state.filters.size === 1 ? '' : 's') + '; the rest are dimmed.';
     }
-    note += ' Hatched tiles are below ' + M.cov_warn_text + ' measured. The right-hand column is each year, the foot row each ' + noun.slice(0, -1)
-      + ' over the whole record. Select one to open it.'
+    note += ' Hatched tiles are below ' + M.cov_warn_text + ' measured. '
+      + (state.scale === 'year'
+        ? 'A year is judged against every other year of the record rather than against a slot of '
+          + 'the calendar, so the normal behind each figure is the record itself. The margin holds '
+          + 'the twelve months behind the year, and the foot row the record. Select a year to open '
+          + 'it.'
+        : 'The right-hand column is each year, the foot row each ' + noun.slice(0, -1)
+          + ' over the whole record. Select one to open it.')
       /* Generated from the scheme, because the seasons are the caller's. A season that reaches
          back over the new year is short at one end of the record and hangs off the other, and
          that has to be said whichever season it is. */
@@ -1410,8 +1533,15 @@
      Badge legend, which is also the filter
      ------------------------------------------------------------------------------------------ */
 
+  /* The legend counts at whichever scale the grid is drawn, because the same badge means a
+     different number of things at each: "18 months" beside a month grid, "4 years" beside a year
+     grid. A badge that cannot be earned at the active scale is greyed rather than dropped, so the
+     list does not reshuffle under a reader who changed scale. */
   function renderBadgeLegend() {
     const host = document.getElementById('badgelegend');
+    const sc = state.grid === 'day' ? 'month' : state.scale;
+    const noun = sc === 'season' ? 'season' : sc === 'year' ? 'year' : 'month';
+    const countOf = b => (sc === 'season' ? b.n_season : sc === 'year' ? b.n_year : b.n);
     const groups = [];
     DATA.badges.forEach(b => {
       let g = groups.find(x => x.name === b.group);
@@ -1419,12 +1549,17 @@
       g.items.push(b);
     });
     host.innerHTML = groups.map(g =>
-      '<div class="badgegroup"><h3>' + g.name + '</h3>' + g.items.map(b =>
-        '<button type="button" class="badgetoggle" data-badge="' + b.key + '" '
-        + 'aria-pressed="false">' + chip(b.key, 'lg')
+      '<div class="badgegroup"><h3>' + g.name + '</h3>' + g.items.map(b => {
+        const here = b.scales.indexOf(sc) >= 0;
+        const n = countOf(b);
+        return '<button type="button" class="badgetoggle' + (here ? '' : ' off')
+        + '" data-badge="' + b.key + '" '
+        + 'aria-pressed="' + String(state.filters.has(b.key)) + '">' + chip(b.key, 'lg')
         + '<span class="bt"><span class="bl">' + b.label + '</span> '
-        + '<span class="bn">' + b.n + ' month' + (b.n === 1 ? '' : 's') + '</span>'
-        + '<div class="bd">' + b.about + '</div></span></button>').join('') + '</div>').join('');
+        + '<span class="bn">' + (here ? n + ' ' + noun + (n === 1 ? '' : 's')
+          : 'not judged at this scale') + '</span>'
+        + '<div class="bd">' + b.about + '</div></span></button>';
+      }).join('') + '</div>').join('');
 
     host.querySelectorAll('.badgetoggle').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1577,6 +1712,32 @@
       + ' such years; daily normals pool a ±' + M.clim_window + ' day window across all years.';
   }
 
+  /* The way into the per-variable pages. One card each, carrying the figure that most reader will
+     have come for - the slope over the record - so the index is itself an answer rather than only
+     a menu. */
+  function renderVarIndex() {
+    const host = document.getElementById('varindex');
+    host.innerHTML = DATA.variables.map(v => {
+      const met = ownMetric(v);
+      const t = met && met.trend_year;
+      const line = !t ? 'no metric reads this variable directly'
+        : !isNum(t.slope) ? 'no trend published: ' + t.n + ' complete years'
+          : nfs(t.slope, met.digits + 1) + ' ' + met.units + ' / decade over ' + t.n + ' years'
+            + (isNum(t.p) && t.p < TREND_ALPHA ? ' *' : '');
+      return '<a class="varcard" href="#var-' + v.key + '">'
+        + '<span class="vk">' + v.key + '</span>'
+        + '<span class="vt">' + v.title + '</span>'
+        + '<span class="vu">' + v.units + ' · ' + (v.agg === 'sum' ? 'summed' : 'averaged')
+        + ' · <code>' + v.column + '</code></span>'
+        + '<span class="vtr">' + line + '</span></a>';
+    }).join('');
+    document.getElementById('var-lede-index').textContent =
+      'Each variable has a page of its own: every year of the record, the slope of each calendar '
+      + 'month taken separately, the shape of the year, and how much of it was measured. A trend '
+      + 'for January and a trend for July are different statements, and one annual figure averages '
+      + 'the difference away.';
+  }
+
   function renderAbout() {
     const host = document.getElementById('g-about');
     host.innerHTML = '';
@@ -1621,9 +1782,9 @@
         + 'where all ' + C.vars.length + ' could be judged. Both are measured as departures from '
         + 'each calendar month’s own normal, so the seasonal cycle is already out of it. A number '
         + 'near 1 means the pair mostly rises and falls together and near -1 that one rises as '
-        + 'the other falls; near 0 they are independent. This matters for the count of unusual '
-        + 'axes: where a pair is strongly related, a month that is odd on both is odd in one way, '
-        + 'not two. Pairs at 0.5 or beyond, either way, are marked.'
+        + 'the other falls; near 0 they are independent. This matters for the count of how many '
+        + 'variables were unusual at once: where a pair is strongly related, a month that is odd '
+        + 'on both is odd in one way, not two. Pairs at 0.5 or beyond, either way, are marked.'
     });
     body.innerHTML = tableHTML([''].concat(C.vars.map(k => VARS[k].short)),
       C.vars.map((a, i) => [VARS[a].short].concat(C.correlation[i].map((v, j) => {
@@ -1836,7 +1997,7 @@
       const sd = at(v, m);
       tip.show(tipRows(MONTH_NAME[m - 1] + ' · ' + v.short,
         isNum(sd) ? [{ k: 'Per decade', v: fmtSlope(met, t.slope) + ' ' + met.units },
-          { k: 'Against its spread', v: nfs(sd, 2) + ' sd' }] : [])
+          { k: 'Against its spread', v: nfs(sd, 2) + ' standard deviations' }] : [])
         + '<div class="tt-note">' + trendSentence(met, t) + '</div>', ev.clientX, ev.clientY);
     });
     f.svg.addEventListener('mouseleave', tip.hide);
@@ -1882,13 +2043,14 @@
       const d = monthDigits(v.key);
       const bits = [];
       if (isNum(rec.a)) {
-        bits.push(nfs(rec.a, d) + ' ' + v.units + ' against the normal');
+        bits.push(anomalyPhrase(v, rec, d));
       }
       if (isNum(rec.r) && isNum(rec.n)) {
         /* Most variables rank from the top and need no explanation. NEE ranks from the negative
            end, because the sign convention makes the most negative month the largest uptake - so
            where a variable ranks the unobvious way, the tile says what rank 1 means. */
-        bits.push(ord(rec.r) + ' of ' + rec.n + ' such months'
+        bits.push(ord(rec.r) + ' of ' + rec.n
+          + (state.scale === 'year' ? ' years' : ' such ' + spanNoun() + 's')
           + (v.rank_note ? ' (1st = ' + v.rank_note + ')' : ''));
       }
       if (isNum(rec.meas) && rec.meas < 99.5) bits.push(nf(rec.meas, 0) + ' % measured');
@@ -1900,10 +2062,17 @@
         bits.unshift('± ' + nfu(rec.u, d) + ' ' + v.units
           + (v.unc_note ? ' (' + v.unc_note + ')' : ''));
       }
+      // The direction first, before the interval and the ranking, because it is what the
+      // figure above it means rather than a qualification of it.
+      const sense = senseOf(v, rec.v);
+      if (sense) bits.unshift(sense);
       const isFlux = v.family === 'flux';
       const thin = isNum(rec.meas) && rec.meas < cov(v.key).warn;
+      /* The label is a link into the variable's own page. A reader who has just seen that this
+         July was the second warmest of twenty-one is one click from what the Julys have done. */
       (isFlux ? flux : met).push(tile(
-        v.short + (v.agg === 'sum' ? ', total' : ', mean'), nf(rec.v, d),
+        '<a href="#var-' + v.key + '">' + v.short + (v.agg === 'sum' ? ', total' : ', mean')
+        + '</a>', nf(rec.v, d),
         v.units, bits.join(' · ') || 'complete', accent, v.column,
         (isFlux ? 'tile-flux' : '') + (thin ? ' tile-thin' : '')));
     });
@@ -1998,13 +2167,14 @@
       const z = mo.z[key];
       const strong = isNum(z) && Math.abs(z) >= 1;
       return '<dt>' + VARS[key].short + '</dt><dd' + (strong ? ' class="strong"' : '') + '>'
-        + (isNum(z) ? nfs(z, 1) + ' sd' : '<span class="muted">not judgeable</span>') + '</dd>';
+        + (isNum(z) ? nfs(z, 1) + '<span class="unit"> sd</span>'
+          : '<span class="muted">not judgeable</span>') + '</dd>';
     });
     let head;
     if (!isNum(mo.x.zmax)) {
       head = '<p class="card-sub" style="max-width:none">Fewer than ' + M.composite_min_axes
-        + ' of the ' + axes.length + ' axes could be judged here, so this month carries no '
-        + 'composite: a count out of two is not comparable with a count out of five.</p>';
+        + ' of the ' + axes.length + ' variables could be judged here, so this ' + spanNoun()
+        + ' carries no count: two out of two is not comparable with two out of five.</p>';
     } else {
       let driver = null;
       axes.forEach(key => {
@@ -2015,17 +2185,18 @@
       head = '<p class="card-sub" style="max-width:none">'
         + (mo.x.nsd === 0
           ? 'Nothing in this month reached one standard deviation from its normal.'
-          : '<b>' + mo.x.nsd + ' of ' + mo.x.nz + ' axes</b> stood at least one standard '
+          : '<b>' + mo.x.nsd + ' of ' + mo.x.nz + ' variables</b> stood at least one standard '
             + 'deviation from normal')
         + (driver ? ', the furthest being ' + VARS[driver].short.toLowerCase() + ' at '
-          + nfs(mo.z[driver], 1) + ' sd.' : '.') + '</p>';
+          + nfs(mo.z[driver], 1) + ' standard deviations.' : '.') + '</p>';
     }
     const C = M.composite;
     const pair = C.strongest;
     return head + '<dl class="kv">' + rows.join('') + '</dl>'
-      + '<p class="smallnote">An axis below ' + M.cov_badge_text + ' measured, or '
-      + 'without a normal for this calendar month, is dropped, not counted as ordinary. '
-      + 'The axes are not independent'
+      + '<p class="smallnote">Each figure is that variable’s departure from its own normal '
+      + 'for this ' + spanNoun() + ', in standard deviations of that variable across the record. '
+      + 'A variable below ' + M.cov_badge_text + ' measured, or without a normal here, is dropped '
+      + 'rather than counted as ordinary. They do not move independently'
       + (pair ? ': ' + VARS[pair.a].short.toLowerCase() + ' and ' + VARS[pair.b].short.toLowerCase()
         + ' correlate at r = ' + nf(pair.r, 2) + ' across the record' : '')
       + ', so a count of two is not always two separate things. The whole matrix is on the '
@@ -2037,14 +2208,25 @@
    * against the summer it sat in. On the season scale it runs the other way and lists the months.
    */
   function seasonLine(mo) {
-    if (state.scale === 'season') {
-      return 'The three months of this season: ' + mo.months.map(ym => {
-        const child = monthAt(ym[0], ym[1]);
+    if (state.scale === 'year') {
+      return 'The months of this year: ' + MONTH_ABBR.map((label, i) => {
+        const child = monthAt(mo.y, i + 1);
         return child
-          ? '<a href="#' + ym[0] + '-' + String(ym[1]).padStart(2, '0') + '">'
-            + MONTH_NAME[ym[1] - 1] + ' ' + ym[0] + '</a>'
-          : MONTH_NAME[ym[1] - 1] + ' ' + ym[0] + ' (outside the record)';
+          ? '<a href="#' + mo.y + '-' + String(i + 1).padStart(2, '0') + '">' + label + '</a>'
+          : label;
       }).join(', ') + '.';
+    }
+    if (state.scale === 'season') {
+      // Counted from the scheme rather than written as three: a season is however many months the
+      // caller defined it as, and `DJFMAM` is six.
+      return 'The ' + NUMBER_WORD[mo.months.length] + ' months of this season: '
+        + mo.months.map(ym => {
+          const child = monthAt(ym[0], ym[1]);
+          return child
+            ? '<a href="#' + ym[0] + '-' + String(ym[1]).padStart(2, '0') + '">'
+              + MONTH_NAME[ym[1] - 1] + ' ' + ym[0] + '</a>'
+            : MONTH_NAME[ym[1] - 1] + ' ' + ym[0] + ' (outside the record)';
+        }).join(', ') + '.';
     }
     const se = seasonOfMonth(mo);
     if (!se) return '';
@@ -2437,7 +2619,7 @@
       const width = Math.max(140, host.clientWidth || 220);
       const height = 30;
       const svg = el('svg', { viewBox: '0 0 ' + width + ' ' + height, width: width, height: height,
-        role: 'img', 'aria-label': v.short + ' in every ' + scale().colName(scale().idOf(mo)) + ' of the record' });
+        role: 'img', 'aria-label': v.short + ' in every ' + peerOf(mo) + ' of the record' });
       host.innerHTML = '';
       host.appendChild(svg);
       const p = palette();
@@ -2460,7 +2642,7 @@
           stroke: here ? p.surface : 'none', 'stroke-width': here ? 1.6 : 0,
           style: here ? '' : 'cursor:pointer' }, svg);
         dot.addEventListener('mousemove', ev => tip.show(
-          tipRows(scale().colName(scale().idOf(mo)) + ' ' + x.y,
+          tipRows(peerOf(mo) + ' ' + x.y,
             [{ k: v.short, v: nf(x[key].v, v.digits) + ' ' + v.units }]),
           ev.clientX, ev.clientY));
         dot.addEventListener('mouseleave', tip.hide);
@@ -2499,7 +2681,7 @@
       });
 
       const f = frame(host, { aspect: 0.36,
-        ariaLabel: 'Daily mean temperature in every ' + scale().colName(scale().idOf(mo)) + ' of the record' });
+        ariaLabel: 'Daily mean temperature in every ' + peerOf(mo) + ' of the record' });
       const ext = extent(series.map(s => s.values));
       const sx = linear(0.5, mo.n + 0.5, f.m.left, f.m.left + f.iw);
       const sy = linear(ext[0] - 1, ext[1] + 1, f.m.top + f.ih, f.m.top);
@@ -2670,7 +2852,7 @@
       const rows = scale().spans().filter(x => scale().idOf(x) === scale().idOf(mo));
       const years = rows.map(x => x.y);
       const values = rows.map(x => monthValue(met, x));
-      const f = frame(host, { aspect: 0.34, ariaLabel: met.label + ' in every ' + scale().colName(scale().idOf(mo)) });
+      const f = frame(host, { aspect: 0.34, ariaLabel: met.label + ' in every ' + peerOf(mo) });
       const ext = extent([values]);
       const lo = Math.min(0, ext[0]), hi = ext[1];
       const sx = linear(years[0] - 0.5, years[years.length - 1] + 0.5, f.m.left, f.m.left + f.iw);
@@ -2694,7 +2876,7 @@
       }
       hover(f, sx, years, y => {
         const i = years.indexOf(y);
-        return tipRows(scale().colName(scale().idOf(mo)) + ' ' + y, [
+        return tipRows(peerOf(mo) + ' ' + y, [
           { k: met.short, v: nf(values[i], met.digits) + ' ' + met.units,
             color: y === mo.y ? f.p.series[1] : f.p.series[0] }
         ]);
@@ -2702,9 +2884,29 @@
     };
   }
 
+  /**
+   * The x axis of a day-by-day chart, at whatever length the span is.
+   *
+   * A month is labelled by its days. A season or a year cannot be: a tick per day over 365 of them
+   * draws a grey band where an axis should be, and at any spacing that fits, a day number tells a
+   * reader nothing anyway. Past two months the axis is labelled by the months inside the span
+   * instead, which is the scale a reader is actually locating themselves on.
+   *
+   * The count is taken from the width in both cases, so a card in a narrow column thins its labels
+   * rather than overprinting them.
+   */
   function dayTicks(mo, width) {
-    const every = width < 420 ? 5 : width < 700 ? 2 : 1;
+    const target = Math.max(4, Math.floor(width / 70));
     const out = [];
+    if (mo.n > 62) {
+      for (let d = 1; d <= mo.n; d++) {
+        const at = dateAt(mo.i0 + d - 1);
+        if (at.d === 1) out.push({ v: d, label: MONTH_ABBR[at.m - 1] });
+      }
+      const step = Math.max(1, Math.ceil(out.length / target));
+      return out.filter((t, i) => i % step === 0);
+    }
+    const every = Math.max(1, Math.ceil(mo.n / target));
     for (let d = 1; d <= mo.n; d++) {
       if (d === 1 || d % every === 0) out.push({ v: d, label: String(d) });
     }
@@ -2852,7 +3054,7 @@
       let s = 'Mean temperature <b>' + nf(ta.v, 1) + ' ' + VARS.TA.units + '</b>';
       if (isNum(ta.a)) {
         s += ', ' + nfs(ta.a, 1) + ' ' + VARS.TA.units + ' against the '
-          + scale().colName(scale().idOf(mo)) + ' normal';
+          + peerOf(mo) + ' normal';
       }
       if (isNum(ta.r) && isNum(ta.n)) s += ' (' + ord(ta.r) + ' warmest of ' + ta.n + ')';
       bits.push(s);
@@ -2879,9 +3081,11 @@
         if (!rec || !isNum(rec.v)) return;
         const d = monthDigits(V.key);
         let s = V.short + ' <b>' + nf(rec.v, d) + ' ' + V.units + '</b>';
+        const sense = senseOf(V, rec.v);
+        if (sense) s += ' (' + sense + ')';
         if (isNum(rec.a)) {
-          s += ', ' + nfs(rec.a, d) + ' against the '
-            + scale().colName(scale().idOf(mo)) + ' normal';
+          s += ', ' + (senseAnomaly(V, rec) || nfs(rec.a, d) + ' against the '
+            + peerOf(mo) + ' normal');
         }
         if (isNum(rec.r) && isNum(rec.n)) s += ' (ranks ' + ord(rec.r) + ' of ' + rec.n + ')';
         bits.push(s);
@@ -2889,6 +3093,480 @@
     }
     if (!bits.length) return 'No variable in this month carries a monthly value.';
     return cap(bits.join('; ')) + '.';
+  }
+
+  /* ------------------------------------------------------------------------------------------
+     Level 2b: one variable, over the whole record
+     ------------------------------------------------------------------------------------------
+     The grid answers "what happened in that month". This answers the other question a record of
+     decades invites: "what has this variable done over all of it, and does that differ between
+     the calendar months". A slope for January and a slope for July are separate statements - at
+     most mid-latitude sites the winters have moved further than the summers - and an annual figure
+     averages exactly that difference away.
+
+     Everything here is read from the payload the grid already carries. The slopes are the ones the
+     foot row of the grid prints, so the two cannot disagree, and the fitted line is drawn from the
+     two endpoints the build ships rather than re-fitted in the browser.
+     ------------------------------------------------------------------------------------------ */
+
+  /** The metric that reads a variable straight off the product, which is what its page is about. */
+  const ownMetric = v => (v.metric ? METRICS[v.metric] : null);
+
+  const varSpans = key => MONTHS.filter(mo => mo[key] && isNum(mo[key].v));
+
+  /** The value of one variable on one span, at the span's own aggregation. */
+  const varValue = (row, key) => (row[key] && isNum(row[key].v) ? row[key].v : null);
+
+  function varExtremes(key) {
+    const v = VARS[key];
+    const rows = varSpans(key).slice().sort((a, b) => b[key].v - a[key].v);
+    const years = YEAR_ROWS.filter(yr => isNum(varValue(yr, key)))
+      .slice().sort((a, b) => b[key].v - a[key].v);
+    return { high: rows[0], low: rows[rows.length - 1], n: rows.length,
+      yearHigh: years[0], yearLow: years[years.length - 1], v: v };
+  }
+
+  /** One statistic of the record, as the definition list the variable page opens with. */
+  function varSummary(key) {
+    const v = VARS[key];
+    const met = ownMetric(v);
+    const ex = varExtremes(key);
+    const d = v.digits;
+    const rows = [];
+    const unit = ' ' + v.units;
+
+    if (met && met.trend_year) {
+      rows.push({ k: 'Trend over the record', v: trendSentence(met, met.trend_year) });
+    }
+    if (met && met.epoch && met.epoch.early) {
+      const e = met.epoch;
+      rows.push({ k: 'The record halved',
+        v: nf(e.early.mean, d) + unit + ' over ' + e.early.y0 + '–' + e.early.y1 + ', '
+          + nf(e.late.mean, d) + unit + ' over ' + e.late.y0 + '–' + e.late.y1
+          + ' (' + nfs(e.late.mean - e.early.mean, d) + unit + ')' });
+    }
+    if (ex.high) {
+      rows.push({ k: 'Highest month',
+        v: nf(ex.high[key].v, d) + unit + ' in ' + MONTH_NAME[ex.high.m - 1] + ' ' + ex.high.y });
+      rows.push({ k: 'Lowest month',
+        v: nf(ex.low[key].v, d) + unit + ' in ' + MONTH_NAME[ex.low.m - 1] + ' ' + ex.low.y });
+    }
+    if (ex.yearHigh) {
+      rows.push({ k: 'Highest year',
+        v: nf(ex.yearHigh[key].v, d) + unit + ' in ' + ex.yearHigh.y });
+      rows.push({ k: 'Lowest year', v: nf(ex.yearLow[key].v, d) + unit + ' in ' + ex.yearLow.y });
+    }
+    rows.push({ k: 'Read from', v: '<code>' + v.column + '</code>'
+      + (v.product ? ' (' + v.product + ')' : '') });
+    if (v.unc_note) rows.push({ k: 'Uncertainty covers', v: v.unc_note });
+    rows.push({ k: 'Coverage warning below', v: nf(v.cov.warn, 0) + ' % measured, which '
+      + (v.thin ? v.thin + ' month' + (v.thin === 1 ? ' is' : 's are') : 'no month is') });
+    return '<dl class="kv wide">' + rows.map(r =>
+      '<dt>' + r.k + '</dt><dd>' + r.v + '</dd>').join('') + '</dl>';
+  }
+
+  /**
+   * The slope of each calendar month, side by side.
+   *
+   * This is the chart the variable page exists for. One annual slope is the average of these
+   * twelve, and averaging them is what hides the case this page is meant to show: a record whose
+   * Januaries have moved three times as far as its Julys, or whose growing season has lengthened
+   * at one end only.
+   */
+  function drawMonthlyTrends(key) {
+    const met = ownMetric(VARS[key]);
+    return function (host) {
+      const slopes = [];
+      for (let m = 1; m <= 12; m++) {
+        const t = met && met.trend ? met.trend[String(m)] : null;
+        slopes.push(t && isNum(t.slope) ? t : null);
+      }
+      const f = frame(host, { aspect: 0.4,
+        ariaLabel: met.short + ' trend per decade, by calendar month' });
+      const lows = slopes.map(t => (t ? t.lo : null)).filter(isNum);
+      const highs = slopes.map(t => (t ? t.hi : null)).filter(isNum);
+      if (!lows.length) {
+        svgText(f.svg, f.width / 2, f.height / 2, 'No calendar month has enough complete years',
+          'ax-text', { 'text-anchor': 'middle' });
+        return;
+      }
+      const lo = Math.min(0, Math.min.apply(null, lows));
+      const hi = Math.max(0, Math.max.apply(null, highs));
+      const pad = (hi - lo) * 0.08 || 1;
+      const sx = linear(0.5, 12.5, f.m.left, f.m.left + f.iw);
+      const sy = linear(lo - pad, hi + pad, f.m.top + f.ih, f.m.top);
+      drawAxes(f, sx, sy, { yDigits: met.digits + 1, yLabel: met.units + ' / decade',
+        xTicks: MONTH_ABBR.map((label, i) => ({ v: i + 1, label: label[0] })) });
+      el('line', { x1: f.m.left, x2: f.m.left + f.iw, y1: sy(0), y2: sy(0),
+        class: 'ax-line' }, f.svg);
+
+      const bw = Math.max(6, f.iw / 12 - 10);
+      slopes.forEach((t, i) => {
+        if (!t) return;
+        const m = i + 1;
+        const sig = isNum(t.p) && t.p < TREND_ALPHA;
+        const top = Math.min(sy(t.slope), sy(0)), bottom = Math.max(sy(t.slope), sy(0));
+        el('rect', { x: sx(m) - bw / 2, y: top, width: bw, height: Math.max(1, bottom - top),
+          rx: 2, fill: t.slope >= 0 ? f.p.warm : f.p.cold, opacity: sig ? 1 : 0.45 }, f.svg);
+        // The interval, because a slope without one invites a reader to take every bar as real.
+        el('line', { x1: sx(m), x2: sx(m), y1: sy(t.lo), y2: sy(t.hi),
+          stroke: f.p.ink, 'stroke-width': 1.2, opacity: 0.75 }, f.svg);
+        if (sig) svgText(f.svg, sx(m), sy(Math.max(t.hi, 0)) - 6, '*', 'ax-text',
+          { 'text-anchor': 'middle' });
+      });
+      hover(f, sx, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], m => {
+        const t = slopes[m - 1];
+        if (!t) return tipRows(MONTH_NAME[m - 1], [{ k: 'Trend', v: 'not enough complete years' }]);
+        return tipRows(MONTH_NAME[m - 1], [
+          { k: 'Slope', v: nfs(t.slope, met.digits + 1) + ' ' + met.units + ' / decade' },
+          { k: '95 % interval', v: nfs(t.lo, met.digits + 1) + ' to '
+            + nfs(t.hi, met.digits + 1) },
+          { k: 'Kendall p', v: nf(t.p, 3) + (isNum(t.p) && t.p < TREND_ALPHA ? ' *' : '') },
+          { k: 'Years', v: String(t.n) }
+        ]);
+      });
+    };
+  }
+
+  /**
+   * What the band around a variable's annual figures is, and what it should be called.
+   *
+   * Two different things can be drawn there and they are not interchangeable, so the chart names
+   * whichever it drew. Where the file publishes an uncertainty, that is the honest band: it is the
+   * interval the page already prints beside every flux figure. Where it does not, a mean-aggregated
+   * variable can still show the spread of its own months, which describes the year rather than the
+   * confidence in it. A total with neither gets no band at all: the spread of twelve monthly totals
+   * is not an uncertainty of their sum.
+   */
+  function yearBand(key) {
+    const v = VARS[key];
+    const published = YEAR_ROWS.map(r => (r[key] && isNum(r[key].u) ? r[key].u : null));
+    if (published.some(isNum)) {
+      return { half: published, label: '± ' + (v.unc_note || 'published uncertainty'),
+        note: 'The band is the published uncertainty, covering ' + (v.unc_note || 'what the file '
+          + 'gives') + '.' };
+    }
+    if (v.agg === 'sum') return null;
+    const half = YEAR_ROWS.map(r => {
+      const months = MONTHS.filter(mo => mo.y === r.y && mo[key] && isNum(mo[key].v))
+        .map(mo => mo[key].v);
+      if (months.length < 6) return null;
+      const mean = months.reduce((a, b) => a + b, 0) / months.length;
+      const varc = months.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (months.length - 1);
+      return Math.sqrt(varc);
+    });
+    return half.some(isNum)
+      ? { half: half, label: '± 1 sd of its months',
+        note: 'The band is one standard deviation of the year’s own monthly figures, which '
+          + 'describes how much the year varied rather than how well it is known. This file '
+          + 'publishes no uncertainty for ' + v.short.toLowerCase() + '.' }
+      : null;
+  }
+
+  /** Every year of the record, with its band and the fitted slope the build published. */
+  function drawVarYears(key) {
+    const v = VARS[key];
+    const met = ownMetric(v);
+    return function (host) {
+      const rows = YEAR_ROWS;
+      const years = rows.map(r => r.y);
+      const values = rows.map(r => varValue(r, key));
+      const band = yearBand(key);
+      const bandLo = values.map((x, i) => (isNum(x) && band && isNum(band.half[i])
+        ? x - band.half[i] : null));
+      const bandHi = values.map((x, i) => (isNum(x) && band && isNum(band.half[i])
+        ? x + band.half[i] : null));
+
+      const f = frame(host, { aspect: 0.36, ariaLabel: v.short + ' in every year of the record' });
+      const ext = extent([values, bandLo, bandHi]);
+      const pad = (ext[1] - ext[0]) * 0.12 || 1;
+      const sx = linear(years[0] - 0.5, years[years.length - 1] + 0.5, f.m.left, f.m.left + f.iw);
+      const sy = linear(ext[0] - pad, ext[1] + pad, f.m.top + f.ih, f.m.top);
+      const every = Math.max(1, Math.ceil(years.length / Math.max(3, Math.floor(f.iw / 54))));
+      drawAxes(f, sx, sy, { yDigits: v.digits, yLabel: v.units,
+        xTicks: years.filter((y, i) => i % every === 0 || i === years.length - 1)
+          .map(y => ({ v: y, label: String(y) })) });
+
+      // Zero is a boundary rather than a gridline for a variable whose sign means something.
+      if (v.sign && ext[0] < 0 && ext[1] > 0) {
+        el('line', { x1: f.m.left, x2: f.m.left + f.iw, y1: sy(0), y2: sy(0),
+          stroke: f.p.ink, 'stroke-width': 1.2, opacity: 0.5 }, f.svg);
+      }
+      if (band) {
+        el('path', { d: areaFrom(years, bandLo, bandHi, sx, sy), fill: f.p.bandOuter,
+          opacity: 0.75 }, f.svg);
+      }
+      const t = met && met.trend_year;
+      if (t && t.fit) {
+        el('line', { x1: sx(t.y0), x2: sx(t.y1), y1: sy(t.fit[0]), y2: sy(t.fit[1]),
+          stroke: f.p.ink, 'stroke-width': 2, 'stroke-dasharray': '6 4' }, f.svg);
+      }
+      el('path', { d: pathFrom(years, values, sx, sy), fill: 'none', stroke: f.p.series[0],
+        'stroke-width': 2.2, 'stroke-linejoin': 'round' }, f.svg);
+      years.forEach((y, i) => {
+        if (!isNum(values[i])) return;
+        el('circle', { cx: sx(y), cy: sy(values[i]), r: 3, fill: f.p.series[0] }, f.svg);
+      });
+
+      hover(f, sx, years, y => {
+        const i = years.indexOf(y);
+        const row = rows[i];
+        const lines = [{ k: v.short, v: isNum(values[i]) ? nf(values[i], v.digits) + ' ' + v.units
+          : 'no value', color: f.p.series[0] }];
+        const sense = row ? senseOf(v, values[i]) : null;
+        if (sense) lines.push({ k: 'Direction', v: sense });
+        if (band && isNum(band.half[i])) {
+          lines.push({ k: band.label.replace('± ', ''), v: '± ' + nfu(band.half[i], v.digits)
+            + ' ' + v.units, color: 'var(--band-outer)' });
+        }
+        if (row && isNum(row[key].r)) {
+          lines.push({ k: 'Rank', v: ord(row[key].r) + ' of ' + row[key].n + ' years'
+            + (v.rank_note ? ' (1st = ' + v.rank_note + ')' : '') });
+        }
+        if (row && isNum(row[key].meas)) {
+          lines.push({ k: 'Measured', v: nf(row[key].meas, 0) + ' %' });
+        }
+        return tipRows(String(y), lines);
+      }, y => { location.hash = y + '-' + M.year_slug; });
+    };
+  }
+
+  /** The shape of the year: each calendar month's normal, its spread, and its full range. */
+  function drawVarCycle(key) {
+    const v = VARS[key];
+    return function (host) {
+      const clim = CLIM[key] || {};
+      const months = [];
+      for (let m = 1; m <= 12; m++) months.push(clim[String(m)] || null);
+      const f = frame(host, { aspect: 0.4, ariaLabel: v.short + ' through the year' });
+      const all = [];
+      months.forEach(n => { if (n) all.push(n.min, n.max); });
+      if (!all.length) {
+        svgText(f.svg, f.width / 2, f.height / 2, 'No calendar month has a normal', 'ax-text',
+          { 'text-anchor': 'middle' });
+        return;
+      }
+      const ext = extent([all]);
+      const sx = linear(0.5, 12.5, f.m.left, f.m.left + f.iw);
+      const sy = linear(ext[0], ext[1], f.m.top + f.ih, f.m.top);
+      drawAxes(f, sx, sy, { yDigits: v.digits, yLabel: v.units,
+        xTicks: MONTH_ABBR.map((label, i) => ({ v: i + 1, label: label[0] })) });
+
+      // The range across the record, then one standard deviation, then the normal itself: three
+      // bands rather than one line, because "the normal January" is a distribution.
+      const bw = Math.max(8, f.iw / 12 - 12);
+      months.forEach((n, i) => {
+        if (!n) return;
+        const m = i + 1;
+        el('rect', { x: sx(m) - bw / 2, y: sy(n.max), width: bw,
+          height: Math.max(1, sy(n.min) - sy(n.max)), rx: 3, fill: f.p.bandOuter, opacity: 0.55 },
+        f.svg);
+        el('rect', { x: sx(m) - bw / 2, y: sy(n.mean + n.sd), width: bw,
+          height: Math.max(1, sy(n.mean - n.sd) - sy(n.mean + n.sd)), rx: 2,
+          fill: f.p.series[0], opacity: 0.35 }, f.svg);
+        el('line', { x1: sx(m) - bw / 2, x2: sx(m) + bw / 2, y1: sy(n.mean), y2: sy(n.mean),
+          stroke: f.p.series[0], 'stroke-width': 2.4 }, f.svg);
+      });
+      hover(f, sx, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], m => {
+        const n = months[m - 1];
+        if (!n) return tipRows(MONTH_NAME[m - 1], [{ k: 'Normal', v: 'not enough years' }]);
+        return tipRows(MONTH_NAME[m - 1], [
+          { k: 'Normal', v: nf(n.mean, v.digits) + ' ' + v.units + ' over ' + n.n + ' years' },
+          { k: 'Standard deviation', v: nf(n.sd, v.digits) + ' ' + v.units },
+          { k: 'Highest', v: nf(n.max, v.digits) + ' in ' + n.max_year },
+          { k: 'Lowest', v: nf(n.min, v.digits) + ' in ' + n.min_year }
+        ]);
+      });
+    };
+  }
+
+  /** What share of each year was measured rather than modelled, which qualifies everything above. */
+  function drawVarCoverage(key) {
+    const v = VARS[key];
+    return function (host) {
+      const years = YEAR_ROWS.map(r => r.y);
+      const meas = YEAR_ROWS.map(r => (r[key] && isNum(r[key].meas) ? r[key].meas : null));
+      const avail = YEAR_ROWS.map(r => (r[key] && isNum(r[key].avail) ? r[key].avail : null));
+      const f = frame(host, { aspect: 0.3, ariaLabel: v.short + ' measured share by year' });
+      const sx = linear(years[0] - 0.5, years[years.length - 1] + 0.5, f.m.left, f.m.left + f.iw);
+      const sy = linear(0, 100, f.m.top + f.ih, f.m.top);
+      const every = Math.max(1, Math.ceil(years.length / Math.max(3, Math.floor(f.iw / 54))));
+      drawAxes(f, sx, sy, { yDigits: 0, yLabel: '%', yTicks: [0, 25, 50, 75, 100],
+        xTicks: years.filter((y, i) => i % every === 0 || i === years.length - 1)
+          .map(y => ({ v: y, label: String(y) })) });
+      const bw = Math.max(3, f.iw / years.length - 5);
+      years.forEach((y, i) => {
+        if (isNum(avail[i])) {
+          el('rect', { x: sx(y) - bw / 2, y: sy(avail[i]), width: bw,
+            height: Math.max(1, sy(0) - sy(avail[i])), rx: 2, fill: f.p.bandOuter, opacity: 0.7 },
+          f.svg);
+        }
+        if (isNum(meas[i])) {
+          el('rect', { x: sx(y) - bw / 2, y: sy(meas[i]), width: bw,
+            height: Math.max(1, sy(0) - sy(meas[i])), rx: 2, fill: f.p.series[0], opacity: 0.85 },
+          f.svg);
+        }
+      });
+      el('line', { x1: f.m.left, x2: f.m.left + f.iw, y1: sy(v.cov.warn), y2: sy(v.cov.warn),
+        stroke: f.p.warm, 'stroke-width': 1.4, 'stroke-dasharray': '5 3' }, f.svg);
+      hover(f, sx, years, y => {
+        const i = years.indexOf(y);
+        return tipRows(String(y), [
+          { k: 'Available', v: isNum(avail[i]) ? nf(avail[i], 0) + ' %' : '—', color: f.p.bandOuter },
+          { k: 'Measured', v: isNum(meas[i]) ? nf(meas[i], 0) + ' %' : '—', color: f.p.series[0] }
+        ]);
+      });
+    };
+  }
+
+  /** The per-month slopes as a table, for the reader who wants the numbers rather than the bars. */
+  function monthlyTrendTable(key) {
+    const met = ownMetric(VARS[key]);
+    if (!met || !met.trend) return '';
+    const rows = [];
+    for (let m = 1; m <= 12; m++) {
+      const t = met.trend[String(m)];
+      if (!t) continue;
+      const sig = isNum(t.p) && t.p < TREND_ALPHA;
+      rows.push('<tr><th scope="row">' + MONTH_NAME[m - 1] + '</th>'
+        + '<td>' + (isNum(t.slope) ? nfs(t.slope, met.digits + 1) : '—') + '</td>'
+        + '<td>' + (isNum(t.lo) ? nfs(t.lo, met.digits + 1) + ' to ' + nfs(t.hi, met.digits + 1)
+          : '—') + '</td>'
+        + '<td>' + (isNum(t.p) ? nf(t.p, 3) + (sig ? ' *' : '') : '—') + '</td>'
+        + '<td>' + t.n + '</td></tr>');
+    }
+    if (!rows.length) return '';
+    return '<div class="tablewrap"><table class="datatable"><thead><tr>'
+      + '<th scope="col">Calendar month</th><th scope="col">Slope, ' + met.units + ' / decade</th>'
+      + '<th scope="col">95 % interval</th><th scope="col">Kendall p</th>'
+      + '<th scope="col">Years</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
+  }
+
+  /** The links out of the variable page: the months where this variable did something extreme. */
+  function varMoments(key) {
+    const v = VARS[key];
+    const rows = varSpans(key).slice().sort((a, b) => b[key].v - a[key].v);
+    if (!rows.length) return '';
+    const top = rows.slice(0, 5);
+    const bottom = rows.slice(-5).reverse();
+    const item = mo => '<li><a href="#' + mo.y + '-' + String(mo.m).padStart(2, '0') + '">'
+      + MONTH_NAME[mo.m - 1] + ' ' + mo.y + '</a> <b>' + nf(mo[key].v, v.digits) + '</b> '
+      + v.units + (senseOf(v, mo[key].v) ? ', ' + senseOf(v, mo[key].v) : '')
+      + (isNum(mo[key].a) ? ' (' + nfs(mo[key].a, v.digits) + ')' : '') + '</li>';
+    /* Named from the registry's own words for each end. "The highest five months" of NEE are its
+       largest releases, which is not what a reader takes "highest" to mean at a flux site. */
+    const head = (side, word) => cap(side) + ' five months'
+      + (word ? ' <span class="muted">(' + word + ')</span>' : '');
+    return '<div class="twocol"><div><h4>' + head('highest', v.word_high)
+      + '</h4><ul class="ranklist">' + top.map(item).join('') + '</ul></div>'
+      + '<div><h4>' + head('lowest', v.word_low) + '</h4><ul class="ranklist">'
+      + bottom.map(item).join('') + '</ul></div></div>';
+  }
+
+  function renderVariable() {
+    const key = state.variable;
+    const v = VARS[key];
+    const met = ownMetric(v);
+    const host = document.getElementById('var-body');
+    compactCharts();
+    document.getElementById('var-title').textContent = v.title;
+
+    const list = DATA.variables.map(x => x.key);
+    const idx = list.indexOf(key);
+    document.getElementById('var-prev').disabled = idx <= 0;
+    document.getElementById('var-next').disabled = idx >= list.length - 1;
+
+    host.innerHTML = '<p class="monthlede" id="var-lede"></p>'
+      + '<div class="grid" id="var-summary"></div>'
+      + '<h2 class="section">Over the record</h2><div class="grid" id="var-record"></div>'
+      + '<h2 class="section">Month by month</h2><div class="grid" id="var-months"></div>'
+      + '<h2 class="section">What the record covers</h2><div class="grid" id="var-cov"></div>';
+
+    document.getElementById('var-lede').innerHTML = v.about
+      + ' Read from <code>' + v.column + '</code>, ' + v.first_year + '–' + v.last_year + '.';
+
+    cardEl(document.getElementById('var-summary'), {
+      title: 'This variable over ' + M.first_year + '–' + M.last_year, width: 'w-12',
+      sub: 'Every figure here is the one the grid shows, aggregated the way this variable '
+        + 'aggregates: ' + (v.agg === 'sum' ? 'a span is its total' : 'a span is its mean') + '.'
+    }).innerHTML = varSummary(key);
+
+    const rec = document.getElementById('var-record');
+    const band = yearBand(key);
+    chartCard(rec, {
+      title: 'Every year of the record', width: 'w-7',
+      sub: 'One point per year' + (met && met.trend_year && met.trend_year.fit
+        ? ', with the Theil-Sen slope the page publishes drawn through them' : '')
+        + '. Selecting a year opens it.',
+      legend: [{ color: 'var(--series-1)', label: 'the year', line: true }]
+        .concat(band ? [{ color: 'var(--band-outer)', label: band.label }] : [])
+        .concat([{ color: 'var(--text-primary)', label: 'fitted trend', line: true }]),
+      foot: [band ? band.note : '', met && met.trend_year ? trendSentence(met, met.trend_year) : '']
+        .filter(Boolean).join(' '),
+      draw: drawVarYears(key)
+    });
+    chartCard(rec, {
+      title: 'The shape of the year', width: 'w-5',
+      sub: 'Each calendar month over the whole record: its normal, one standard deviation either '
+        + 'side, and the full range it has covered.',
+      legend: [{ color: 'var(--series-1)', label: 'normal', line: true },
+        { color: 'var(--band-outer)', label: 'range across the record' }],
+      draw: drawVarCycle(key)
+    });
+
+    const byMonth = document.getElementById('var-months');
+    if (met) {
+      chartCard(byMonth, {
+        title: 'The trend of each calendar month', width: 'w-7',
+        sub: 'A slope per decade fitted through that calendar month alone, with its 95 % interval. '
+          + 'A bar is solid where Kendall p is below ' + nf(TREND_ALPHA, 2) + '.',
+        foot: 'One annual slope is the average of these twelve, and averaging them hides the case '
+          + 'this chart exists for: a record whose winters have moved and whose summers have not '
+          + 'says something an annual figure cannot.',
+        draw: drawMonthlyTrends(key)
+      });
+      const table = monthlyTrendTable(key);
+      if (table) {
+        cardEl(byMonth, { title: 'The same slopes as numbers', width: 'w-5',
+          sub: 'Withheld where a calendar month has fewer than ' + M.trend_min_years
+            + ' complete years.' }).innerHTML = table;
+      }
+    }
+    cardEl(byMonth, {
+      title: 'The months at either end', width: 'w-12',
+      sub: 'The five highest and five lowest months of the record, with their departure from the '
+        + 'calendar-month normal. Selecting one opens it.'
+    }).innerHTML = varMoments(key);
+
+    chartCard(document.getElementById('var-cov'), {
+      title: 'How much of each year was measured', width: 'w-12',
+      sub: 'The share of each year the product covers, and the share that came from the instrument '
+        + 'rather than from the gap-filling model. The dashed line is this variable’s warning '
+        + 'threshold.',
+      legend: [{ color: 'var(--band-outer)', label: 'available' },
+        { color: 'var(--series-1)', label: 'measured' },
+        { color: 'var(--pole-warm)', label: 'warning line', line: true }],
+      foot: 'Every statistic on this page is gated on availability and only warned on by the '
+        + 'measured share. Where the measured share itself trends through the record, part of a '
+        + 'slope above may be that trend rather than the ecosystem.',
+      draw: drawVarCoverage(key)
+    });
+  }
+
+  /**
+   * What set one year apart, as the build ranked it.
+   *
+   * The entries are built in Python, where the other years are in hand: half of what makes a year
+   * notable is its place among them, and a page that only read the year in front of it could state
+   * a growing season of 225 days without being able to say that this was the shortest but two.
+   */
+  function stoodList(yr) {
+    if (!yr.stood || !yr.stood.length) {
+      return '<p class="card-sub" style="max-width:none">Nothing in this year departed far enough '
+        + 'from the record to rank, and no variable placed near either end of it.</p>';
+    }
+    return '<dl class="kv stood">' + yr.stood.map(s =>
+      '<dt>' + s.k + '</dt><dd class="tone-' + s.tone + '">' + s.v + '</dd>').join('') + '</dl>';
   }
 
   function renderMonth() {
@@ -2902,7 +3580,8 @@
 
     const list = sc.spans();
     const idx = list.indexOf(mo);
-    const yearStep = state.scale === 'season' ? SEASON_DEFS.length : 12;
+    const yearStep = state.scale === 'season' ? SEASON_DEFS.length
+      : state.scale === 'year' ? 1 : 12;
     document.getElementById('month-prev').disabled = idx <= 0;
     document.getElementById('month-next').disabled = idx >= list.length - 1;
     document.getElementById('year-prev').disabled = idx - yearStep < 0;
@@ -2912,29 +3591,43 @@
       + '<div class="tiles" id="month-tiles"></div>'
       + '<p class="seasonline" id="month-season"></p>'
       + '<h2 class="section">What was notable</h2><div id="month-badges"></div>'
+      + (state.scale === 'year' ? '<div class="grid" id="month-stood"></div>' : '')
       + '<div class="grid" id="month-highlights"></div>'
       + '<h2 class="section">Day by day</h2><div class="grid" id="month-charts"></div>'
       + '<h2 class="section">The average day</h2><div class="grid" id="month-diurnal"></div>'
-      + '<h2 class="section">This month against the record</h2>'
+      + '<h2 class="section">This ' + spanNoun() + ' against the record</h2>'
       + '<div class="grid" id="month-context"></div>'
       + '<h2 class="section">The days</h2><div class="grid" id="month-days"></div>'
       + '<div id="day-panel"></div>'
-      + '<h2 class="section">Every day of this month</h2><div class="grid" id="month-table"></div>';
+      + '<h2 class="section">Every day of this ' + spanNoun() + '</h2>'
+      + '<div class="grid" id="month-table"></div>';
 
     document.getElementById('month-lede').innerHTML = monthLede(mo);
     document.getElementById('month-tiles').innerHTML = monthTiles(mo);
     document.getElementById('month-season').innerHTML = seasonLine(mo);
     document.getElementById('month-badges').innerHTML = monthBadges(mo) + suppressedNote(mo);
 
+    /* A badge is a threshold and a placing is not, so the year carries both. A year can earn no
+       badge at all and still be the third warmest of twenty-one, which is exactly the kind of
+       thing a reader opening a year is looking for. */
+    if (state.scale === 'year') {
+      cardEl(document.getElementById('month-stood'), {
+        title: 'What stood out in ' + mo.y, width: 'w-12',
+        sub: 'Where this year placed among the ' + YEAR_ROWS.length + ' of the record, strongest '
+          + 'first. A year is ranked against every other year rather than against a slot of the '
+          + 'calendar, so the normal behind each figure is the record itself.'
+      }).innerHTML = stoodList(mo);
+    }
+
     const hl = document.getElementById('month-highlights');
     hl.innerHTML = '';
     cardEl(hl, {
-      title: 'The month in single days', width: 'w-4',
-      sub: 'What the monthly mean hides.'
+      title: cap(spanNoun()) + ' in single days', width: 'w-4',
+      sub: 'What the ' + spanNoun() + '’s own mean hides.'
     }).innerHTML = monthHighlights(mo);
     cardEl(hl, {
       title: 'How unusual it was', width: 'w-4',
-      sub: 'Departure from the calendar-month normal on each independent axis.'
+      sub: 'How far each variable stood from the ' + normalWord() + ', in standard deviations.'
     }).innerHTML = monthComposite(mo);
 
     // Named for the section rather than `charts`, which is the module's chart registry.
@@ -3040,9 +3733,10 @@
         + '</p>';
     } else {
       const body = cardEl(diurnal, {
-        title: 'The mean day of ' + MONTH_NAME[state.m - 1] + ' ' + state.y, width: 'w-12',
-        sub: 'Every day of the month averaged onto one 24-hour axis, against the same composite '
-          + 'over every ' + MONTH_NAME[state.m - 1] + ' of the record.',
+        title: 'The mean day of ' + sc.title(mo), width: 'w-12',
+        sub: 'Every day of the ' + spanNoun() + ' averaged onto one 24-hour axis, against the '
+          + 'same composite '
+          + 'over every ' + peerWord(mo) + ' of the record.',
         foot: 'A monthly mean cannot show whether a warm month was warm at night or by day, and '
           + 'the two have different causes: cloud and humidity hold the night up, radiation lifts '
           + 'the afternoon.'
@@ -3071,7 +3765,7 @@
       } else {
         body.insertAdjacentHTML('beforeend', legendHTML([
           { color: 'var(--text-muted)', label: 'every '
-            + scale().colName(scale().idOf(mo)) + ' of ' + M.first_year + '–' + M.last_year,
+            + peerOf(mo) + ' of ' + M.first_year + '–' + M.last_year,
           line: true }
         ]));
       }
@@ -3080,9 +3774,10 @@
     // -- The month against every other year of the same month --------------------------------
     const context = document.getElementById('month-context');
     const ranks = cardEl(context, {
-      title: 'Where this month sits among its own years', width: 'w-6',
-      sub: 'Every ' + MONTH_NAME[state.m - 1] + ' of the record on one line per variable, this '
-        + 'one filled. The dashed tick is the calendar-month normal.',
+      title: state.scale === 'year' ? 'Where this year sits among the others'
+        : 'Where this ' + spanNoun() + ' sits among its own years', width: 'w-6',
+      sub: 'Every ' + peerWord(mo) + ' of the record on one line per variable, this '
+        + 'one filled. The dashed tick is the ' + normalWord() + '.',
       foot: 'Whether a departure of a degree is remarkable for this month or ordinary is a '
         + 'question about the spread of the other years, which an anomaly alone does not carry. '
         + 'Selecting another year opens it.'
@@ -3091,11 +3786,11 @@
 
     if (VARS.TA) {
       chartCard(context, {
-        title: 'The shape of every ' + MONTH_NAME[state.m - 1] + ' in the record', width: 'w-6',
+        title: 'The shape of every ' + peerWord(mo) + ' in the record', width: 'w-6',
         sub: 'Daily mean temperature through the month, one line per year, this one drawn over '
           + 'them.',
         legend: [
-          { color: 'var(--series-2)', label: MONTH_NAME[state.m - 1] + ' ' + state.y, line: true },
+          { color: 'var(--series-2)', label: sc.title(mo), line: true },
           { color: 'var(--text-secondary)', label: 'the other years', line: true },
           { color: 'var(--text-muted)', label: 'normal for the date', line: true }
         ],
@@ -3106,10 +3801,10 @@
     }
 
     chartCard(context, {
-      title: 'Every ' + MONTH_NAME[state.m - 1] + ' in the record', width: 'w-12',
-      sub: metric().label + '. This month is highlighted; selecting another opens it.',
+      title: 'Every ' + peerWord(mo) + ' in the record', width: 'w-12',
+      sub: metric().label + '. This ' + spanNoun() + ' is highlighted; selecting another opens it.',
       legend: [
-        { color: 'var(--series-2)', label: MONTH_NAME[state.m - 1] + ' ' + state.y },
+        { color: 'var(--series-2)', label: sc.title(mo) },
         { color: 'var(--series-1)', label: 'the other years' },
         { color: 'var(--text-muted)', label: 'normal', line: true }
       ],
@@ -3118,7 +3813,7 @@
 
     const daysHost = document.getElementById('month-days');
     const body = cardEl(daysHost, {
-      title: 'The days of ' + MONTH_NAME[state.m - 1] + ' ' + state.y, width: 'w-8',
+      title: 'The days of ' + sc.title(mo), width: 'w-8',
       sub: 'Coloured by ' + metric().label.toLowerCase() + '. Chips show the thresholds a day '
         + 'set, the bar along the bottom its precipitation. Select a day to open it.'
     });
@@ -3264,12 +3959,16 @@
   function showView(which) {
     document.getElementById('view-grid').hidden = which !== 'grid';
     document.getElementById('view-month').hidden = which !== 'month';
+    document.getElementById('view-var').hidden = which !== 'var';
     const crumbs = document.getElementById('crumbs');
     /* The site rides with the span here, since the topbar itself now carries the product name and
        the hero scrolls out of sight. */
     const site = '<span class="site">' + M.site + '</span><span class="sep">·</span>';
     if (which === 'grid') {
       crumbs.innerHTML = site + '<b>' + M.first_year + '–' + M.last_year + '</b>';
+    } else if (which === 'var') {
+      crumbs.innerHTML = site + '<span>' + M.first_year + '–' + M.last_year + '</span>'
+        + '<span class="sep">›</span><b>' + VARS[state.variable].short + '</b>';
     } else {
       crumbs.innerHTML = site + '<span>' + M.first_year + '–' + M.last_year + '</span>'
         + '<span class="sep">›</span><b>' + scale().title(state.span) + '</b>'
@@ -3277,13 +3976,32 @@
     }
   }
 
-  /* A span is addressed by year and either a month number or a season key: #2019-07, #2019-JJA,
-     #2019-07-25. The scale follows from which of the two the URL carries, so a link into a season
-     switches the grid behind it as well. */
+  /* A span is addressed by year and by what it is within that year: #2019-07 is a month, #2019-JJA
+     a season, #2019-YEAR the year itself, #2019-07-25 a day. The scale follows from which of the
+     three the URL carries, so a link into a season switches the grid behind it as well.
+
+     The season key is whatever the scheme named it, which is two to six letters for a derived
+     scheme (`JF`, `DJFMAM`) and a capitalised abbreviation for a scheme of single months (`Mar`).
+     Matching only three upper-case letters, as this did, sent every one of those back to the grid. */
   function route() {
     const hash = location.hash.replace('#', '');
-    const m = /^(\d{4})-(\d{2}|[A-Z]{3})(?:-(\d{2}))?$/.exec(hash);
-    const wanted = m ? (/^\d+$/.test(m[2]) ? 'month' : 'season') : null;
+
+    /* One variable across the whole record is a page rather than a span, so it is addressed by
+       name: #var-TA. It carries no year, which is what distinguishes it from every other route. */
+    const asVar = /^var-([A-Za-z0-9_.]+)$/.exec(hash);
+    if (asVar && VARS[asVar[1]]) {
+      state.variable = asVar[1];
+      state.y = state.m = state.d = state.span = null;
+      showView('var');
+      tip.hide();
+      renderVariable();
+      window.scrollTo({ top: 0 });
+      return;
+    }
+
+    const m = /^(\d{4})-(\d{2}|[A-Za-z]{2,6})(?:-(\d{2}))?$/.exec(hash);
+    const wanted = !m ? null
+      : /^\d+$/.test(m[2]) ? 'month' : m[2] === M.year_slug ? 'year' : 'season';
     const span = m ? SCALES[wanted].at(+m[1], /^\d+$/.test(m[2]) ? +m[2] : m[2]) : null;
     if (!span) {
       state.y = state.m = state.d = state.span = null;
@@ -3323,6 +4041,16 @@
     document.getElementById('month-back').addEventListener('click', () => {
       location.hash = 'grid';
     });
+    document.getElementById('var-back').addEventListener('click', () => {
+      location.hash = 'grid';
+    });
+    const varStep = delta => {
+      const list = DATA.variables.map(v => v.key);
+      const target = list[list.indexOf(state.variable) + delta];
+      if (target) location.hash = 'var-' + target;
+    };
+    document.getElementById('var-prev').addEventListener('click', () => varStep(-1));
+    document.getElementById('var-next').addEventListener('click', () => varStep(1));
     const step = delta => {
       const list = scale().spans();
       const target = list[list.indexOf(state.span) + delta];
@@ -3330,7 +4058,8 @@
     };
     document.getElementById('month-prev').addEventListener('click', () => step(-1));
     document.getElementById('month-next').addEventListener('click', () => step(1));
-    const yearStep = () => (state.scale === 'season' ? SEASON_DEFS.length : 12);
+    const yearStep = () => (state.scale === 'season' ? SEASON_DEFS.length
+      : state.scale === 'year' ? 1 : 12);
     document.getElementById('year-prev').addEventListener('click', () => step(-yearStep()));
     document.getElementById('year-next').addEventListener('click', () => step(yearStep()));
 
@@ -3412,6 +4141,7 @@
   // cannot differ from the state any later switch produces.
   setGrid(state.grid);
   renderBadgeLegend();
+  renderVarIndex();
   renderAbout();
   renderGrid();
   setupNav();
