@@ -8,10 +8,10 @@ RECO, H, LE), meteorology, and their quality flags, resolved from the whole
 record down to the single day. One site over decades is the target; several
 sites is a later possibility, not a current requirement.
 
-**Status: the library and the CLI work for meteorological variables; nothing is
-released yet.** PyPI still holds the 0.0.1 placeholder. `Atlas` builds and
-renders, and a selection of one variable produces a correct one-variable page.
-The fluxes and the GUI are not written.
+**Status: the library and the CLI work for meteorology and for the turbulent
+fluxes; nothing is released yet.** PyPI still holds the 0.0.1 placeholder.
+`Atlas` builds and renders, and a selection of one variable produces a correct
+one-variable page. The GUI is not written.
 
 ```bash
 fluxatlas record.csv --list                                   # what the file carries
@@ -31,7 +31,7 @@ fa.build_atlas("CH-LAE_HH.csv", "atlas.html", variables=["TA"])  # TA and nothin
 | --- | --- |
 | `atlas.py` | The public API — `Atlas`, `build_atlas`, `available`. Everything a front end would need belongs here, so they stay thin. |
 | `cli.py` | The command line, a thin wrapper over `atlas.py`. `__main__.py` and the `fluxatlas` entry point both land here. |
-| `io.py` | Reading one half-hourly FLUXNET file: timestamp, `-9999`, whole years, unit conversion, the measured/modelled split. |
+| `io.py` | Reading one half-hourly FLUXNET file: timestamp, `-9999`, whole years, unit conversion, the measured/modelled split. Reads the header first and projects the read onto the selected columns. |
 | `variables.py` | The registry, keyed by canonical key (`TA`, `PREC`, …), each with the candidate FLUXNET columns that can supply it and the factor onto the canonical unit. |
 | `stats.py` | Theil-Sen trend, spells, growing season, rounding — the estimators shared with the CH-LAE dashboards. |
 | `build.py` | The ported computation: metrics, badges, day tests, normals, seasons, payload, render. The large one. |
@@ -55,6 +55,74 @@ The canonical key still has to be one the registry describes, because that is
 where the units, thresholds and aggregation come from — only the column name is
 the caller's. `io.resolve` is where the three accepted forms are documented.
 
+**The file is read twice, and the first read is the header.** A FULLSET file is
+248 columns and hundreds of megabytes; an atlas of six variables needs about
+twenty of them. So `columns_of` parses the header (or the parquet footer schema),
+`resolve` answers against the names alone, and `_read_frame` is then given
+`usecols`. On the CH-Oe2 record that is 0.6 s and 59 MB against 21 s and 697 MB,
+and `--list` returns in well under a second instead of reading the whole file.
+
+The consequence to keep in mind: **`available` and `resolve` take column names,
+not data.** Anything that needs to inspect values cannot live in them. The
+all-`-9999` column is the case that proves it — `LE_CORR` and `H_CORR` are empty
+in every record of a real CH-Oe2 file and resolve exactly like real columns, so
+that is caught in `read_fluxnet` after the read and refused there.
+
+## Coverage: availability gates, measurement only warns
+
+**This is the rule everything else follows from, and it is a deliberate choice.**
+
+A span carries two coverage figures and they answer different questions.
+
+- **`avail`** — what share of it carries a value at all. For a gap-filled product
+  this is 100 % wherever the product covers the span and 0 % where it does not.
+- **`meas`** — what share came from the instrument rather than the gap-filling
+  model.
+
+**Every statistical gate reads `avail`.** Normals, ranks, anomalies, badges and
+trends are computed wherever the product covers the span, whatever share of it was
+measured. `TA_F`, `NEE_VUT_REF`, `GPP_NT_VUT_REF` and the rest are the series the
+community publishes and analyses; a page that quietly declined to use them would
+describe a sparser record than the file is of.
+
+**`meas` gates nothing — it warns.** Below `varreg.coverage(key).warn` a span is
+hatched on the grid, carries the sparse badge, has `tile-thin` in the month panel,
+and is counted in the build's console warning. Meteorology warns under 50 %, the
+fluxes under 20 %, because half of every eddy covariance record is night that u\*
+filtering rejects by design — warning a flux at the meteorological line would flag
+every month of every flux record ever produced.
+
+`thin_spans` computes the counts, `report_thin_spans` prints them, `meta.thin`
+carries them to the page, and `variables[].cov` carries the thresholds because the
+renderer reads them too.
+
+### What this replaced, and why
+
+Both gates used to read `meas`: meteorology at 80/90, fluxes at 35/40. That
+produced two silences.
+
+- No month of any flux record reaches 90 % measured, so at the meteorological
+  threshold no flux normal, rank, anomaly, trend or badge was ever computed, and
+  the sparse badge landed on all 252 tiles.
+- Even at 40 %, January, October and December of CH-Oe2 had fewer than
+  `MIN_NORMAL_YEARS` qualifying years, so those calendar months had no normal and
+  three columns of the anomaly grid were blank.
+
+Both are gone. On CH-Oe2 every variable now publishes a trend over all 21 years,
+where before `TA` was withheld at 7 complete years and every flux at 3.
+
+**The cost is real and the page states it.** The measured share is not constant
+through a record: at CH-Oe2 `corr(measured share, year) = +0.85`, and
+`corr(annual GPP, measured share) = +0.57` against `corr(annual GPP, year) =
++0.51`. So the GPP and RECO slopes are entangled with coverage improving. The
+trend note no longer claims "a slope is never a picture of changing coverage" —
+that guarantee is gone — and says instead what leans on the filling and by how
+much, via `thinNote()`.
+
+`RH` is the case that shows the gate still bites: it has no QC column, so its gaps
+are genuinely missing rather than filled, its `avail` is 73.5 %, and its trend is
+still withheld at 6 complete years. Correctly.
+
 ## examples/ and tests/
 
 `examples/data/CH-LAE_meteo_30min_2005-2025.parquet` (9.3 MB, committed) is a
@@ -68,18 +136,117 @@ The example uses CH-LAE column names deliberately: it is the mapping case, which
 is the general one. A FLUXNET-named file needs `variables=["TA"]` and nothing
 more.
 
-`pytest` — 78 tests, ~40 s. Most run on **synthetic** data built by
+`examples/data/EUF_CH-Oe2_FLUXNET_FLUXMET_HH_2004-2024_v1.3_r1.csv` (552 MB, **not
+committed** — `.gitignore` excludes `examples/data/*.csv` so it cannot be added by
+accident) is a real FLUXNET FULLSET file for the Oensingen cropland: 248 columns,
+368,208 half-hours, 2004–2024. It is what the flux work was developed and checked
+against, and the source of every number quoted in this file.
+`examples/build_oe2_flux_atlas.py` builds **one** page from it and takes `--input`
+for any other FLUXNET file, `--vars` to narrow what goes on that page, and `--out`
+for a directory outside the repository, which is worth using since a page of this
+record with the hourly layer is ~6 MB. One file is the point — do not add a second
+output to this script.
+
+`pytest` — 134 tests, ~60 s. Most run on **synthetic** data built by
 `tests/conftest.py`: a twelve-year half-hourly record with seasonal and diurnal
 cycles, noise, and an imposed 0.8 K/decade warming the trend tests assert is
 recovered. Twelve years because `MIN_NORMAL_YEARS` is 8 and nothing interesting
 exists below it. The tests that read the bundled extract skip when it is absent,
 so a fresh checkout still passes.
 
+`add_fluxes()` puts the five fluxes on top of that record. Three properties of it
+are load-bearing:
+
+- the partitioning identity NEE = RECO − GPP holds exactly, so a test can assert
+  it survives the unit conversion;
+- the measured share varies month to month and two months are near-total outages,
+  without which nothing ever falls under a warning line and every test about what
+  the page *says* of a thin span asserts nothing;
+- the u\* ensemble members are a **constant factor** off the reference (0.90 to
+  1.10), never noise. That is what lets a test detect a systematic term being put
+  through a quadrature it should not be: the monthly half-spread must stay at
+  0.10 of the total rather than shrinking by √n.
+
+## The fluxes
+
+`NEE`, `GPP`, `RECO`, `LE`, `H`, with metrics in the `Carbon` and `Energy` groups
+and six carbon badges. Three decisions are settled and should not be re-argued
+without a reason:
+
+- **Carbon is carried as a total in g C m⁻², not a mean of a rate.** Each
+  candidate carries `UMOL_TO_GC` (1e-6 × 1800 s × 12.011) and `agg="sum"`, so a
+  tile reads as the carbon the site gained or lost. The sum is gap-preserving,
+  exactly as precipitation already was.
+- **`NEE` resolves `VUT_REF` before `CUT_REF`**; a per-year u\* threshold is the
+  right default over a record of decades.
+- **`GPP`/`RECO` resolve nighttime (Reichstein) before daytime (Lasslop)**, one
+  canonical key each rather than four. Neither is measured, so both take their
+  `qc` from the `NEE` they were partitioned out of — that is why their `qc` lists
+  name `NEE_*_QC` columns.
+
+Sign convention is the micrometeorological one: negative NEE is uptake. Green is
+uptake and red is release everywhere on the page, and `NEE` diverges about zero
+rather than the record mean because zero is the boundary the convention makes
+meaningful.
+
+### Uncertainty: the aggregation kind matters more than the column
+
+A FULLSET file publishes uncertainty per half-hour; the page states figures per month and per year.
+**How a half-hourly uncertainty becomes a monthly one is the whole problem**, and it turns on
+whether the error is independent between records or one choice held across all of them. On CH-Oe2
+the two treatments of the same u\* uncertainty differ by **14× at annual scale**.
+
+`varreg` defines three kinds and `build.aggregate_uncertainty` applies them:
+
+| kind | rule | behaviour |
+| --- | --- | --- |
+| `QUADRATURE` | `sqrt(Σσ²)` | random; shrinks as √n |
+| `SYSTEMATIC` | `Σσ` | one choice across the span; does not shrink |
+| `ENSEMBLE` | aggregate each member, then half the spread | the only correct treatment of a threshold |
+
+Components combine in quadrature. Per flux, from a real FULLSET file:
+
+| | components | note shown |
+| --- | --- | --- |
+| `NEE` | `*_RANDUNC` + `NEE_VUT_16…84` ensemble | random and u\* threshold |
+| `GPP` / `RECO` | `*_SE`, systematic | u\* threshold |
+| `LE` / `H` | `*_RANDUNC` only | random |
+
+**`*_JOINTUNC` is deliberately not used.** It already combines the random and u\* terms, but only
+*per record* — aggregating it puts the systematic half through a √n that does not apply, and reports
+a median CH-Oe2 year as ±9 g C m⁻² where the ensemble says ±121. **`LE_CORR_JOINTUNC` and
+`H_CORR_JOINTUNC` are `-9999` in every record** of a real file anyway, exactly like `LE_CORR`.
+
+Two things the page must keep doing: name the components beside every interval (`unc_note`), since
+a ± covering the threshold choice is a much larger claim than one covering only the random term;
+and never print `± 0` — `nfu()` adds decimals until it does not, because a zero interval reads as
+certainty. Uncertainty columns are published for ~75 % of records, so an aggregate is scaled by the
+share carried rather than silently leaving a quarter of the span out.
+
+### Ranking runs the other way for NEE
+
+`varreg.rank_first(key)` returns `"high"` (everything) or `"low"` (`NEE` alone). The sign convention
+makes the most negative month the largest uptake, so ranked from the top the biggest carbon sink
+would come out *last* of its calendar month. Rank 1 is therefore the record sink, `record_sink` and
+`record_source` are the opposite way round from every other record badge, and the month tile prints
+"(1st = largest net uptake)" — generated from `extremes`, so a variable cannot be ranked one way and
+described the other.
+
+`varreg.family(key)` returns `METEOROLOGY` or `FLUX`, and the month panel reads
+it: the meteorology is listed first, a labelled full-width break forces the fluxes
+onto their own row, and they carry `--series-3` on the border, label and source
+line. Every tile also names the **column** it was read from in its bottom-right
+corner — a FULLSET file carries a dozen variants of the same flux, so which one
+produced a number is not something a reader can infer from the title.
+
+Worth knowing when setting `limits`: they are a **unit** check, not a quality
+check, so they are set outside the observed span rather than around it. Nighttime
+partitioning legitimately returns negative GPP (−49 µmol m⁻² s⁻¹ on CH-Oe2), and
+half-hourly `LE_F_MDS`/`H_F_MDS` reach ±1000 W m⁻². Three of the five bounds were
+too tight on first writing and only the real file caught it.
+
 ## What is planned, and deliberately not here yet
 
-- **The fluxes** (NEE, GPP, RECO, LE, H). The registry, the metrics and the
-  badges are all written for meteo; adding a flux means a `variables.py` entry
-  plus metrics and badges that make sense for it.
 - **Wider input than half-hourly.** Everything currently assumes 30-minute
   records: the reader reindexes onto a `30min` grid and the seasonal coverage
   denominators are `n_days * 48`. Hourly or daily input needs those two places
@@ -125,8 +292,15 @@ What the port changed, beyond the data layer:
 - Page copy that said "meteo" or "the exported products" was generalized.
 
 The `calendar.js` renderer was copied nearly as-is and still contains references
-to specific variable keys. It survives a one-variable payload — that is tested —
-but expect to revisit it when fluxes arrive.
+to specific variable keys. Most are guarded by `if (VARS.TA)` and are fine. One
+was not: `seasonLine` read `se.TA.v` outright, which threw for **any** selection
+without air temperature — the fluxes alone, or precipitation alone — and was
+never caught because every tested build included TA. It now reads through
+`leadKey()`, and `test_the_renderer_never_dereferences_a_fixed_variable_on_a_span`
+asserts the shape statically, since pytest cannot execute the renderer.
+
+When adding a variable, check a build of **that variable alone** in a browser.
+The Python suite cannot catch this class of bug.
 
 ## Packaging conventions
 
