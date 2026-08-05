@@ -249,7 +249,7 @@ for a directory outside the repository, which is worth using since a page of thi
 record with the hourly layer is ~6 MB. One file is the point — do not add a second
 output to this script.
 
-`pytest` — 182 tests, ~70 s. Most run on **synthetic** data built by
+`pytest` — 183 tests, ~70 s. Most run on **synthetic** data built by
 `tests/conftest.py`: a twelve-year half-hourly record with seasonal and diurnal
 cycles, noise, and an imposed 0.8 K/decade warming the trend tests assert is
 recovered. Twelve years because `MIN_NORMAL_YEARS` is 8 and nothing interesting
@@ -467,8 +467,8 @@ $env:UV_PUBLISH_TOKEN = (Read-Host 'PyPI token'); uv publish
 
 **The version is declared once**, in `pyproject.toml`; `__init__.py` reads it back
 from the installed distribution, as `diive` does, and the page footer prints that.
-`tests/test_packaging.py` asserts the two agree, that the changelog opens with the
-same number, and that the five files in `assets/` are installed - a wheel built
+`tests/test_packaging.py` asserts the two agree, that the changelog and
+`CITATION.cff` state the same number, and that the five files in `assets/` are installed - a wheel built
 without them imports cleanly and then writes a page with no styles, no renderer
 and no mark, which nothing else would catch because every other test reads the
 source tree. `.github/workflows/tests.yml` runs the suite, the `-W` docs build and

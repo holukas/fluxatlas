@@ -151,6 +151,6 @@ placeholder and carried none of this.
 
 ### Tests
 
-- About 182 tests, most on synthetic data built in `tests/conftest.py`: twelve half-hourly years
+- About 183 tests, most on synthetic data built in `tests/conftest.py`: twelve half-hourly years
   with seasonal and diurnal cycles and an imposed 0.8 K/decade warming the trend tests recover. The
   tests that read the bundled CH-LAE extract skip when it is missing.

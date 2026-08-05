@@ -35,6 +35,17 @@ def test_the_changelog_documents_the_version_being_shipped():
         f"{fluxatlas.__version__}")
 
 
+def test_the_citation_file_states_the_version_being_shipped():
+    """A citation is a claim about a specific version, so a stale one cites something else."""
+    citation = Path(build.__file__).parent.parent / "CITATION.cff"
+    if not citation.exists():
+        pytest.skip("built from a wheel, without the repository beside it")
+    text = citation.read_text(encoding="utf-8")
+    stated = re.search(r"^version:\s*(\S+)\s*$", text, re.M)
+    assert stated, "CITATION.cff states no version"
+    assert stated.group(1) == fluxatlas.__version__
+
+
 def test_every_asset_the_page_needs_is_installed():
     """The five files `render` inlines, read from wherever the package actually is."""
     for name in ("template.html", "base.css", "calendar.css", "calendar.js", "logo.svg"):

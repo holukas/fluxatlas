@@ -21,7 +21,7 @@ Both planned front ends are meant to be thin wrappers, so anything either would 
 uv run pytest
 ```
 
-About 182 tests, roughly a minute. Most run on synthetic data built by `tests/conftest.py`: a
+About 183 tests, roughly a minute. Most run on synthetic data built by `tests/conftest.py`: a
 twelve-year half-hourly record with seasonal and diurnal cycles, noise, and an imposed 0.8 K/decade
 warming that the trend tests assert is recovered. Twelve years, because `MIN_NORMAL_YEARS` is 8 and
 nothing interesting exists below it. The tests that read the bundled CH-LAE extract skip when it is
@@ -108,8 +108,8 @@ The version is declared once, in `pyproject.toml`. `fluxatlas.__version__` reads
 installed distribution and the page footer prints that, so nothing can claim a version other than
 the one that ran. A test asserts the two agree and that the changelog opens with the same number.
 
-1. Bump `version` in `pyproject.toml` and open a dated `## vX.Y.Z | D Mon YYYY` entry in
-   `CHANGELOG.md`.
+1. Bump `version` in `pyproject.toml` and in `CITATION.cff`, and open a dated
+   `## vX.Y.Z | D Mon YYYY` entry in `CHANGELOG.md`. A test asserts all three agree.
 2. `uv sync`, so the installed metadata matches, then `uv run pytest`.
 3. `uv build`.
 4. Publish, which is the author's to run since it is public and needs their token:

@@ -1,7 +1,12 @@
 <h1>
-  <img src="fluxatlas/assets/logo.svg" alt="" width="40" align="absmiddle">
+  <img src="https://raw.githubusercontent.com/holukas/fluxatlas/main/fluxatlas/assets/logo.svg" alt="" width="40" align="absmiddle">
   fluxatlas
 </h1>
+
+[![PyPI - Version](https://img.shields.io/pypi/v/fluxatlas?style=for-the-badge&color=%23EF6C00)](https://pypi.org/project/fluxatlas/)
+[![Documentation](https://img.shields.io/readthedocs/fluxatlas?style=for-the-badge)](https://fluxatlas.readthedocs.io)
+[![Tests](https://img.shields.io/github/actions/workflow/status/holukas/fluxatlas/tests.yml?branch=main&style=for-the-badge&label=tests)](https://github.com/holukas/fluxatlas/actions/workflows/tests.yml)
+[![License](https://img.shields.io/github/license/holukas/fluxatlas?style=for-the-badge&color=%237CB342)](https://github.com/holukas/fluxatlas/blob/main/LICENSE)
 
 Interactive explorer for FLUXNET-standardized ecosystem data.
 

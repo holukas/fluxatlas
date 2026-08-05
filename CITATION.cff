@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Hörtnagl"
+  given-names: "Lukas"
+  orcid: "https://orcid.org/0000-0002-5569-0761"
+  affiliation: "Grassland Sciences group, ETH Zürich"
+title: "fluxatlas"
+abstract: "Standalone HTML explorer for eddy covariance records: fluxes, meteorology, badges,
+  trends, day by day."
+version: 0.1.0
+date-released: 2026-08-06
+license: GPL-3.0
+url: "https://github.com/holukas/fluxatlas"
+repository-code: "https://github.com/holukas/fluxatlas"
+keywords:
+  - eddy covariance
+  - FLUXNET
+  - carbon flux
+  - micrometeorology
+  - data visualization

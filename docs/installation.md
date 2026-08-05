@@ -56,6 +56,6 @@ tables are generated from the registry. `uv sync` installs it, so one command co
 uv run pytest
 ```
 
-About 182 tests, roughly a minute. Most of them run on synthetic data built in `tests/conftest.py`,
+About 183 tests, roughly a minute. Most of them run on synthetic data built in `tests/conftest.py`,
 so a fresh checkout passes with no data file present. The tests that read the bundled CH-LAE
 extract skip when it is missing.
