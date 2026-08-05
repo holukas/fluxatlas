@@ -161,10 +161,9 @@ a { color: var(--series-1); }
 
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 
-.brand-mark {
-  width: 24px; height: 24px; border-radius: 7px; flex: none;
-  background: linear-gradient(150deg, var(--pole-cold), var(--pole-warm));
-}
+/* Holds the inlined logo.svg. The tiles carry their own corner radius, so the box must not clip. */
+.brand-mark { width: 24px; height: 24px; flex: none; display: block; }
+.brand-mark svg { width: 100%; height: 100%; display: block; }
 
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .brand-text strong { font-size: 14px; letter-spacing: .02em; }

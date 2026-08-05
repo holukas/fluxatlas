@@ -87,6 +87,7 @@ Author: Lukas Hoertnagl (holukas@ethz.ch)
 
 from __future__ import annotations
 
+import base64
 import calendar
 import json
 import re
@@ -1980,6 +1981,13 @@ def render(payload, out_path, title=None):
            + (ASSETS / "calendar.css").read_text(encoding="utf-8"))
     js = (ASSETS / "calendar.js").read_text(encoding="utf-8")
 
+    # One mark, two uses: inlined into the topbar, where it takes the page's --neutral-mid, and
+    # base64'd into the favicon, where nothing external may be fetched. Base64 rather than percent
+    # encoding because the mark is nine colours and every one of them carries a `#`.
+    logo = (ASSETS / "logo.svg").read_text(encoding="utf-8").strip()
+    favicon = ("data:image/svg+xml;base64,"
+               + base64.b64encode(logo.encode("utf-8")).decode("ascii"))
+
     # `</script>` inside the JSON would end the tag early, and `<!--` would open a comment.
     data = (json.dumps(payload, allow_nan=False, separators=(",", ":"))
             .replace("</", "<\\/").replace("<!--", "<\\!--"))
@@ -1989,6 +1997,8 @@ def render(payload, out_path, title=None):
             .replace("/*__CSS__*/", css)
             .replace("/*__DATA__*/", data)
             .replace("/*__JS__*/", js)
+            .replace("<!--__LOGO__-->", logo)
+            .replace("__FAVICON__", favicon)
             .replace("__TITLE__", title or f"{m['site']} — atlas "
                                            f"{m['first_year']}–{m['last_year']}"))
 

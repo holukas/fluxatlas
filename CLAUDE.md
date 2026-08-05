@@ -35,7 +35,7 @@ fa.build_atlas("CH-LAE_HH.csv", "atlas.html", variables=["TA"])  # TA and nothin
 | `variables.py` | The registry, keyed by canonical key (`TA`, `PREC`, …), each with the candidate FLUXNET columns that can supply it and the factor onto the canonical unit. |
 | `stats.py` | Theil-Sen trend, spells, growing season, rounding — the estimators shared with the CH-LAE dashboards. |
 | `build.py` | The ported computation: metrics, badges, day tests, normals, seasons, payload, render. The large one. |
-| `assets/` | `calendar.js`, `calendar.css`, `base.css`, `template.html`, inlined into the output. |
+| `assets/` | `calendar.js`, `calendar.css`, `base.css`, `template.html`, `logo.svg`, inlined into the output. |
 
 **Selection is the organizing principle.** A metric whose variable is absent is
 dropped, a badge whose `needs` are unmet is withheld with a reason, a day test
@@ -336,6 +336,24 @@ a hyphen; matching them avoids a `scikit-learn` → `sklearn` style split.
 is well within the modern sense of the word (the Human Cell Atlas is organized
 over cell type; a climate atlas is a set of monthly plates of normals and
 anomalies, which is close to exactly what this produces).
+
+### The mark
+
+`assets/logo.svg` is nine tiles of the anomaly grid, cold to warm along the
+diagonal — the page's own object rather than a symbol standing in for it. It uses
+only colours already in `base.css`, so a change to the ramps cannot leave the mark
+behind.
+
+**It is one file with two uses, and `render` derives the second from the first.**
+The mark is inlined into the topbar in place of the old gradient square, and
+base64'd into a `<link rel="icon">` data URI, because a page that must work from a
+memory stick cannot fetch an `.ico`. `test_the_logo_is_inlined_and_is_also_the_favicon`
+decodes the URI and asserts it still equals the file, so the two cannot drift.
+
+One tile is not a literal colour: the centre neutral reads
+`var(--neutral-mid, #d9d8d2)`, since a fixed light grey disappears into the dark
+topbar. The inlined copy takes the page's value; the standalone file and the
+favicon, where no custom property is defined, fall back to the light one.
 
 ## Hard rules
 

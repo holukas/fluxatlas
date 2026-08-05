@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="fluxatlas">
+<!-- Nine tiles of the anomaly grid, cold to warm along the diagonal. The colours are the
+     sequential and warm ramps of base.css. The centre tile is the neutral one, and it is the only
+     one that has to follow the theme: a fixed light grey disappears into a dark topbar. Reading it
+     through var() lets the inlined copy take the page's value while the standalone file - which is
+     also the favicon, where no custom property is defined - falls back to the light one. -->
+<rect x="3.5" y="3.5" width="17" height="17" rx="3.4" fill="#184f95"/>
+<rect x="24.0" y="3.5" width="17" height="17" rx="3.4" fill="#256abf"/>
+<rect x="44.5" y="3.5" width="17" height="17" rx="3.4" fill="#6da7ec"/>
+<rect x="3.5" y="24.0" width="17" height="17" rx="3.4" fill="#3987e5"/>
+<rect x="24.0" y="24.0" width="17" height="17" rx="3.4" fill="var(--neutral-mid, #d9d8d2)"/>
+<rect x="44.5" y="24.0" width="17" height="17" rx="3.4" fill="#ee9060"/>
+<rect x="3.5" y="44.5" width="17" height="17" rx="3.4" fill="#9ec5f4"/>
+<rect x="24.0" y="44.5" width="17" height="17" rx="3.4" fill="#dd5f2c"/>
+<rect x="44.5" y="44.5" width="17" height="17" rx="3.4" fill="#93380f"/>
+</svg>

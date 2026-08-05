@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from pathlib import Path
@@ -113,6 +114,7 @@ def test_the_page_is_one_self_contained_file(ta_atlas, tmp_path):
     # Nothing may be fetched at view time: the page has to work from a memory stick.
     assert not re.search(r'<(script|link)[^>]+(src|href)="(https?:)?//', html)
     assert "__DATA__" not in html and "__CSS__" not in html and "__JS__" not in html
+    assert "__LOGO__" not in html and "__FAVICON__" not in html
 
 
 def test_the_payload_cannot_close_the_script_tag_early(ta_atlas, tmp_path):
@@ -132,6 +134,28 @@ def test_the_title_reports_the_site_and_the_span(ta_atlas, tmp_path):
 def test_a_title_can_be_overridden(ta_atlas, tmp_path):
     out = ta_atlas.write(tmp_path / "atlas.html", title="A stated title", quiet=True)
     assert "<title>A stated title</title>" in out.read_text(encoding="utf-8")
+
+
+def test_the_logo_is_inlined_and_is_also_the_favicon(ta_atlas, tmp_path):
+    """One mark, two uses. The favicon has to be a data URI or the page stops being one file."""
+    out = ta_atlas.write(tmp_path / "atlas.html", quiet=True)
+    html = out.read_text(encoding="utf-8")
+    logo = (Path(build.__file__).parent / "assets" / "logo.svg").read_text(encoding="utf-8").strip()
+
+    assert logo in html, "the mark is not inlined in the topbar"
+    href = re.search(r'<link rel="icon" href="([^"]+)">', html)
+    assert href, "no favicon"
+    encoded = href.group(1)
+    assert encoded.startswith("data:image/svg+xml;base64,")
+    assert base64.b64decode(encoded.split(",", 1)[1]).decode("utf-8") == logo, \
+        "the favicon and the topbar mark have drifted apart"
+
+
+def test_the_logo_carries_no_reference_the_page_would_have_to_fetch(ta_atlas, tmp_path):
+    """A favicon data URI cannot resolve an external href, and neither can a memory stick."""
+    logo = (Path(build.__file__).parent / "assets" / "logo.svg").read_text(encoding="utf-8")
+    assert not re.search(r"(https?:)?//", logo.replace("http://www.w3.org/2000/svg", ""))
+    assert "<image" not in logo and "url(" not in logo
 
 
 def test_writing_twice_does_not_rebuild(ta_atlas, tmp_path):
