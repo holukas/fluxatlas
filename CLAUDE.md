@@ -8,12 +8,18 @@ RECO, H, LE), meteorology, and their quality flags, resolved from the whole
 record down to the single day. One site over decades is the target; several
 sites is a later possibility, not a current requirement.
 
-**Status: `v0.1.0` is cut and dated in `CHANGELOG.md`; the library and the CLI
-work for meteorology and for the turbulent fluxes.** `uv publish` has not been
-run, so PyPI still holds the 0.0.1 name placeholder.
-`Atlas` builds and renders, and a selection of one variable produces a correct
-one-variable page. The GUI is not written. `CHANGELOG.md` carries an unreleased
-`v0.1.0` entry; the documentation is in `docs/` and builds with Sphinx.
+**Status: `v0.1.0` is released.** It is on PyPI, the repository is public, the
+documentation is live at
+[fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io), each release is
+archived on Zenodo under the concept DOI `10.5281/zenodo.21815054`, and
+`.github/workflows/tests.yml` runs on every push. The library and the CLI work
+for meteorology and for the turbulent fluxes; a selection of one variable
+produces a correct one-variable page. The GUI is not written.
+
+The `v0.1.0` tag points at the commit that cut the release, four commits before
+the citation file, the README badges and three documentation fixes, so the tag
+does not contain its own paperwork. Not worth moving now; worth doing in one
+commit next time.
 
 ```bash
 fluxatlas record.csv --list                                   # what the file carries
@@ -360,6 +366,16 @@ too tight on first writing and only the real file caught it.
   generalized before it will give correct coverage.
 - **A desktop GUI** for choosing the file and the variables. `available()`
   exists to feed exactly that picker.
+- **A renderer smoke test.** The suite parses `calendar.js` and can go no
+  further. Executing it under a minimal DOM - opening the grid at each of the
+  four scales, a span panel at each, a day, and every variable page, failing on a
+  thrown error or on the string `undefined` in rendered text - would catch the
+  class that has bitten twice, where a card reads a field only one scale carries.
+- **The carbon badges do not travel to the season scale.** `SEASON_BADGES`
+  predates the fluxes, so `record_sink`, `sink_strong`, `sink_weak`, `gpp_high`
+  and `gpp_low` are silently unavailable on a season tile while working at the
+  month and year scales. Nothing decided that; it is an oversight with a
+  one-line fix and a test.
 
 Both front ends are meant to be thin wrappers. Anything either would need goes
 in `atlas.py`, not in them.
@@ -434,14 +450,20 @@ fit, keeping the full name in a `<title>`. A fixed 84 px margin was running
 
 ```bash
 uv sync --extra docs
-uv run sphinx-build -b html -W docs docs/_build/html
+uv run sphinx-build -b html -W -j auto docs docs/_build/html
 ```
 
-`-W` matches Read the Docs, which builds with `fail_on_warning: true`. The `docs`
-**extra** in `pyproject.toml` is the **only** place the documentation dependencies
-are stated, so there is no second requirements file. It is an extra rather than a
-dependency group because a PEP 735 group is not reachable from a path install,
-which is how Read the Docs installs a project.
+Live at [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io), built from
+`main` on every push. `-W` and `-j auto` are what Read the Docs runs, so a local
+build should use both: `fail_on_warning: true` is in `.readthedocs.yaml`, and the
+parallel read is the trap below.
+
+The `docs` **extra** in `pyproject.toml` is the **only** place the documentation
+dependencies are stated, so there is no second requirements file. It is an extra
+rather than a dependency group because a PEP 735 group is not reachable from a
+path install, which is how Read the Docs installs a project. The cost is that the
+hosted build resolves them fresh rather than from `uv.lock`, so it can pick up a
+newer Sphinx than a local build has.
 
 **Read the Docs reads the sources with `-j auto`, and a Windows checkout cannot.**
 Parallel reading needs `os.fork`, so `parallel_available` is False here and a
@@ -479,26 +501,47 @@ package. Keep them aligned unless there is a reason not to:
   Note the upper cap will block installs on 3.14 and needs a release to lift.
 - `authors = [{ name = "Lukas Hörtnagl", email = "holukas@ethz.ch" }]`
 
-Build and publish:
+### Cutting a release
+
+1. Bump `version` in `pyproject.toml` **and** in `CITATION.cff`, and open a dated
+   `## vX.Y.Z | D Mon YYYY` entry in `CHANGELOG.md`. A test asserts all three
+   agree with the installed distribution.
+2. `uv sync`, so the metadata the tests read is the new version, then
+   `uv run pytest`.
+3. `uv build`, commit, tag `vX.Y.Z`, push with `--follow-tags`.
+4. **Publish a GitHub Release from the tag.** Zenodo mints a DOI on a published
+   release and not on a bare tag, so a release that exists only as a tag is not
+   archived and not citable. The release body is the changelog entry.
+5. `uv publish`, which is the author's to run.
 
 ```
 uv build
 $env:UV_PUBLISH_TOKEN = (Read-Host 'PyPI token'); uv publish
 ```
 
+The username `uv publish` asks for is the literal string `__token__`, and the
+token is the password. Pasting the token into the username prompt fails with
+"Username/Password authentication is no longer supported", which does not sound
+like the mistake it is. The environment variable avoids the prompt entirely.
+
 **The version is declared once**, in `pyproject.toml`; `__init__.py` reads it back
 from the installed distribution, as `diive` does, and the page footer prints that.
 `tests/test_packaging.py` asserts the two agree, that the changelog and
-`CITATION.cff` state the same number, and that the five files in `assets/` are installed - a wheel built
-without them imports cleanly and then writes a page with no styles, no renderer
-and no mark, which nothing else would catch because every other test reads the
-source tree. `.github/workflows/tests.yml` runs the suite, the `-W` docs build and
+`CITATION.cff` state the same number, and that the five files in `assets/` are
+installed - a wheel built without them imports cleanly and then writes a page
+with no styles, no renderer and no mark, which nothing else would catch because
+every other test reads the source tree. `.github/workflows/tests.yml` runs the suite, the `-W` docs build and
 that wheel check on 3.12 and 3.13.
 
 The `Read-Host` form keeps the token out of `ConsoleHost_history.txt`, which
 records anything typed on the command line. Use a **project-scoped** token.
 Trusted publishing from GitHub Actions is the intended path for real releases and
-is not yet configured.
+is not yet configured; it would remove the token from the process altogether.
+
+`CITATION.cff` is what Zenodo builds its record from - the ORCID and the
+affiliation on the archived record came from there, not from the GitHub profile.
+It carries the **concept** DOI, which resolves to whichever version is current,
+and the version DOI beside it. Cite the concept one.
 
 ## Naming
 
@@ -532,8 +575,9 @@ favicon, where no custom property is defined, fall back to the light one.
 
 ## Hard rules
 
-- **Update `CHANGELOG.md` with the work**, under the unreleased `v0.1.0` entry,
-  in the same terms the rest of it uses.
+- **Update `CHANGELOG.md` with the work.** `v0.1.0` is released and dated, so new
+  work opens an unreleased entry above it rather than editing that one. Same
+  terms as the rest of the file.
 - **Commit only when explicitly asked**, never on your own initiative, and never
   `git push`. When asked, split the work into **logical groups** — one commit per
   coherent change, not one commit per session — and write subject + body with
