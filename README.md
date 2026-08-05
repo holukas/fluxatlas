@@ -7,6 +7,7 @@
 [![Documentation](https://img.shields.io/readthedocs/fluxatlas?style=for-the-badge)](https://fluxatlas.readthedocs.io)
 [![Tests](https://img.shields.io/github/actions/workflow/status/holukas/fluxatlas/tests.yml?branch=main&style=for-the-badge&label=tests)](https://github.com/holukas/fluxatlas/actions/workflows/tests.yml)
 [![License](https://img.shields.io/github/license/holukas/fluxatlas?style=for-the-badge&color=%237CB342)](https://github.com/holukas/fluxatlas/blob/main/LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21815054.svg)](https://doi.org/10.5281/zenodo.21815054)
 
 Interactive explorer for FLUXNET-standardized ecosystem data.
 
@@ -145,6 +146,15 @@ uv run pytest
 ```
 
 Most tests run on synthetic data, so the suite passes on a fresh checkout.
+
+## Citing
+
+Each release is archived on Zenodo. Cite the concept DOI, which resolves to whichever
+version is current, unless the work depends on a particular release:
+
+> Hörtnagl, L. *fluxatlas*. [doi:10.5281/zenodo.21815054](https://doi.org/10.5281/zenodo.21815054)
+
+`CITATION.cff` carries the same, and GitHub turns it into a "Cite this repository" button.
 
 ## Author
 

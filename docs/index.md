@@ -93,6 +93,13 @@ development
 changelog
 ```
 
+## Citing
+
+Each release is archived on Zenodo. Cite the concept DOI, which resolves to whichever version is
+current, unless the work depends on a particular release:
+
+> Hörtnagl, L. *fluxatlas*. [doi:10.5281/zenodo.21815054](https://doi.org/10.5281/zenodo.21815054)
+
 ## Author
 
 Lukas Hörtnagl, [Grassland Sciences group, ETH Zürich](https://gl.ethz.ch/)

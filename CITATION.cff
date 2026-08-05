@@ -11,6 +11,16 @@ abstract: "Standalone HTML explorer for eddy covariance records: fluxes, meteoro
 version: 0.1.0
 date-released: 2026-08-06
 license: GPL-3.0
+# The concept DOI, which resolves to whichever version is current. Cite this one unless the work
+# depends on a particular release, in which case cite the version DOI below it.
+doi: 10.5281/zenodo.21815054
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.21815054
+    description: "Concept DOI, resolving to the latest version"
+  - type: doi
+    value: 10.5281/zenodo.21815055
+    description: "DOI of v0.1.0"
 url: "https://github.com/holukas/fluxatlas"
 repository-code: "https://github.com/holukas/fluxatlas"
 keywords:
