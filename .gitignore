@@ -224,3 +224,8 @@ examples/output/
 # hundreds of megabytes - the CH-Oe2 one is 552 MB, well past GitHub's 100 MB
 # limit - so only the cut-down .parquet extract is committed.
 examples/data/*.csv
+
+# The renderer smoke test drives the built page under jsdom, which is a node
+# package rather than a Python one. `tests/js/package-lock.json` is committed so
+# CI installs the same jsdom every time; what it installs is not.
+tests/js/node_modules/

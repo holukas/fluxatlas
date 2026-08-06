@@ -32,8 +32,22 @@ jobs:
       - name: Install the project
         run: uv sync --locked --extra docs
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tests/js/package-lock.json
+
+      - name: Install jsdom
+        # The renderer smoke test executes the built page rather than only parsing it, which needs
+        # a DOM. jsdom is a node package and deliberately not a dependency of fluxatlas, so it is
+        # installed here alone; without it the smoke tests skip and the renderer goes unexercised.
+        run: npm ci
+        working-directory: tests/js
+
       - name: Run the tests
-        # Node is on the runner, so the renderer is parsed here rather than skipped.
+        # Node and jsdom are both present, so the renderer is parsed *and* run here rather than
+        # skipped. This is the only place either happens automatically.
         run: uv run pytest
 
       - name: Build the documentation

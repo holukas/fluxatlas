@@ -21,7 +21,7 @@ Both planned front ends are meant to be thin wrappers, so anything either would 
 uv run pytest
 ```
 
-About 183 tests, roughly a minute. Most run on synthetic data built by `tests/conftest.py`: a
+About 197 tests, roughly two minutes. Most run on synthetic data built by `tests/conftest.py`: a
 twelve-year half-hourly record with seasonal and diurnal cycles, noise, and an imposed 0.8 K/decade
 warming that the trend tests assert is recovered. Twelve years, because `MIN_NORMAL_YEARS` is 8 and
 nothing interesting exists below it. The tests that read the bundled CH-LAE extract skip when it is
@@ -38,18 +38,35 @@ missing, so a fresh checkout still passes.
   is what lets a test detect a systematic term put through a quadrature it should not be: the
   monthly half-spread must stay at 0.10 of the total rather than shrinking by √n.
 
-`tests/test_renderer_syntax.py` parses `calendar.js` and the inlined copy with `node --check`, and
-skips where node is absent. The renderer is one IIFE, so a syntax error blanks the whole page with
-nothing in the console but a bare document.
+### The renderer
+
+Two tests cover it, and they answer different questions.
+
+`tests/test_renderer_syntax.py` parses `calendar.js` and the inlined copy with `node --check`. The
+renderer is one IIFE, so a syntax error blanks the whole page with nothing in the console but a bare
+document.
+
+`tests/test_renderer_smoke.py` runs it. The built page is loaded under jsdom and walked: the grid at
+each of the four scales and under every metric, a span panel at each of the three span scales, a
+day, every variable page, and an unknown hash. It fails on anything thrown, on a view that renders
+almost no text, and on `undefined`, `NaN` or `[object Object]` reaching text a reader can see. Six
+selections are driven, among them the fluxes with no air temperature and a build with no seasons,
+because a renderer bug is usually specific to what was selected.
+
+jsdom is a node package rather than a Python one, and is deliberately not a dependency of
+`fluxatlas`. Install it once:
+
+```bash
+cd tests/js && npm install
+```
 
 ```{admonition} What the suite still cannot catch
 :class: warning
 
-A parser sees syntax and nothing else. A page that parses and then throws at run time looks
-identical to a blank one, and so does a card that reads a field only one scale carries:
-`MONTH_NAME[state.m - 1]` printed "Every undefined in the record" on the season and year panels
-while every test passed. Open the built page in a browser after touching `calendar.js` and check
-the console. See [selection](selection.md#a-one-variable-build-is-the-test).
+jsdom has no layout engine. Every measurement is zero or stubbed, so nothing that depends on a real
+one - a chart margin, a tooltip that has to stay on screen, a grid that has to fit - is tested by
+it. Neither is anything about how the page looks. Open the built page in a browser after touching
+`calendar.js`. See [selection](selection.md#a-one-variable-build-is-the-test).
 ```
 
 ## Example data

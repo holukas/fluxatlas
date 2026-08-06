@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+The renderer is now executed by the test suite rather than only parsed, the six carbon badges are
+judged at the season scale as well as the month and the year, and half-hourly input is stated as the
+scope of the tool rather than as a limit waiting to be lifted.
+
+### Added
+
+- **The renderer is run, not just parsed.** `tests/test_renderer_smoke.py` loads the built page
+  under jsdom and walks it: the grid at each of the four scales and under every metric, a span panel
+  at each of the three span scales, a day, every variable page, and an unknown hash. It fails on
+  anything thrown, on a view that renders almost no text, and on `undefined`, `NaN` or
+  `[object Object]` reaching text a reader can see. Six selections are driven, among them the fluxes
+  with no air temperature and a build with no seasons, because a renderer bug is usually specific to
+  what was selected.
+
+  This closes the gap that `node --check` could not: a page that parses and then throws looks
+  exactly like one that does not parse, and a card reading a field only one scale carries usually
+  does not throw at all - it renders the word `undefined` in a sentence. Both bugs of that shape
+  that shipped were confirmed to fail the new test before it was committed.
+
+  jsdom is a node package and is deliberately not a dependency of `fluxatlas`. It is installed on
+  its own with `npm install` in `tests/js`, and the smoke tests skip without it, as the syntax tests
+  already skip without node. CI installs it, so the renderer is executed on every push.
+
 ### Fixed
 
 - **The six carbon badges are judged at the season scale.** `record_sink`, `record_source`,

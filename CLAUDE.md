@@ -268,17 +268,19 @@ for a directory outside the repository, which is worth using since a page of thi
 record with the hourly layer is ~6 MB. One file is the point — do not add a second
 output to this script.
 
-`pytest` — 183 tests, ~70 s. Most run on **synthetic** data built by
+`pytest` — 197 tests, ~2 min, of which the renderer smoke test is about half the
+wall clock: it builds six pages and loads each into a DOM. Most run on
+**synthetic** data built by
 `tests/conftest.py`: a twelve-year half-hourly record with seasonal and diurnal
 cycles, noise, and an imposed 0.8 K/decade warming the trend tests assert is
 recovered. Twelve years because `MIN_NORMAL_YEARS` is 8 and nothing interesting
 exists below it. The tests that read the bundled extract skip when it is absent,
 so a fresh checkout still passes.
 
-`test_years.py`, `test_variable_pages.py` and `test_renderer_syntax.py` are the
-newest three. The first two assert what the payload has to carry for the year
-scale and the variable pages, since neither can be exercised from Python
-otherwise.
+`test_years.py`, `test_variable_pages.py`, `test_renderer_syntax.py` and
+`test_renderer_smoke.py` are the newest four. The first two assert what the
+payload has to carry for the year scale and the variable pages; the last two are
+the renderer's own, and only the last of them executes it.
 
 `add_fluxes()` puts the five fluxes on top of that record. Three properties of it
 are load-bearing:
@@ -375,11 +377,6 @@ too tight on first writing and only the real file caught it.
 
 - **A desktop GUI** for choosing the file and the variables. `available()`
   exists to feed exactly that picker.
-- **A renderer smoke test.** The suite parses `calendar.js` and can go no
-  further. Executing it under a minimal DOM - opening the grid at each of the
-  four scales, a span panel at each, a day, and every variable page, failing on a
-  thrown error or on the string `undefined` in rendered text - would catch the
-  class that has bitten twice, where a card reads a field only one scale carries.
 
 Wider input than half-hourly is **not** on this list; see the scope statement at
 the top of this file.
@@ -426,27 +423,50 @@ to specific variable keys. Most are guarded by `if (VARS.TA)` and are fine. One
 was not: `seasonLine` read `se.TA.v` outright, which threw for **any** selection
 without air temperature — the fluxes alone, or precipitation alone — and was
 never caught because every tested build included TA. It now reads through
-`leadKey()`, and `test_the_renderer_never_dereferences_a_fixed_variable_on_a_span`
-asserts the shape statically, since pytest cannot execute the renderer.
-
-When adding a variable, check a build of **that variable alone** in a browser.
-The Python suite cannot catch this class of bug.
+`leadKey()`, `test_the_renderer_never_dereferences_a_fixed_variable_on_a_span`
+asserts the shape statically, and the smoke test below drives a no-TA selection
+so the same mistake made anywhere else fails rather than shipping.
 
 **The renderer is one IIFE, so any syntax error in it blanks the whole page** —
 markup loads, nothing draws, and no error reaches a reader. A stray `;` inside a
 `chartCard({...})` string did exactly that while all 149 tests passed.
 `test_the_renderer_has_no_statement_break_inside_a_card_literal` guards the one
 shape that caused it, and `tests/test_renderer_syntax.py` parses both
-`calendar.js` and the inlined copy with `node --check`, skipping where node is
-absent. That catches syntax and nothing else — a page that parses and then throws
-at run time looks identical to a blank one — so **open the built page after
-touching `calendar.js`** and check the console.
+`calendar.js` and the inlined copy with `node --check`.
 
-The class of bug no parser sees is the renderer reading a field only one scale
+**`tests/test_renderer_smoke.py` then runs it.** The built page is loaded under
+jsdom by `tests/js/smoke.mjs` and walked: the grid at each of the four scales and
+under every metric, a span panel at each of the three span scales, a day, every
+variable page, and an unknown hash. It fails on anything thrown, on a view that
+renders almost no text, and on `undefined`, `NaN` or `[object Object]` reaching
+text a reader can see. Six selections are driven, including the fluxes with no
+air temperature and `seasons="none"`, because the bugs of this class have always
+been selection-specific.
+
+Its three failure modes were each confirmed by mutation before it was committed:
+a cross-scale field in a title reproduces "Every undefined in the record"
+verbatim, `VARS.TA.label` in `renderVariable` fails **only** the no-TA selection,
+and a throw at load fails everything.
+
+jsdom is a node package, not a Python one, so it is installed on its own:
+
+```bash
+cd tests/js && npm install
+```
+
+Without it — or without node — the smoke tests skip, and the older instruction
+stands in for them: **open the built page after touching `calendar.js`** and
+check the console. CI installs it, so the renderer is executed on every push.
+
+The class of bug this exists for is the renderer reading a field only one scale
 carries. `MONTH_NAME[state.m - 1]` in eight card titles produced "Every undefined
 in the record" on both the season and the year panel, and nothing failed.
 Anything a panel prints goes through `scale()`, `peerOf`, `peerWord`, `spanNoun`
 or `normalWord`; reaching for `mo.m` outside the month scale is the bug.
+
+When adding a variable, add a selection to the smoke test that carries **that
+variable alone**, and check the built page in a browser as well: jsdom has no
+layout, so nothing that depends on a real measurement is tested by it.
 
 Chart row labels are measured, not estimated: `textWidth` sizes the left margin
 off the real glyph widths and `trimText` shortens anything that still will not
