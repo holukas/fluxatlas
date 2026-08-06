@@ -1281,22 +1281,28 @@ def season_note(scheme):
 # count of days or a run of them does not, because "five frost days" is a remarkable January and an
 # unremarkable winter. The counts are still shown on a season's page, as numbers rather than as
 # claims.
+#
+# The six carbon badges satisfy that criterion - each is a rank or a z-score against the span's own
+# peer group - and they belong here for the same reason the temperature ones do. They were absent
+# for a while only because this set was written before the fluxes existed, which made a season the
+# one scale that could show a carbon metric and then say nothing about it.
 SEASON_BADGES = {
     "sparse", "record_warm", "record_cold", "warm", "cold", "record_wet", "record_dry",
     "wet", "dry", "sunny", "dull", "vpd_record", "vpd_high", "vpd_low", "vpd_soil",
-    "soil_dry", "soil_wet", "hot_dry", "gs_start", "gs_end", "last_frost", "first_frost",
+    "soil_dry", "soil_wet", "hot_dry",
+    "record_sink", "record_source", "sink_strong", "sink_weak", "gpp_high", "gpp_low",
+    "gs_start", "gs_end", "last_frost", "first_frost",
 }
 
-# The same rule one scale further out, with two differences from the seasonal set.
+# The same rule one scale further out, and it differs from the seasonal set in exactly one way: the
+# four turning points drop out. Every year holds a last frost and a growing season, so at this scale
+# the four of them would land on all twenty-one tiles and distinguish none of them; what a year has
+# to say about its season is how long it ran and how late it began, which is what the year-only
+# badges above state instead.
 #
-# The four turning points drop out. Every year holds a last frost and a growing season, so at this
-# scale the four of them would land on all twenty-one tiles and distinguish none of them; what a
-# year has to say about its season is how long it ran and how late it began, which is what the
-# year-only badges below state instead.
-#
-# The carbon badges come in. A year is the scale the carbon balance is normally quoted at, and the
-# sign of the annual figure is a statement no month can make: every summer month is a sink and
-# every winter month a source.
+# What a year adds beyond this set is not here but in `only=("year",)`: the sign of the annual
+# carbon balance, the length of the growing season, and the frost dates are claims no shorter span
+# can make.
 YEAR_BADGES = {
     "sparse", "record_warm", "record_cold", "warm", "cold", "record_wet", "record_dry",
     "wet", "dry", "sunny", "dull", "vpd_record", "vpd_high", "vpd_low", "vpd_soil",
@@ -2525,9 +2531,14 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         def earned_by(span_rows, key=badge["key"]):
             return sum(1 for row in span_rows for b in row["b"] if b["k"] == key)
 
+        # Asked of `badge_at_scale` rather than read off `only`, because `only` is one of the three
+        # things that decide it. Reading `only` alone told the legend that a count of frost days was
+        # judged at the season scale, where it is not, and the count of zero it then printed read as
+        # "no season had one" rather than "this is not a claim a season makes".
         badge_meta.append(dict(key=badge["key"], label=badge["label"], group=badge["group"],
                                icon=badge["icon"], tone=badge["tone"],
-                               scales=list(badge.get("only", ("month", "season", "year"))),
+                               scales=[sc for sc in ("month", "season", "year")
+                                       if badge_at_scale(badge, sc)],
                                about=badge["about"].format(
                                    sparse=SPARSE_COVERAGE,
                                    flux_sparse=varreg.FLUX_COVERAGE.warn),

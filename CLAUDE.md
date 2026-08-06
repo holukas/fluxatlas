@@ -380,11 +380,6 @@ too tight on first writing and only the real file caught it.
   four scales, a span panel at each, a day, and every variable page, failing on a
   thrown error or on the string `undefined` in rendered text - would catch the
   class that has bitten twice, where a card reads a field only one scale carries.
-- **The carbon badges do not travel to the season scale.** `SEASON_BADGES`
-  predates the fluxes, so `record_sink`, `sink_strong`, `sink_weak`, `gpp_high`
-  and `gpp_low` are silently unavailable on a season tile while working at the
-  month and year scales. Nothing decided that; it is an oversight with a
-  one-line fix and a test.
 
 Wider input than half-hourly is **not** on this list; see the scope statement at
 the top of this file.

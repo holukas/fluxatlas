@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The six carbon badges are judged at the season scale.** `record_sink`, `record_source`,
+  `sink_strong`, `sink_weak`, `gpp_high` and `gpp_low` are each a rank or a z-score against the
+  span's own peer group, which is the stated criterion for a badge that travels, and each already
+  worked at the month and the year scale. They were absent from a season only because the set that
+  decides this was written before the fluxes existed. A season could show a carbon metric and then
+  say nothing about it.
+
+- **The badge legend no longer claims a scale a badge is not judged at.** The payload derived a
+  badge's scales from `only` alone, which is one of three things that decide it, so a count of frost
+  days was listed as judged at the season scale and reported zero seasons - which reads as "no
+  season had one" rather than "this is not a claim a season makes". It is now asked of
+  `badge_at_scale`, the one place that decides.
+
 ### Changed
 
 - **Half-hourly input is the scope, not a gap.** Everything assumes 30-minute records, and a file on

@@ -89,6 +89,56 @@ def test_a_year_only_badge_never_lands_on_a_month_or_a_season(full_atlas):
         assert not year_only & {b["k"] for b in row["b"]}
 
 
+# The two travelling sets are written out rather than derived from each other, because a future
+# badge could belong to one and not the other. That makes drift possible, and drift is exactly how
+# the carbon badges came to be judged at the year scale and not at the season scale for a while. So
+# the relationship is pinned here: the year is the season's set less the four turning points, every
+# one of which every year holds.
+TURNING_POINTS = {"gs_start", "gs_end", "last_frost", "first_frost"}
+
+
+def test_the_two_travelling_sets_differ_only_by_the_turning_points():
+    assert build.SEASON_BADGES - build.YEAR_BADGES == TURNING_POINTS
+    assert build.YEAR_BADGES - build.SEASON_BADGES == set()
+
+
+def test_every_travelling_badge_is_a_badge():
+    """A key that no longer names a rule sits in the set forever, judged at nothing."""
+    keys = {b["key"] for b in build.BADGES}
+    assert build.SEASON_BADGES <= keys
+    assert build.YEAR_BADGES <= keys
+
+
+def test_the_carbon_badges_are_judged_at_the_season_scale():
+    """Each is a rank or a z-score against the span's own peers, so each travels as far as any."""
+    carbon = {"record_sink", "record_source", "sink_strong", "sink_weak", "gpp_high", "gpp_low"}
+    assert carbon <= build.SEASON_BADGES
+    for key in carbon:
+        badge = next(b for b in build.BADGES if b["key"] == key)
+        assert build.badge_at_scale(badge, "season") is True
+        assert build.badge_at_scale(badge, "year") is True
+
+
+def test_a_season_earns_a_carbon_badge(flux_atlas):
+    """The set says they are judged there; this says one actually lands."""
+    carbon = {"record_sink", "record_source", "sink_strong", "sink_weak", "gpp_high", "gpp_low"}
+    earned = {b["k"] for row in flux_atlas.payload["seasons"] for b in row["b"]}
+    assert carbon & earned, "no season of the record earned any carbon badge"
+
+
+def test_the_legend_names_the_scales_a_badge_is_actually_judged_at(flux_atlas):
+    """`scales` drives "not judged at this scale" in the legend, so it has to agree with the rule."""
+    by_key = {b["key"]: b for b in build.BADGES}
+    for meta in flux_atlas.payload["badges"]:
+        badge = by_key[meta["key"]]
+        assert meta["scales"] == [sc for sc in ("month", "season", "year")
+                                  if build.badge_at_scale(badge, sc)]
+        # A badge counted at a scale it is not judged at is the mismatch this guards against.
+        for scale, n in (("season", meta["n_season"]), ("year", meta["n_year"])):
+            if scale not in meta["scales"]:
+                assert n == 0, f"{meta['key']} is counted at the {scale} scale it is withheld from"
+
+
 def test_a_day_count_badge_never_lands_on_a_year(full_atlas):
     """Five frost days is a remarkable January and an unremarkable year."""
     for row in full_atlas.payload["years"]:
