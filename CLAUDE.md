@@ -597,9 +597,11 @@ favicon, where no custom property is defined, fall back to the light one.
   from. It advances by merging `indev`, and that merge is the author's to make.
   Check the branch before committing; if the checkout is on `main`, switch.
 - **Commit only when explicitly asked**, never on your own initiative, and never
-  `git push`. When asked, split the work into **logical groups** — one commit per
-  coherent change, not one commit per session — and write subject + body with
-  **no `Co-Authored-By` or "Generated with Claude Code" trailer**.
+  `git push`. Being asked once authorizes that commit and no later one: after it,
+  go back to leaving the tree alone until asked again. When asked, split the work
+  into **logical groups** — one commit per coherent change, not one commit per
+  session — and write subject + body with **no `Co-Authored-By` or "Generated
+  with Claude Code" trailer**.
 - **Never publish to PyPI.** Building (`uv build`) is fine; `uv publish` is the
   author's to run, since it is public and needs their token.
 
