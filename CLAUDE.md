@@ -8,18 +8,27 @@ RECO, H, LE), meteorology, and their quality flags, resolved from the whole
 record down to the single day. One site over decades is the target; several
 sites is a later possibility, not a current requirement.
 
-**Status: `v0.1.0` is released.** It is on PyPI, the repository is public, the
-documentation is live at
+**Status: released and installable.** `v0.1.0` is on PyPI, the repository is
+public, the documentation is live at
 [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io), each release is
 archived on Zenodo under the concept DOI `10.5281/zenodo.21815054`, and
 `.github/workflows/tests.yml` runs on every push. The library and the CLI work
 for meteorology and for the turbulent fluxes; a selection of one variable
 produces a correct one-variable page. The GUI is not written.
 
-The `v0.1.0` tag points at the commit that cut the release, four commits before
-the citation file, the README badges and three documentation fixes, so the tag
-does not contain its own paperwork. Not worth moving now; worth doing in one
-commit next time.
+`v0.2.0` is cut and dated in `CHANGELOG.md`, with artifacts built, and is waiting
+on the release and the publish.
+
+Two things to know about the first release. The `v0.1.0` tag points at the commit
+that cut it, four commits before the citation file, the README badges and three
+documentation fixes, so it does not contain its own paperwork; and its
+`.readthedocs.yaml` is the broken one, so activating that version on Read the
+Docs would fail. Neither is worth repairing. Both are avoided next time by
+cutting the release in one commit.
+
+**Version numbers do not belong in the prose.** The README and the front page
+used to open by naming the current version, which went stale within the day. The
+badge and the documentation flyout carry the number; the prose says what exists.
 
 ```bash
 fluxatlas record.csv --list                                   # what the file carries

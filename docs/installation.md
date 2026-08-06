@@ -3,10 +3,15 @@
 `fluxatlas` needs **Python 3.12 or 3.13**. The upper bound is a pin taken from `diive`; a release
 will be needed to lift it for 3.14.
 
+```bash
+pip install fluxatlas
+```
+
+or `uv add fluxatlas`. That is all a reader of an atlas needs.
+
 ## From source
 
-Until v0.1.0 reaches PyPI, which still holds only the `0.0.1` name placeholder, install from a
-checkout.
+For development, or to run the examples, which read data files that are not in the distribution:
 
 ```bash
 git clone https://github.com/holukas/fluxatlas.git

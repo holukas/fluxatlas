@@ -18,21 +18,26 @@ the month and the single day. Fluxes, meteorology and their quality flags.
 The output is a single file. It carries its own scripts and styles, so it opens from a
 memory stick with no server and no network.
 
-> **v0.1.0, the first release with any content.** The library and the command line work for
-> meteorology and for the turbulent fluxes. There is no desktop GUI yet. Until the release
-> reaches PyPI, install from source.
+The library and the command line build atlases for meteorology and for the turbulent fluxes.
+A desktop GUI is planned and not written.
 
-**Documentation: [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io)**
+**Documentation: [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io/en/stable/)**
 
 ## Install
+
+```bash
+pip install fluxatlas
+```
+
+or `uv add fluxatlas`. Python 3.12 or 3.13.
+
+From a checkout, for development or to run the examples:
 
 ```bash
 git clone https://github.com/holukas/fluxatlas.git
 cd fluxatlas
 uv sync
 ```
-
-Python 3.12 or 3.13.
 
 ## Command line
 

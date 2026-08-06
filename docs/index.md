@@ -6,12 +6,12 @@
 It reads fluxes (NEE, GPP, RECO, H, LE), meteorology and their quality flags. Every month of the
 record sits on one grid, and the grid opens down to the season, the month and the single day.
 
-```{admonition} Version 0.1.0
+```{admonition} What exists
 :class: note
 
-This is v0.1.0, the first release with any content. The library and the command line build atlases
-for meteorology and for the turbulent fluxes, and there is no desktop GUI yet. Until the release
-reaches PyPI, [installation](installation.md) is from source.
+The library and the command line build atlases for meteorology and for the turbulent fluxes. A
+desktop GUI is planned and not written. The version these pages describe is in the flyout at the
+bottom of the page.
 ```
 
 ```bash
@@ -31,7 +31,7 @@ with no server and no network.
 
 ## Where to start
 
-- [Installation](installation.md): from source, with `uv` or `pip`.
+- [Installation](installation.md): `pip install fluxatlas`, or from a checkout.
 - [Getting started](getting-started.md): a first atlas, from either front end.
 - [The command line](cli.md): every option, generated from the parser.
 - [Reading the input](input.md): what the reader accepts, and how to name your own columns.
