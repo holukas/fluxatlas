@@ -8,7 +8,7 @@ authors:
 title: "fluxatlas"
 abstract: "Standalone HTML explorer for eddy covariance records: fluxes, meteorology, badges,
   trends, day by day."
-version: 0.1.0
+version: 0.2.0
 date-released: 2026-08-06
 license: GPL-3.0
 # The concept DOI, which resolves to whichever version is current. Cite this one unless the work
@@ -18,9 +18,6 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.21815054
     description: "Concept DOI, resolving to the latest version"
-  - type: doi
-    value: 10.5281/zenodo.21815055
-    description: "DOI of v0.1.0"
 url: "https://github.com/holukas/fluxatlas"
 repository-code: "https://github.com/holukas/fluxatlas"
 keywords:

@@ -53,39 +53,34 @@ The figure is used either way, and the reader is told what it rests on.
    :family: flux
 ```
 
-Meteorology is measured almost continuously when it is measured at all. On the CH-Oe2 record the
-median month is 100 % measured for air temperature and 99.8 % for shortwave, so a month under half
-measured is a real outage and worth flagging.
+Meteorology is measured almost continuously when it is measured at all, so a month that has fallen
+under half measured is a real outage and worth flagging.
 
 A turbulent flux cannot reach that, and not because anything failed. Half of every record is night,
-and u\* filtering rejects the calm nights by design. A half-hourly NEE that is 40 to 50 % measured
-is a good one: on CH-Oe2 the median month is 43.7 % measured, and the best month in twenty-one
-years reaches 68.1 %. Warning a flux at the meteorological line would flag every month of every
-flux record ever produced, which says nothing. The line sits at 20 %, where a month stops being a
-thin measurement and becomes very largely model. On that record it marks 24 of 252 months instead
-of all of them.
+and u\* filtering rejects the calm nights by design, so a half-hourly NEE that is around half
+measured is a good one. Warning a flux at the meteorological line would flag every month of every
+flux record ever produced, which says nothing. The line sits instead where a month stops being a
+thin measurement and becomes very largely model.
 
 ## What this replaced
 
-Both gates used to read the measured share: meteorology at 80/90, the fluxes at 35/40. That gave
-two silences.
+Both gates used to read the measured share, at thresholds set for meteorology. That gave two
+silences.
 
-- No month of any flux record reaches 90 % measured. At the meteorological threshold no flux
-  normal, rank, anomaly, trend or badge was ever computed, and the sparse badge landed on all 252
-  tiles.
-- Even at 40 %, January, October and December of CH-Oe2 had fewer than `MIN_NORMAL_YEARS`
-  qualifying years. Those calendar months had no normal, and three columns of the anomaly grid were
-  blank.
+- No month of any flux record reaches the meteorological threshold, so no flux normal, rank,
+  anomaly, trend or badge was ever computed, and the sparse badge landed on every tile.
+- Even at a threshold lowered for the fluxes, some calendar months had fewer than
+  `MIN_NORMAL_YEARS` qualifying years, so they had no normal at all and stood blank on the anomaly
+  grid.
 
-Both are gone. On CH-Oe2 every variable now publishes a trend over all 21 years, where before `TA`
-was withheld at 7 complete years and every flux at 3.
+Both are gone. Every variable of a real record now publishes a trend over its whole span, where
+before most were withheld for want of qualifying years.
 
-## The cost is real, and the page states it
+## What using the filled values costs
 
-The measured share is not constant through a record. At CH-Oe2 it rises from about 35 % to 50 %,
-`corr(measured share, year) = +0.85`, and `corr(annual GPP, measured share) = +0.57` against
-`corr(annual GPP, year) = +0.51`. The GPP and RECO slopes are therefore entangled with coverage
-improving.
+The measured share is not constant through a record. Where it rises over the years, as it does at
+CH-Oe2, annual GPP correlates about as strongly with coverage as it does with time, so the GPP and
+RECO slopes are entangled with the coverage improving.
 
 The trend note used to claim that a slope is never a picture of changing coverage. With the old
 gates gone, so is that guarantee, and the note now says which variables lean on the filling and by

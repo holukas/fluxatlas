@@ -56,9 +56,9 @@ on every tile and separate none of them.
 | Late spring frost, Early autumn frost | A frost boundary moved by at least a fortnight, which shortens the frost-free period at one end. |
 | A year of extremes | Four or more of the year's months departed at least two standard deviations from their own calendar-month normal. An annual figure can average out to nothing while the months inside it swing at both ends. |
 
-The thresholds on the last one are set from the record rather than picked: at 1.5 standard
-deviations and three months it marked 18 of the 21 CH-LAE years, which is a badge that says
-nothing. At 2.0 and four months it marks 4, which is the rate the record badges run at.
+The thresholds on the last one are set against a real record rather than picked. A looser pair
+marked most of the years, which is a badge that says nothing; these mark a handful, which is the
+rate the record badges run at.
 
 ### What stood out in a year
 
@@ -166,7 +166,7 @@ record mean, because the sign convention makes zero the meaningful boundary. See
 
 Chart row labels are measured, not estimated. The left margin is sized from the real glyph widths,
 and anything that still will not fit is shortened, with the full name kept in a `<title>`. A fixed
-84 px margin ran "Gross primary productivity" off the edge of the card.
+margin ran the longer variable names off the edge of the card.
 
 ## The mark
 

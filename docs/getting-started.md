@@ -125,8 +125,8 @@ uv run python examples/build_lae_meteo_atlas.py --open
 ```
 
 This builds two atlases from the committed twenty-one-year CH-LAE meteo extract: one of all six
-variables, one of air temperature alone. The first offers 20 metrics and 37 badge types, the second
-7 and 16. The extract keeps its CH-LAE column names, because naming columns by hand is the general
+variables, one of air temperature alone, which is the [selection](selection.md) behaviour in one
+run. The extract keeps its CH-LAE column names, because naming columns by hand is the general
 case.
 
 ```bash
@@ -136,6 +136,6 @@ uv run python examples/build_oe2_flux_atlas.py --input SOME_OTHER_FULLSET.csv --
 
 The other case: a real FLUXNET FULLSET record, whose columns the registry finds unaided, carrying
 the fluxes. The script prints what the file can supply, then builds one page from all of it. Its
-default input is 552 MB and is not committed. `--input` points it at any FLUXNET-standardized
-half-hourly file, and `--out` writes outside the repository, which is worth doing: a page of that
-record with the hourly layer is about 6 MB.
+default input is not committed. `--input` points it at any FLUXNET-standardized half-hourly file,
+and `--out` writes outside the repository, which is worth doing: a page of a record that long runs
+to several megabytes.

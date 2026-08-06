@@ -4,7 +4,7 @@
 </h1>
 
 [![PyPI - Version](https://img.shields.io/pypi/v/fluxatlas?style=for-the-badge&color=%23EF6C00)](https://pypi.org/project/fluxatlas/)
-[![Documentation](https://img.shields.io/readthedocs/fluxatlas?style=for-the-badge)](https://fluxatlas.readthedocs.io)
+[![Documentation](https://img.shields.io/readthedocs/fluxatlas/stable?style=for-the-badge)](https://fluxatlas.readthedocs.io/en/stable/)
 [![Tests](https://img.shields.io/github/actions/workflow/status/holukas/fluxatlas/tests.yml?branch=main&style=for-the-badge&label=tests)](https://github.com/holukas/fluxatlas/actions/workflows/tests.yml)
 [![License](https://img.shields.io/github/license/holukas/fluxatlas?style=for-the-badge&color=%237CB342)](https://github.com/holukas/fluxatlas/blob/main/LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21815054.svg)](https://doi.org/10.5281/zenodo.21815054)
@@ -61,7 +61,7 @@ Seasons default to the four meteorological ones. Name the first and the rest fol
 `--seasons DJFMAM` gives two half-years, `--seasons none` drops the seasonal scale.
 
 `python -m fluxatlas` is the same entry point. Every option is listed in the
-[command-line reference](https://fluxatlas.readthedocs.io/en/latest/cli.html).
+[command-line reference](https://fluxatlas.readthedocs.io/en/stable/cli.html).
 
 ## Use as a library
 
@@ -88,7 +88,7 @@ fa.Atlas("local_record.parquet", {
 ```
 
 The file has to be half-hourly, carry a timestamp, and use `-9999` or empty for missing.
-[Files that are not FLUXNET-standardized](https://fluxatlas.readthedocs.io/en/latest/other-formats.html)
+[Files that are not FLUXNET-standardized](https://fluxatlas.readthedocs.io/en/stable/other-formats.html)
 works through a full conversion.
 
 ## Variables
@@ -162,9 +162,8 @@ Lukas Hörtnagl, [Grassland Sciences group, ETH Zürich](https://gl.ethz.ch/)
 ([holukas@ethz.ch](mailto:holukas@ethz.ch)) ·
 [github.com/holukas/fluxatlas](https://github.com/holukas/fluxatlas)
 
-The page generalizes the calendar explorer built for the
-[CH-LAE flux product](https://github.com/holukas/dataset_ch-lae_flux_product), which was
-tied to one site.
+It generalizes the calendar explorer built for the
+[CH-LAE flux product](https://github.com/holukas/dataset_ch-lae_flux_product).
 
 ## License
 

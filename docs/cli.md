@@ -31,7 +31,7 @@ Naming nothing builds every registry variable the file can supply.
 ## Examples
 
 ```bash
-# What does this file carry? Read from the header, so it is quick even on a 552 MB file.
+# What does this file carry? Read from the header, so it is quick on a large file.
 fluxatlas record.csv --list
 
 # Everything the registry finds, written beside the input as <SITE>_atlas.html

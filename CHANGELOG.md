@@ -1,5 +1,62 @@
 # Changelog
 
+## v0.2.0 | 6 Aug 2026
+
+The index is now the start of each averaging window, a file that is not half-hourly is refused
+rather than half read, and the documentation builds. No figure on a page changes.
+
+### Changed
+
+- **The index is the start of the averaging window**, which is the stamp a FLUXNET file already
+  carries, rather than the middle derived from both. A 30-minute window falls inside one day, one
+  month and one hour whichever end of it is named, so every figure on the page is what it was; what
+  changes is that the label a reader sees is the one in the column they read.
+
+  A frame arriving on its own `DatetimeIndex` is now floored onto the window rather than taken at
+  its word, which maps a start-stamped and a middle-stamped file onto the same index. **A
+  start-stamped parquet file, which is what most local products are, could not be read at all
+  before this.**
+
+### Fixed
+
+- **A file that is not half-hourly is refused, with its own spacing named.** Hourly stamps land on
+  the half-hourly grid rather than missing it, so an hourly file would have been reindexed into a
+  record that was half missing, with every coverage figure halved and nothing on the page to say
+  why. The old index rejected such a file by accident; now it is checked.
+
+- **The documentation could not be built by Read the Docs.** Three separate causes, each hidden
+  behind the previous one: `search: enabled: true` is not a key the configuration has, and one
+  unknown key fails validation before an environment is even created; the documentation
+  dependencies were a PEP 735 dependency group, which is not reachable from the path install Read
+  the Docs performs; and `sphinx-argparse` declares itself safe to read in parallel while
+  registering a domain with no `merge_domaindata`, which crashes the parallel read that both the
+  hosted build and the CI job run. `docs/conf.py` now supplies the missing method, guarded so a
+  released fix upstream wins over it.
+- **The CI job builds the documentation with `-j auto`**, as Read the Docs does. Parallel reading
+  needs `os.fork`, so a Windows checkout builds serially whatever it is asked for and cannot
+  reproduce a parallel-only failure at all.
+
+### Added
+
+- `CITATION.cff`, carrying the concept DOI that resolves to whichever version is current. Zenodo
+  builds its record from it, so the ORCID and the affiliation on the archive come from there.
+- Badges for the release, the documentation, the test run, the licence and the DOI.
+
+### Changed
+
+- **The README is cut to about half its length.** It had grown into a second copy of the
+  documentation: read timings to the hundredth of a second, the derivation of the uncertainty
+  aggregation, the argument for gating on availability. All of that is in the documentation, and a
+  reader deciding whether to try this needs none of it. What stays is what someone does with the
+  package. It also gains the mark, an install section it never had, and the author and citation at
+  the end.
+- The documentation links point at `stable` rather than `latest`, so a reader lands on released
+  pages rather than on whatever is on `main`.
+- Example column names are English rather than German, in the documentation, the command line's own
+  help and two test files.
+- The documentation dependencies are a `docs` **extra** rather than a dependency group. They are
+  still stated in exactly one place.
+
 ## v0.1.0 | 6 Aug 2026
 
 **First release.** Builds a standalone, browsable HTML page from the half-hourly

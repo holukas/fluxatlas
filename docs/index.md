@@ -103,15 +103,12 @@ current, unless the work depends on a particular release:
 ## Author
 
 Lukas Hörtnagl, [Grassland Sciences group, ETH Zürich](https://gl.ethz.ch/)
-([holukas@ethz.ch](mailto:holukas@ethz.ch)).
-
-Every built page carries the same credit in its footer, since an atlas is one file that travels
-away from whatever produced it.
+([holukas@ethz.ch](mailto:holukas@ethz.ch)). Every built page carries the same credit in its
+footer.
 
 ## License
 
 GPL-3.0. The source is at [github.com/holukas/fluxatlas](https://github.com/holukas/fluxatlas).
 
-The page generalizes the calendar explorer built for the
-[CH-LAE flux product](https://github.com/holukas/dataset_ch-lae_flux_product), which was tied to one
-site.
+It generalizes the calendar explorer built for the
+[CH-LAE flux product](https://github.com/holukas/dataset_ch-lae_flux_product).
