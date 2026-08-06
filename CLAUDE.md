@@ -8,27 +8,23 @@ RECO, H, LE), meteorology, and their quality flags, resolved from the whole
 record down to the single day. One site over decades is the target; several
 sites is a later possibility, not a current requirement.
 
-**Status: released and installable.** `v0.1.0` is on PyPI, the repository is
-public, the documentation is live at
+**Status: released and installable**, with `pip install fluxatlas`. The repository
+is public, the documentation is live at
 [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io), each release is
 archived on Zenodo under the concept DOI `10.5281/zenodo.21815054`, and
 `.github/workflows/tests.yml` runs on every push. The library and the CLI work
 for meteorology and for the turbulent fluxes; a selection of one variable
 produces a correct one-variable page. The GUI is not written.
 
-`v0.2.0` is cut and dated in `CHANGELOG.md`, with artifacts built, and is waiting
-on the release and the publish.
+`CHANGELOG.md` says which version is current and what changed in it. This file
+does not, and neither does the README or the front page: a sentence naming a
+version has to be found and edited whenever the version moves, and every one that
+existed went stale the day it was written. State what exists; let the changelog,
+the badge and the documentation flyout carry the number.
 
-Two things to know about the first release. The `v0.1.0` tag points at the commit
-that cut it, four commits before the citation file, the README badges and three
-documentation fixes, so it does not contain its own paperwork; and its
-`.readthedocs.yaml` is the broken one, so activating that version on Read the
-Docs would fail. Neither is worth repairing. Both are avoided next time by
-cutting the release in one commit.
-
-**Version numbers do not belong in the prose.** The README and the front page
-used to open by naming the current version, which went stale within the day. The
-badge and the documentation flyout carry the number; the prose says what exists.
+**`v0.1.0` cannot be built by Read the Docs.** Its `.readthedocs.yaml` still
+carries the invalid `search: enabled: true`, so activating that version there
+would fail. Leave it deactivated; it is not worth repairing.
 
 ```bash
 fluxatlas record.csv --list                                   # what the file carries
@@ -512,6 +508,10 @@ package. Keep them aligned unless there is a reason not to:
 
 ### Cutting a release
 
+0. **Finish the work first, then cut the release in one commit.** Both releases so
+   far bumped the version, then kept editing, so both tags point at a commit that
+   does not contain its own paperwork - `v0.1.0` misses the citation file and the
+   README badges, `v0.2.0` misses the last documentation fixes.
 1. Bump `version` in `pyproject.toml` **and** in `CITATION.cff`, and open a dated
    `## vX.Y.Z | D Mon YYYY` entry in `CHANGELOG.md`. A test asserts all three
    agree with the installed distribution.
@@ -542,8 +542,8 @@ from the installed distribution, as `diive` does, and the page footer prints tha
 `CITATION.cff` state the same number, and that the five files in `assets/` are
 installed - a wheel built without them imports cleanly and then writes a page
 with no styles, no renderer and no mark, which nothing else would catch because
-every other test reads the source tree. `.github/workflows/tests.yml` runs the suite, the `-W` docs build and
-that wheel check on 3.12 and 3.13.
+every other test reads the source tree. `.github/workflows/tests.yml` runs the
+suite, the `-W -j auto` docs build and that wheel check on 3.12 and 3.13.
 
 The `Read-Host` form keeps the token out of `ConsoleHost_history.txt`, which
 records anything typed on the command line. Use a **project-scoped** token.
@@ -552,8 +552,10 @@ is not yet configured; it would remove the token from the process altogether.
 
 `CITATION.cff` is what Zenodo builds its record from - the ORCID and the
 affiliation on the archived record came from there, not from the GitHub profile.
-It carries the **concept** DOI, which resolves to whichever version is current,
-and the version DOI beside it. Cite the concept one.
+It carries the **concept** DOI alone, which resolves to whichever version is
+current. Zenodo mints a version DOI at every release; recording that one here as
+well would mean editing this file after every publish, and the concept DOI is the
+one a citation should follow anyway.
 
 ## Naming
 
