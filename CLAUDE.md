@@ -590,6 +590,10 @@ favicon, where no custom property is defined, fall back to the light one.
 - **Update `CHANGELOG.md` with the work.** `v0.1.0` is released and dated, so new
   work opens an unreleased entry above it rather than editing that one. Same
   terms as the rest of the file.
+- **Work on `indev`. Never commit to `main`.** `main` is the released branch: it
+  is what Read the Docs builds, what the badges report, and what a release is cut
+  from. It advances by merging `indev`, and that merge is the author's to make.
+  Check the branch before committing; if the checkout is on `main`, switch.
 - **Commit only when explicitly asked**, never on your own initiative, and never
   `git push`. When asked, split the work into **logical groups** — one commit per
   coherent change, not one commit per session — and write subject + body with
