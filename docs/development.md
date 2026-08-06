@@ -133,8 +133,12 @@ the one that ran. A test asserts the two agree and that the changelog opens with
 1. Bump `version` in `pyproject.toml` and in `CITATION.cff`, and open a dated
    `## vX.Y.Z | D Mon YYYY` entry in `CHANGELOG.md`. A test asserts all three agree.
 2. `uv sync`, so the installed metadata matches, then `uv run pytest`.
-3. `uv build`.
-4. Publish, which is the author's to run since it is public and needs their token:
+3. `uv build`, then push.
+4. Publish a GitHub Release. Its "Choose a tag" field creates the tag on publish,
+   from the target branch as the remote has it. Zenodo archives a published release
+   and not a bare tag, so a tag on its own is not citable.
+5. Publish to PyPI, which is the author's to run since it is public and needs their
+   token:
 
 ```powershell
 $env:UV_PUBLISH_TOKEN = (Read-Host 'PyPI token'); uv publish

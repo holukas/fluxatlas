@@ -508,10 +508,13 @@ package. Keep them aligned unless there is a reason not to:
    agree with the installed distribution.
 2. `uv sync`, so the metadata the tests read is the new version, then
    `uv run pytest`.
-3. `uv build`, commit, tag `vX.Y.Z`, push with `--follow-tags`.
-4. **Publish a GitHub Release from the tag.** Zenodo mints a DOI on a published
+3. `uv build`, commit, push.
+4. **Publish a GitHub Release.** Its "Choose a tag" field creates the tag on
+   publish, from the target branch as the remote has it, so pushing first is what
+   matters and `git tag` locally is optional. Zenodo mints a DOI on a published
    release and not on a bare tag, so a release that exists only as a tag is not
-   archived and not citable. The release body is the changelog entry.
+   archived and not citable. The release body is the changelog entry. Afterwards,
+   `git fetch --tags`.
 5. `uv publish`, which is the author's to run.
 
 ```
