@@ -2,11 +2,21 @@
 
 ## Unreleased
 
-The renderer is now executed by the test suite rather than only parsed, the six carbon badges are
-judged at the season scale as well as the month and the year, and half-hourly input is stated as the
-scope of the tool rather than as a limit waiting to be lifted.
+The examples lead with the case most users are in, the renderer is now executed by the test suite
+rather than only parsed, the six carbon badges are judged at the season scale as well as the month
+and the year, and half-hourly input is stated as the scope of the tool rather than as a limit
+waiting to be lifted.
 
 ### Added
+
+- **`examples/README.md`**, which leads with the command a FLUXNET file needs and nothing else:
+  `--list` to see what the file carries, then one call to build the page. The flags worth knowing
+  come after it, each with the reason to reach for it, and the Python equivalent after those.
+
+  `examples/` had no command-line example at all before this, and both of its scripts were named
+  for a site rather than for a case, so a user arriving with their own FULLSET record had no
+  obvious place to start. A FLUXNET file is the case that needs no configuration, and the examples
+  now say so first.
 
 - **The renderer is run, not just parsed.** `tests/test_renderer_smoke.py` loads the built page
   under jsdom and walks it: the grid at each of the four scales and under every metric, a span panel
@@ -41,6 +51,17 @@ scope of the tool rather than as a limit waiting to be lifted.
   `badge_at_scale`, the one place that decides.
 
 ### Changed
+
+- **`examples/build_oe2_flux_atlas.py` is now `examples/build_fluxnet_atlas.py`**, and is
+  restructured so the default build comes first and the options come after it. The script always
+  read any FLUXNET-standardized file; its name said it read one site's. It now prints what the file
+  can supply, then the default build with nothing configured, then each option beside the flag and
+  the keyword argument that set it. CH-Oe2 remains the default input, and it is still one page out.
+
+- **The example prints units without dying on a Windows console.** It reconfigures `sys.stdout` to
+  UTF-8 as `fluxatlas.cli.main` already did, which the example scripts bypass by calling the library
+  directly. Listing what a file carries crashed on the first `W m⁻²` under a legacy console code
+  page - which is where most of its readers are.
 
 - **Half-hourly input is the scope, not a gap.** Everything assumes 30-minute records, and a file on
   any other spacing is already refused with its own spacing named. That is what an eddy covariance

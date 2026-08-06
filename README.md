@@ -132,19 +132,30 @@ grid.
 
 ## Examples
 
+If you have a FLUXNET file, this is the whole of it — no mapping, no column names, no
+units, because the registry already knows the convention they are named to:
+
+```bash
+fluxatlas EUF_CH-Oe2_FLUXNET_FLUXMET_HH_2004-2024_v1.3_r1.csv -o CH-Oe2_atlas.html
+```
+
+```bash
+uv run python examples/build_fluxnet_atlas.py --input YOUR_FULLSET.csv --open
+```
+
+The same build from Python, printing what the file can supply, then the default build,
+then every option beside the flag that sets it.
+
 ```bash
 uv run python examples/build_lae_meteo_atlas.py --open
 ```
 
-Builds two atlases from the twenty-one-year CH-LAE extract in `examples/data/`: one of
-six variables and one of air temperature alone.
+The other case: a local product whose columns were never named for FLUXNET, so they are
+mapped by hand. Runs on the twenty-one-year CH-LAE extract committed in `examples/data/`,
+and builds two atlases from one read — six variables, then air temperature alone.
 
-```bash
-uv run python examples/build_oe2_flux_atlas.py --input YOUR_FULLSET.csv --open
-```
-
-The opposite case: a FLUXNET FULLSET record, whose columns are found without being told
-anything, carrying the fluxes.
+[`examples/README.md`](examples/README.md) works through both, and the flags worth
+knowing.
 
 ## Tests
 

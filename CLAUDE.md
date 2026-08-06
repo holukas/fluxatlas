@@ -262,11 +262,24 @@ committed** — `.gitignore` excludes `examples/data/*.csv` so it cannot be adde
 accident) is a real FLUXNET FULLSET file for the Oensingen cropland: 248 columns,
 368,208 half-hours, 2004–2024. It is what the flux work was developed and checked
 against, and the source of every number quoted in this file.
-`examples/build_oe2_flux_atlas.py` builds **one** page from it and takes `--input`
+`examples/build_fluxnet_atlas.py` builds **one** page from it and takes `--input`
 for any other FLUXNET file, `--vars` to narrow what goes on that page, and `--out`
 for a directory outside the repository, which is worth using since a page of this
-record with the hourly layer is ~6 MB. One file is the point — do not add a second
-output to this script.
+record with the hourly layer is 5.9 MB against 2.3 MB without. One file is the
+point — do not add a second output to this script.
+
+**It is the example to keep working, and it is named for the format rather than
+for the site on purpose.** A FLUXNET-standardized file is what most users arrive
+with, so this is the front door: it prints what the file can supply, then the
+default build with nothing configured, then each option beside the flag and the
+keyword argument that set it. That order is the point of it — the first build has
+to look like one call and one path, because for a FLUXNET file that is all it is.
+`examples/README.md` says the same thing for the command line, and leads with it.
+
+It reconfigures `sys.stdout` to UTF-8 exactly as `cli.main` does. Without that it
+dies on the first `W m⁻²` it prints on a legacy Windows console code page, which
+is where most of its readers are. Any example that prints a unit needs the same
+four lines.
 
 `pytest` — 197 tests, ~2 min, of which the renderer smoke test is about half the
 wall clock: it builds six pages and loads each into a DOM. Most run on
