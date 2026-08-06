@@ -109,6 +109,3 @@ footer.
 ## License
 
 GPL-3.0. The source is at [github.com/holukas/fluxatlas](https://github.com/holukas/fluxatlas).
-
-It generalizes the calendar explorer built for the
-[CH-LAE flux product](https://github.com/holukas/dataset_ch-lae_flux_product).

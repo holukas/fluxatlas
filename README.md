@@ -159,16 +159,11 @@ version is current, unless the work depends on a particular release:
 
 > Hörtnagl, L. *fluxatlas*. [doi:10.5281/zenodo.21815054](https://doi.org/10.5281/zenodo.21815054)
 
-`CITATION.cff` carries the same, and GitHub turns it into a "Cite this repository" button.
-
 ## Author
 
 Lukas Hörtnagl, [Grassland Sciences group, ETH Zürich](https://gl.ethz.ch/)
 ([holukas@ethz.ch](mailto:holukas@ethz.ch)) ·
 [github.com/holukas/fluxatlas](https://github.com/holukas/fluxatlas)
-
-It generalizes the calendar explorer built for the
-[CH-LAE flux product](https://github.com/holukas/dataset_ch-lae_flux_product).
 
 ## License
 
