@@ -8,6 +8,14 @@ RECO, H, LE), meteorology, and their quality flags, resolved from the whole
 record down to the single day. One site over decades is the target; several
 sites is a later possibility, not a current requirement.
 
+**The input is half-hourly, and that is the scope.** Everything assumes
+30-minute records: the reader reindexes onto a `30min` grid, refuses a file whose
+spacing is anything else, and the seasonal coverage denominators are `n_days *
+48`. Hourly and daily input are not planned and are not wanted — a half-hourly
+record is what an eddy covariance site produces and what FLUXNET distributes, so
+generalizing the two places that assume it would buy nothing and would put every
+coverage figure on the page at risk. Do not add it speculatively.
+
 **Status: released and installable**, with `pip install fluxatlas`. The repository
 is public, the documentation is live at
 [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io), each release is
@@ -365,10 +373,6 @@ too tight on first writing and only the real file caught it.
 
 ## What is planned, and deliberately not here yet
 
-- **Wider input than half-hourly.** Everything currently assumes 30-minute
-  records: the reader reindexes onto a `30min` grid and the seasonal coverage
-  denominators are `n_days * 48`. Hourly or daily input needs those two places
-  generalized before it will give correct coverage.
 - **A desktop GUI** for choosing the file and the variables. `available()`
   exists to feed exactly that picker.
 - **A renderer smoke test.** The suite parses `calendar.js` and can go no
@@ -381,6 +385,9 @@ too tight on first writing and only the real file caught it.
   and `gpp_low` are silently unavailable on a season tile while working at the
   month and year scales. Nothing decided that; it is an oversight with a
   one-line fix and a test.
+
+Wider input than half-hourly is **not** on this list; see the scope statement at
+the top of this file.
 
 Both front ends are meant to be thin wrappers. Anything either would need goes
 in `atlas.py`, not in them.

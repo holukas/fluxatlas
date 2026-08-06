@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Half-hourly input is the scope, not a gap.** Everything assumes 30-minute records, and a file on
+  any other spacing is already refused with its own spacing named. That is what an eddy covariance
+  system produces and what FLUXNET distributes, so hourly and daily input are out of scope rather
+  than planned; generalizing the two places that assume 30 minutes would buy nothing and would put
+  every coverage figure on the page at risk. The README, `docs/input.md` and `docs/other-formats.md`
+  say so, and it is no longer listed as planned work.
+
 ## v0.2.0 | 6 Aug 2026
 
 The index is now the start of each averaging window, a file that is not half-hourly is refused

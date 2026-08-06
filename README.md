@@ -92,7 +92,9 @@ fa.Atlas("local_record.parquet", {
 })
 ```
 
-The file has to be half-hourly, carry a timestamp, and use `-9999` or empty for missing.
+The file has to be half-hourly, carry a timestamp, and use `-9999` or empty for missing. Half-hourly
+is the scope rather than a current limit: a file on any other spacing is refused with its own
+spacing named, and hourly or daily input is not planned.
 [Files that are not FLUXNET-standardized](https://fluxatlas.readthedocs.io/en/stable/other-formats.html)
 works through a full conversion.
 

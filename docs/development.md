@@ -163,10 +163,6 @@ source tree.
 
 ## What is planned
 
-**Input other than half-hourly.** Everything assumes 30-minute records: the reader reindexes onto a
-`30min` grid, and seasonal coverage denominators are `n_days * 48`. Hourly or daily input needs
-those two places generalized before coverage will be correct.
-
 **A desktop GUI** for choosing the file and the variables. {func}`fluxatlas.available` exists to
 feed exactly that picker.
 

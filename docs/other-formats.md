@@ -24,8 +24,9 @@ Five things, and only the first two are hard to change after the fact.
 
 **1. Half-hourly records.** Everything assumes a 30-minute averaging window: the reader builds a
 `30min` index and coverage denominators are `n_days * 48`. A file on any other spacing is refused
-with its own spacing named, rather than read as a record that is half missing. Hourly or daily
-input is [planned, not present](development.md#what-is-planned).
+with its own spacing named, rather than read as a record that is half missing. This is the
+[scope of the tool](input.md#half-hourly-is-the-scope), not a gap in it: hourly and daily input are
+out of scope and are not planned.
 
 **2. A timestamp the reader can build an index from.** The index is the **start** of each window:
 
