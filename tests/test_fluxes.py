@@ -453,3 +453,26 @@ def test_the_refusal_names_the_columns_worth_trying_instead(tmp_path):
     frame.to_parquet(path)
     with pytest.raises(ValueError, match="LE_CORR"):
         io.read_fluxnet(path, ["LE"], quiet=True)
+
+
+def test_a_ustar_variant_is_paired_with_the_same_uncertainty_as_its_reference():
+    """A candidate differing from a covered one only by its u* selection is covered too.
+
+    `GPP_DT_VUT_USTAR50` is `GPP_DT_VUT_REF` under a stated threshold rather than the file's own
+    reference one, and a FULLSET file publishes a single `GPP_DT_VUT_SE` for both. Listing the
+    nighttime sibling and not the daytime one left a real column with no interval where the file
+    publishes one - an asymmetry no test could see while the fixture carried one variant.
+    """
+    for key in ("NEE", "GPP", "RECO"):
+        candidates = {name for name, _ in varreg.VARIABLES[key]["columns"]}
+        for spec in varreg.VARIABLES[key].get("uncertainty", []):
+            covered = {column for column, _ in spec["columns"]}
+            assert covered <= candidates, f"{key}: {covered - candidates} are not candidates"
+            for column in sorted(covered):
+                if not column.endswith("_REF"):
+                    continue
+                twin = column[: -len("_REF")] + "_USTAR50"
+                if twin in candidates:
+                    assert twin in covered, (
+                        f"{key}: {twin} is a candidate column and {column} carries a "
+                        f"{spec['label']!r} component, but {twin} carries none")
