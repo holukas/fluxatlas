@@ -281,8 +281,13 @@ dies on the first `W m⁻²` it prints on a legacy Windows console code page, wh
 is where most of its readers are. Any example that prints a unit needs the same
 four lines.
 
-`pytest` — 197 tests, ~2 min, of which the renderer smoke test is about half the
-wall clock: it builds six pages and loads each into a DOM. Most run on
+`pytest` — ~250 tests, ~4 min, of which the renderer smoke test is about half the
+wall clock: it builds six pages, loads each into a DOM and then *drives* it —
+hovering and focusing tiles at every scale, putting every chart under the cursor,
+and opening a day by both routes from each span panel. It reads `aria-label`,
+`title` and SVG `<title>` as well as visible text, because a blank tooltip, a
+click that goes nowhere and an `undefined` inside an attribute all look like a
+working page to anything that only scans what is rendered. Most run on
 **synthetic** data built by
 `tests/conftest.py`: a twelve-year half-hourly record with seasonal and diurnal
 cycles, noise, and an imposed 0.8 K/decade warming the trend tests assert is
