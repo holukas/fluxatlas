@@ -311,7 +311,7 @@ BADGES = [
          about="The coldest occurrence of this calendar month in the record.",
          rule=lambda s: (f"Coldest {s['month_name']} in the record: {s['TA']:.1f} {s['u_TA']} "
                          f"mean, {s['TA_anom']:+.1f} {s['u_TA']} against the normal of "
-                         f"{s['TA_n']} years") if s["TA_rank"] == s["TA_n"] else None),
+                         f"{s['TA_n']} years") if s["TA_rank_far"] == 1 else None),
 
     dict(key="warm", label="Warmer than normal", group="Temperature", icon="arrow-up",
          tone="warm", priority=4, needs=("TA",),
@@ -375,7 +375,7 @@ BADGES = [
          rule=lambda s: (f"Driest {s['month_name']} in the record: {s['PREC']:.0f} "
                          f"{s['u_PREC']}, {s['PREC_pctn']:.0f} % of the normal of "
                          f"{s['PREC_norm']:.0f} {s['u_PREC']}")
-         if s["PREC_rank"] == s["PREC_n"] else None),
+         if s["PREC_rank_far"] == 1 else None),
 
     dict(key="wet", label="Wet month", group="Precipitation", icon="droplets", tone="wet",
          priority=4, needs=("PREC",),
@@ -527,7 +527,7 @@ BADGES = [
              + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
              + ("more release" if s["NEE_norm"] > 0 else "less uptake")
              + f" than the normal of {s['NEE_n']} years")
-         if s["NEE_rank"] == s["NEE_n"] else None),
+         if s["NEE_rank_far"] == 1 else None),
 
     dict(key="sink_strong", label="Shifted toward uptake", group="Carbon", icon="arrow-down",
          tone="grow", priority=4, needs=("NEE",),
@@ -709,8 +709,8 @@ BADGES = [
          rule=lambda s: (
              f"Net release of {s['NEE']:.0f} {s['u_NEE']} over the year"
              + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
-             + (f", {ordinal(s['NEE_n'] - s['NEE_rank'] + 1)} largest release of {s['NEE_n']} years"
-                if s["NEE_rank"] else ""))
+             + (f", {ordinal(s['NEE_rank_far'])} largest release of {s['NEE_n']} years"
+                if s["NEE_rank_far"] else ""))
          if s["NEE"] is not None and s["NEE"] > 0 else None),
 
     dict(key="long_season", label="Long growing season", group="Season", icon="sprout",
@@ -1886,11 +1886,22 @@ def normals(frames_by_var, groups, years):
                                min_year=int(block_years[int(np.argmin(block.to_numpy()))]),
                                max_year=int(block_years[int(np.argmax(block.to_numpy()))]))
         # Ranks are computed within the qualifying spans only, so a sparse span is not ranked.
+        #
+        # Ranked from both ends. A record badge for the far end used to test `rank == n`, which
+        # `method="min"` makes unreachable the moment two spans tie there: both take rank n-1, no
+        # span ever holds n, and the badge is silently never awarded. Ranked from the end the badge
+        # is about, the claim is `rank == 1`, and a tie awards both exactly as it already did at
+        # the near end.
+        near = varreg.rank_first(key)
+        far = "low" if near == "high" else "high"
         ranks = pd.Series(pd.NA, index=value.index, dtype="Int64")
+        ranks_far = pd.Series(pd.NA, index=value.index, dtype="Int64")
         for g in sorted(set(groups.tolist())):
             sel = groups == g
-            ranks[sel] = rank_of(value[sel], qualifies[sel], first=varreg.rank_first(key))
-        out[key] = dict(by_group=by_group, ranks=ranks, qualifies=qualifies)
+            ranks[sel] = rank_of(value[sel], qualifies[sel], first=near)
+            ranks_far[sel] = rank_of(value[sel], qualifies[sel], first=far)
+        out[key] = dict(by_group=by_group, ranks=ranks, ranks_far=ranks_far,
+                        qualifies=qualifies)
     return out
 
 
@@ -1939,6 +1950,8 @@ def span_stats(sp, keys, frames_by_var, norm, counts, spells, day, events, loade
         s[f"{key}_sd"] = nm["sd"] if nm else None
         s[f"{key}_n"] = nm["n"] if nm else None
         s[f"{key}_rank"] = None if pd.isna(rank) else int(rank)
+        rank_far = n["ranks_far"].get(idx)
+        s[f"{key}_rank_far"] = None if pd.isna(rank_far) else int(rank_far)
         if value is not None and nm:
             s[f"{key}_anom"] = value - nm["mean"]
             s[f"{key}_z"] = (value - nm["mean"]) / nm["sd"] if nm["sd"] else None
