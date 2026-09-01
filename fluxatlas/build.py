@@ -1795,6 +1795,15 @@ def aggregate_uncertainty(d, grouped, index):
             # after the aggregation and never before it.
             members = pd.concat([grouped(s) for s in component["series"]], axis=1)
             part = (members.max(axis=1) - members.min(axis=1)) / 2
+            if mean_like:
+                # `grouped` sums, because that is what every caller passes, so a variable whose
+                # own aggregation is a mean divides by the length of the span exactly as the
+                # branch below does. Unreachable while NEE is the only ensemble variable and NEE
+                # sums; stated here rather than left as a constraint nothing records.
+                part = part / grouped(pd.Series(1.0, index=component["series"][0].index))
+            # No coverage scaling: the members are whole versions of the flux and are published
+            # wherever the flux is, unlike the `*_RANDUNC` and `*_SE` columns below, which a file
+            # fills for about three quarters of its records.
         else:
             sigma = component["series"][0]
             n_present = grouped(sigma.notna().astype(float))
@@ -1959,9 +1968,13 @@ def span_stats(sp, keys, frames_by_var, norm, counts, spells, day, events, loade
         else:
             s[f"{key}_anom"] = s[f"{key}_z"] = s[f"{key}_pctn"] = None
 
-        # The extreme day of the span, which is what a badge quotes as its evidence.
+        # The extreme day of the span, which is what a badge quotes as its evidence: the high end
+        # of the daily maximum and of the daily total, and the *low* end of the daily minimum,
+        # which is what a reader means by the coldest night of the month. `min` was in the loop as
+        # well, taking the highest daily minimum before the line below replaced it - a dead write
+        # that read like a bug in a function whose numbers land in badge text.
         block = day[key].loc[sp["start"]:sp["end"]]
-        for stat in ("min", "max", "sum"):
+        for stat in ("max", "sum"):
             if stat in block.columns:
                 col = block[stat].dropna()
                 s[f"{key}_day{stat}"] = float(col.max()) if len(col) else None
@@ -2543,13 +2556,23 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         metrics.append(entry)
 
     # -- Badge registry, with the icons checked against the ones the page can draw ------------
-    icons = set(re.findall(r"^\s{4}'([\w-]+)':", (ASSETS / "calendar.js").read_text(encoding="utf-8"),
-                           flags=re.M))
+    # Read out of the icon map itself rather than off the indentation. The check used to match
+    # any four-space-indented quoted key anywhere in the renderer, so what the build validated
+    # against depended on how that file happened to be formatted.
+    renderer = (ASSETS / "calendar.js").read_text(encoding="utf-8")
+    opens = renderer.find("const ICONS = {")
+    if opens < 0:
+        raise RuntimeError("calendar.js has no `const ICONS = {...}` block, so the badge "
+                           "icons cannot be checked against the ones the page can draw")
+    icon_block = renderer[opens:renderer.index("};", opens)]
+    icons = {line.strip().split(":", 1)[0].strip().strip(chr(39))
+             for line in icon_block.splitlines() if line.strip().startswith(chr(39))}
     badge_meta = []
     for badge in BADGES:
-        assert badge["icon"] in icons, (
-            f"badge {badge['key']!r} asks for icon {badge['icon']!r}, which calendar.js does not "
-            f"draw - it would render as an empty box")
+        if badge["icon"] not in icons:
+            raise ValueError(
+                f"badge {badge['key']!r} asks for icon {badge['icon']!r}, which calendar.js does "
+                f"not draw - it would render as an empty box")
         # Counted per scale, because a badge means a different number of things at each: the legend
         # says "18 months" beside a month grid and "4 years" beside a year grid, and a year-only
         # badge would otherwise report zero of a thing it cannot be.
