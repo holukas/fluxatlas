@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from conftest import add_fluxes, synthetic_frame, to_fluxnet_csv
+import fluxatlas as fa
 from fluxatlas import io, variables as varreg
 
 
@@ -351,13 +352,23 @@ def test_the_interval_is_carried_in_the_units_of_the_variable(flux_atlas):
             f"{typical:.3g} - the unit conversion looks not to have been applied to it")
 
 
-def test_an_interval_never_rounds_away_to_zero(flux_atlas):
-    """A "± 0" reads as certainty. The payload keeps more decimals than the value it qualifies."""
-    for mo in flux_atlas.payload["months"]:
+def test_an_interval_never_rounds_away_to_zero(flux_parquet_path):
+    """A "± 0" reads as certainty. The payload keeps more decimals than the value it qualifies.
+
+    Built here rather than from `flux_atlas`, whose selection carries neither energy flux: the loop
+    below then found no record to assert on and the guard for a documented rule passed on nothing.
+    The energy fluxes are the case it exists for - a sensible heat interval of 0.4 W m-2 rounds
+    away at the variable's own precision.
+    """
+    atlas = fa.Atlas(flux_parquet_path, ["NEE", "LE", "H"], hourly=False, quiet=True)
+    seen = 0
+    for mo in atlas.payload["months"]:
         for key in ("LE", "H"):
             rec = mo.get(key)
             if rec and isNum_(rec["u"]):
                 assert rec["u"] > 0
+                seen += 1
+    assert seen, "no LE or H interval reached the payload, so this asserted nothing"
 
 
 def isNum_(x):

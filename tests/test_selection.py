@@ -64,13 +64,24 @@ def test_flag_bits_are_contiguous_after_tests_are_dropped(ta_atlas):
     assert len(bits) <= 30                        # one 30-bit word, read bitwise in JavaScript
 
 
-def test_the_coverage_badge_reports_on_the_selection(ta_atlas, full_atlas):
-    """It used to name TA and PREC whatever the build contained, and crash without PREC."""
-    for atlas, allowed in ((ta_atlas, {"TA"}), (full_atlas, {"TA", "PREC", "SW_IN"})):
+def test_the_coverage_badge_reports_on_the_selection(ta_atlas, full_atlas, flux_atlas):
+    """It used to name TA and PREC whatever the build contained, and crash without PREC.
+
+    `flux_atlas` is here because the meteorological fixtures earn no sparse badge at all - every
+    month of them is over 90 % measured against a 50 % warning line - so the two of them alone
+    asserted nothing. The synthetic fluxes carry two near-total outages precisely so that a test
+    about what a thin span *says* has a thin span to read.
+    """
+    seen = 0
+    for atlas, allowed in ((ta_atlas, {"TA"}), (full_atlas, {"TA", "PREC", "SW_IN"}),
+                           (flux_atlas, {"TA", "PREC", "NEE", "GPP", "RECO"})):
         texts = [b["t"] for row in atlas.payload["months"] for b in row["b"] if b["k"] == "sparse"]
         for text in texts:
-            named = {key for key in ("TA", "PREC", "SW_IN", "VPD", "RH", "SWC") if key in text}
+            named = {key for key in ("TA", "PREC", "SW_IN", "VPD", "RH", "SWC", "NEE", "GPP",
+                                     "RECO", "LE", "H") if key in text}
             assert named <= allowed, f"sparse badge names {named - allowed}"
+            seen += 1
+    assert seen, "no sparse badge was awarded in any build, so this asserted nothing"
 
 
 def test_a_badge_may_ask_about_a_day_test_that_is_not_in_the_build():

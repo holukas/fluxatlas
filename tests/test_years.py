@@ -258,3 +258,30 @@ def test_a_record_too_short_for_a_normal_states_no_placing(tmp_path):
     for badge in earned:
         assert "None" not in badge["t"], badge["t"]
         assert "of  years" not in badge["t"], badge["t"]
+
+
+def test_a_year_that_lost_carbon_states_its_placing(tmp_path):
+    """`net_source` is never awarded on the synthetic record, so its rule body never runs.
+
+    Every one of the twelve synthetic years is a net sink, which leaves the sibling badge's text -
+    including the rank it quotes, and the direction it names - entirely unexecuted. Weakening
+    photosynthesis and recomputing the net flux from the partitioning identity turns the site into
+    a source without disturbing anything else the fixture is built to carry.
+    """
+    frame = add_fluxes(synthetic_frame())
+    frame["GPP_NT_VUT_REF"] = frame["GPP_NT_VUT_REF"] * 0.35
+    frame["NEE_VUT_REF"] = frame["RECO_NT_VUT_REF"] - frame["GPP_NT_VUT_REF"]
+    for pct, factor in zip(("16", "25", "50", "75", "84"), (0.90, 0.95, 1.00, 1.05, 1.10)):
+        frame[f"NEE_VUT_{pct}"] = frame["NEE_VUT_REF"] * factor
+    path = tmp_path / "source.parquet"
+    frame.to_parquet(path)
+
+    atlas = fa.Atlas(path, ["NEE"], hourly=False, quiet=True)
+    earned = {b["k"] for row in atlas.payload["years"] for b in row["b"]}
+    assert "net_source" in earned and "net_sink" not in earned
+
+    text = next(b["t"] for row in atlas.payload["years"] for b in row["b"]
+                if b["k"] == "net_source")
+    assert "Net release of" in text
+    assert "largest release of" in text, text
+    assert "None" not in text, text

@@ -272,3 +272,25 @@ def test_a_tie_at_the_far_end_earns_the_badge_on_every_tied_span(tmp_path):
     driest = sorted(row["y"] for row in atlas.payload["months"]
                     if row["m"] == 1 and any(b["k"] == "record_dry" for b in row["b"]))
     assert driest == [2013, 2017]
+
+
+def test_the_hourly_layer_is_a_whole_number_of_days(tmp_path):
+    """Nothing else in the suite builds with `hourly=True`, so this layer is never exercised.
+
+    Every fixture and every command-line test passes `--no-hourly`, which is the right default for
+    a suite that builds a page per test - but it leaves the arrays behind the day panel's diurnal
+    charts, and the check on their length, unreachable. Two years is enough to shape-check them.
+    """
+    frame = synthetic_frame(years=2)
+    path = tmp_path / "hourly.parquet"
+    frame.to_parquet(path)
+
+    atlas = fa.Atlas(path, ["TA"], hourly=True, quiet=True)
+    hourly = atlas.payload["hourly"]
+    assert hourly["start"] == "2010-01-01"
+    assert hourly["n"] % 24 == 0
+    assert hourly["n"] == (365 + 365) * 24
+    assert len(hourly["vars"]["TA"]["values"]) == hourly["n"]
+
+    without = fa.Atlas(path, ["TA"], hourly=False, quiet=True)
+    assert without.payload["hourly"] is None
