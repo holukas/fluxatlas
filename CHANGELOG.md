@@ -77,6 +77,16 @@ waiting to be lifted.
   push, so a reader following a link from the repository was sent to a version older than the
   repository they were reading. The badge now reports the build it links to.
 
+- **A file finer than half-hourly is refused rather than silently thinned.** The spacing check ran
+  after the stamps had been floored onto the 30-minute grid and the duplicates dropped, which is
+  the one order in which it cannot work: flooring is what puts a middle-stamped record on the grid,
+  and it puts three ten-minute records in the same window just as willingly. A ten-minute file
+  therefore passed the check and was read as a complete half-hourly record built from every third
+  value - the right number of records, 100 % available, two thirds of the data gone and nothing on
+  the page to say so. The spacing is now read off the stamps the file states, before anything is
+  floored, so all three input paths refuse it alike. `TIMESTAMP_START` files were already refused
+  correctly; a DatetimeIndex or a `TIMESTAMP` column was not.
+
 ## v0.2.0 | 6 Aug 2026
 
 The index is now the start of each averaging window, a file that is not half-hourly is refused

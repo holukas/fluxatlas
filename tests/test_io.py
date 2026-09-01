@@ -58,6 +58,37 @@ def test_a_file_on_the_wrong_frequency_says_so(tmp_path):
         io.read_fluxnet(path, ["TA"], quiet=True)
 
 
+def test_a_file_finer_than_half_hourly_is_refused_rather_than_thinned(tmp_path):
+    """The case an hourly file does not cover, because this one does not look wrong.
+
+    Flooring is what lets a middle-stamped record land on the window it belongs to, and it puts
+    three ten-minute records in that same window just as willingly; de-duplication then drops two
+    of them. Checked after that, the file reads as a complete half-hourly record built from every
+    third value - the right number of records, 100 % available, and two thirds of the data gone
+    with nothing on the page to say so. So the spacing is read off the stamps the file states.
+    """
+    frame = synthetic_frame(years=2).resample("10min").ffill()
+    path = tmp_path / "tenminute.parquet"
+    frame.to_parquet(path)
+    with pytest.raises(ValueError, match="0 days 00:10:00 apart"):
+        io.read_fluxnet(path, ["TA"], quiet=True)
+
+
+def test_a_middle_stamped_half_hourly_file_still_reads(tmp_path):
+    """The other side of the same check: flooring exists for this file and must keep working.
+
+    The synthetic frame is stamped at the middle of its windows, so its raw stamps fall on :15 and
+    :45 and never on the grid the reader builds. They are 30 minutes apart, which is what the
+    spacing check now reads them for, and every one of them survives the floor.
+    """
+    frame = synthetic_frame(years=2)
+    assert set(frame.index.minute) == {15, 45}, "the fixture is meant to be middle-stamped"
+    path = tmp_path / "middle.parquet"
+    frame.to_parquet(path)
+    loaded = io.read_fluxnet(path, ["TA"], quiet=True)
+    assert loaded["TA"]["series"].notna().sum() == len(frame)
+
+
 def test_a_file_without_any_timestamp_is_refused():
     with pytest.raises(ValueError, match="does not\n?\\s*look like a FLUXNET"):
         io._timestamp_index(pd.DataFrame({"TA_F": [1.0, 2.0]}))

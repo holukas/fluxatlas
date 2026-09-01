@@ -121,18 +121,32 @@ def _timestamp_index(df):
     flooring maps both onto the same start; without it, a middle-stamped file would land between
     the grid's points and read as empty.
     """
+    stamps, on_grid = _raw_stamps(df)
+    return stamps if on_grid else stamps.floor(FREQ)
+
+
+def _raw_stamps(df):
+    """The timestamps as the file states them, and whether they already name the window start.
+
+    Kept apart from `_timestamp_index` because the **spacing** of a file is a fact about these and
+    not about the index built from them. Flooring maps a middle-stamped 30-minute record onto the
+    window it belongs to, which is why it is done; it maps three ten-minute records onto that same
+    window just as willingly, and de-duplication then drops two of them. Measured after that, a
+    ten-minute file is indistinguishable from a half-hourly one, so it is measured before.
+    """
     if isinstance(df.index, pd.DatetimeIndex):
-        return df.index.floor(FREQ)
+        return df.index, False
 
     def parse(col):
-        return pd.to_datetime(df[col].astype("int64").astype(str), format="%Y%m%d%H%M")
+        return pd.DatetimeIndex(pd.to_datetime(df[col].astype("int64").astype(str),
+                                               format="%Y%m%d%H%M"))
 
     if "TIMESTAMP_START" in df.columns:
-        return parse("TIMESTAMP_START")
+        return parse("TIMESTAMP_START"), True
     if "TIMESTAMP_END" in df.columns:
-        return parse("TIMESTAMP_END") - pd.Timedelta(FREQ)
+        return parse("TIMESTAMP_END") - pd.Timedelta(FREQ), True
     if "TIMESTAMP" in df.columns:
-        return parse("TIMESTAMP").dt.floor(FREQ)
+        return parse("TIMESTAMP"), False
     raise ValueError("no TIMESTAMP_START/TIMESTAMP_END column and no DatetimeIndex - this does not "
                      "look like a FLUXNET-standardized file")
 
@@ -285,23 +299,31 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
                     needed.append(col)
 
     df = _read_frame(path, usecols=needed)
-    index = _timestamp_index(df)
-    df = df.set_index(pd.DatetimeIndex(index))
-    df = df[~df.index.duplicated(keep="first")].sort_index()
 
-    # Half-hourly is what this reads, and an hourly file lands on the half-hourly grid rather than
-    # missing it: every hour is also a half hour. Reindexed onto 30 minutes it would come out as a
-    # record that is half missing, with every coverage figure on the page halved and nothing to say
-    # why, so the spacing is checked rather than inferred. The mode rather than the mean, because a
-    # record with genuine gaps still has 30 minutes as its commonest step.
-    if len(df.index) > 1:
-        steps = pd.Series(df.index).diff().dropna()
+    # Half-hourly is what this reads, and a file on any other spacing lands on the half-hourly grid
+    # rather than missing it. An hourly file fills every second slot, so reindexed onto 30 minutes
+    # it comes out half missing with every coverage figure on the page halved and nothing to say
+    # why. A file finer than half-hourly is worse, because it does not even look wrong: flooring
+    # puts each of its records inside a window and the duplicates are dropped, so a ten-minute
+    # record reads as a complete half-hourly one built from every third value.
+    #
+    # So the spacing is measured on the stamps the file states, before they are floored - after
+    # that the two cases are indistinguishable. Distinct stamps only, so duplicated rows do not
+    # make zero the commonest step; and the mode rather than the mean, because a record with
+    # genuine gaps still has 30 minutes as its commonest step.
+    stamps, _ = _raw_stamps(df)
+    if len(stamps) > 1:
+        steps = pd.Series(stamps.drop_duplicates().sort_values()).diff().dropna()
         common = steps.mode()
         if len(common) and common.iloc[0] != pd.Timedelta(FREQ):
             raise ValueError(
                 f"{path.name}: its records are {common.iloc[0]} apart, and this reads half-hourly "
                 f"records. Resample to 30 minutes first, or see the documentation on input that is "
                 f"not half-hourly.")
+
+    index = _timestamp_index(df)
+    df = df.set_index(pd.DatetimeIndex(index))
+    df = df[~df.index.duplicated(keep="first")].sort_index()
 
     first, last = _whole_years(df.index, first_year, last_year)
     dropped = sorted(set(df.index.year) - set(range(first, last + 1)))
