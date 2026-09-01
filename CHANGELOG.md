@@ -97,6 +97,14 @@ waiting to be lifted.
   column with no entry carries no interval, which is what a series mapped in from another
   convention should always have had.
 
+- **`--quiet` is quiet.** The notice naming day tests dropped for want of a variable was the one
+  message in the package that neither checked the flag nor went through `say()`. A
+  precipitation-only build prints it, because `coldprec` is filed under `PREC`, survives the
+  variable filter and is then dropped when its rule reads the air temperature that is not there -
+  and `test_quiet_prints_nothing` drove a temperature-only selection, where no test is ever
+  dropped. The build also stopped rebuilding the day-test list a second time to work out what it
+  had lost.
+
 ## v0.2.0 | 6 Aug 2026
 
 The index is now the start of each averaging window, a file that is not half-hourly is refused

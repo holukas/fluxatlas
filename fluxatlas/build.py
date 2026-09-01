@@ -2259,12 +2259,11 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     daily_norm = daily_normals(day, dates, keys)
     nrm = normal_accessor(daily_norm, dates)
 
-    flags = day_flags({k: loaded[k]["v"] for k in keys})
-    word, hits, flags = flag_words(flags, day, meas, nrm, dates)
-    dropped = [f["key"] for f in day_flags({k: loaded[k]["v"] for k in keys})
-               if f["key"] not in hits]
-    if dropped:
-        print(f"  day tests dropped for want of a variable: {', '.join(dropped)}")
+    offered = day_flags({k: loaded[k]["v"] for k in keys})
+    word, hits, flags = flag_words(offered, day, meas, nrm, dates)
+    dropped = [f["key"] for f in offered if f["key"] not in hits]
+    if dropped and not quiet:
+        say(f"  day tests dropped for want of a variable: {', '.join(dropped)}")
 
     counts_month = {k: v.resample("MS").sum().reindex(months) for k, v in hits.items()}
     # Spells are the runs a count cannot show: a month can reach a high count without ever holding
