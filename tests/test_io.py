@@ -207,6 +207,36 @@ def test_resolve_accepts_an_explicit_mapping(frame):
     assert io.resolve(renamed, {"TA": "my_temperature"})["TA"]["qc"] is None
 
 
+def test_a_column_the_registry_knows_keeps_the_registry_factor():
+    """Naming a candidate is a choice of column, not a choice of unit."""
+    names = ["NEE_CUT_REF"]
+    assert io.resolve(names, {"NEE": "NEE_CUT_REF"})["NEE"]["factor"] == varreg.UMOL_TO_GC
+    # The string form and the dict form are the same mapping written two ways.
+    spec = io.resolve(names, {"NEE": dict(column="NEE_CUT_REF")})["NEE"]
+    assert spec["factor"] == varreg.UMOL_TO_GC
+
+
+def test_a_named_carbon_column_reads_in_the_canonical_unit(flux_parquet_path):
+    """The whole point of it: `--var NEE=NEE_VUT_REF` used to fail the plausible range."""
+    by_registry = io.read_fluxnet(flux_parquet_path, ["NEE"], quiet=True)["NEE"]
+    by_name = io.read_fluxnet(flux_parquet_path, {"NEE": "NEE_VUT_REF"}, quiet=True)["NEE"]
+    assert by_name["v"].factor == varreg.UMOL_TO_GC
+    pd.testing.assert_series_equal(by_registry["series"], by_name["series"])
+
+
+def test_a_factor_the_caller_states_wins_over_the_registry():
+    """Including an explicit 1.0, which is a statement and not silence."""
+    names = ["NEE_VUT_REF"]
+    assert io.resolve(names, {"NEE": dict(column="NEE_VUT_REF", factor=1.0)})["NEE"]["factor"] == 1.0
+    assert io.resolve(names, {"NEE": dict(column="NEE_VUT_REF", factor=2.5)})["NEE"]["factor"] == 2.5
+
+
+def test_a_column_the_registry_does_not_know_still_defaults_to_one(frame):
+    """A locally named series has no candidate to inherit from, so nothing is converted."""
+    renamed = frame.rename(columns={"TA_F": "my_temperature"})
+    assert io.resolve(renamed, {"TA": "my_temperature"})["TA"]["factor"] == 1.0
+
+
 def test_a_mapping_makes_a_non_fluxnet_file_readable(tmp_path):
     """The point of the mapping: columns that were never named for FLUXNET."""
     frame = synthetic_frame(years=10).rename(columns={"TA_F": "air_temp"})
@@ -303,3 +333,25 @@ def test_every_registry_variable_declares_columns_and_a_unit():
         assert v.candidates, f"{key} lists no candidate columns"
         assert v.units, f"{key} has no units"
         assert v.limits[0] < v.limits[1], f"{key} has empty limits"
+
+
+def test_naming_a_registry_column_keeps_its_quality_flag(parquet_path):
+    """The flag follows the column, exactly as the unit factor does.
+
+    Naming the very column the registry would have chosen used to drop the flag beside it, and a
+    series read without a flag counts every present record as measured. That figure is what the
+    hatching, the sparse badge, `meta.thin` and the build's coverage warning are all taken from, so
+    the page reported a fully measured record where the file states it is half gap-filled.
+    """
+    default = io.read_fluxnet(parquet_path, ["TA"], quiet=True)["TA"]
+    named = io.read_fluxnet(parquet_path, {"TA": "TA_F"}, quiet=True)["TA"]
+    assert named["v"].column == default["v"].column
+    assert default["v"].qc_column is not None
+    assert named["v"].qc_column == default["v"].qc_column
+    assert named["measured"].mean() == default["measured"].mean()
+
+
+def test_a_stated_quality_flag_still_wins_over_the_inherited_one(parquet_path):
+    """Inheritance fills a silence; it does not override a caller who named a flag."""
+    loaded = io.read_fluxnet(parquet_path, {"TA": dict(column="TA_F", qc="P_F_QC")}, quiet=True)
+    assert loaded["TA"]["v"].qc_column == "P_F_QC"

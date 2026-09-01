@@ -69,7 +69,11 @@ and the reader says which.
 
 `factor`
 : What the column is multiplied by to reach the canonical unit. The unit each variable expects is on
-  the [variables](variables.md) page, and `fluxatlas --list` prints it.
+  the [variables](variables.md) page, and `fluxatlas --list` prints it. Optional, and only needed
+  for a column the registry has never heard of: where the column you name is one of that key's own
+  candidates - `{"NEE": "NEE_CUT_REF"}`, naming the variant your file carries - the registry's
+  factor comes with it, so the series reads in the canonical unit exactly as it would unaided.
+  Anything else is read as it stands. A factor you state is used whatever the column is called.
 
 The forms combine, so a file where some columns follow FLUXNET names and some do not is read in one
 call:
