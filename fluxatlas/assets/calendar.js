@@ -2113,7 +2113,7 @@
     for (let d = 1; d <= mo.n; d++) if (DAYS.flags[mo.i0 + d - 1]) marked += 1;
     const counts = FLAGS.filter(f => mo.c[f.key]).map(f => mo.c[f.key] + ' ' + f.short);
     met.push(tile('Days meeting a threshold', String(marked),
-      'of ' + mo.n, counts.join(' · ') || 'none in this month'));
+      'of ' + mo.n, counts.join(' · ') || 'none in this ' + spanNoun()));
 
     if (!flux.length) return met.join('');
     return met.join('')
@@ -2214,7 +2214,7 @@
       });
       head = '<p class="card-sub" style="max-width:none">'
         + (mo.x.nsd === 0
-          ? 'Nothing in this month reached one standard deviation from its normal.'
+          ? 'Nothing in this ' + spanNoun() + ' reached one standard deviation from its normal.'
           : '<b>' + mo.x.nsd + ' of ' + mo.x.nz + ' variables</b> stood at least one standard '
             + 'deviation from normal')
         + (driver ? ', the furthest being ' + VARS[driver].short.toLowerCase() + ' at '
@@ -2289,7 +2289,7 @@
   function monthBadges(mo) {
     if (!mo.b.length) {
       return '<ul class="badgelist none"><li><span class="bt"><span class="bd">Nothing in this '
-        + 'month met a badge threshold.</span></span></li></ul>';
+        + spanNoun() + ' met a badge threshold.</span></span></li></ul>';
     }
     return '<ul class="badgelist">' + mo.b.map(b => {
       const meta = BADGES[b.k];
@@ -2586,7 +2586,7 @@
   }
 
   function drawComposite(key, values, normal, kind, names) {
-    const label = names || { self: 'this month', ref: 'the record' };
+    const label = names || { self: 'this ' + spanNoun(), ref: 'the record' };
     return function (host) {
       const hours = values.map((v, i) => i + 0.5);
       const v = VARS[key];
@@ -2870,7 +2870,8 @@
       el('path', { d: pathFrom(days, run, sx, sy), fill: 'none', stroke: f.p.series[0],
         'stroke-width': 2.2, 'stroke-linejoin': 'round' }, f.svg);
       hover(f, sx, days, d => tipRows('to ' + labelAt(mo.i0 + d - 1), [
-        { k: 'this month', v: nf(run[d - 1], 1) + ' ' + VARS.PREC.units, color: f.p.series[0] },
+        { k: 'this ' + spanNoun(), v: nf(run[d - 1], 1) + ' ' + VARS.PREC.units,
+          color: f.p.series[0] },
         { k: 'normal by this date', v: nf(runNorm[d - 1], 1) + ' ' + VARS.PREC.units,
           color: f.p.muted }
       ]), d => selectDay(d));
@@ -3139,7 +3140,7 @@
         bits.push(s);
       });
     }
-    if (!bits.length) return 'No variable in this month carries a monthly value.';
+    if (!bits.length) return 'No variable in this ' + spanNoun() + ' carries a value.';
     return cap(bits.join('; ')) + '.';
   }
 
@@ -3912,10 +3913,10 @@
         draw: drawMonthPrecip(mo)
       });
       chartCard(dayByDay, {
-        title: 'Precipitation accumulated through the month', width: 'w-6',
+        title: 'Precipitation accumulated through the ' + spanNoun(), width: 'w-6',
         sub: 'The running total against the running total of the daily normals.',
         legend: [
-          { color: 'var(--series-1)', label: 'this month', line: true },
+          { color: 'var(--series-1)', label: 'this ' + spanNoun(), line: true },
           { color: 'var(--text-muted)', label: 'normal', line: true }
         ],
         draw: drawMonthCumulative(mo)
@@ -4003,7 +4004,8 @@
             state.scale === 'month' ? climComposite(key, mo.m) : null, kind));
       });
       if (!drawn) {
-        wrap.innerHTML = '<p class="card-sub">No hourly record survives for this month.</p>';
+        wrap.innerHTML = '<p class="card-sub">No hourly record survives for this '
+          + spanNoun() + '.</p>';
       } else {
         body.insertAdjacentHTML('beforeend', legendHTML([
           { color: 'var(--text-muted)', label: 'every '
@@ -4020,7 +4022,8 @@
         : 'Where this ' + spanNoun() + ' sits among its own years', width: 'w-6',
       sub: 'Every ' + peerWord(mo) + ' of the record on one line per variable, this '
         + 'one filled. The dashed tick is the ' + normalWord() + '.',
-      foot: 'Whether a departure of a degree is remarkable for this month or ordinary is a '
+      foot: 'Whether a departure of a degree is remarkable for this ' + spanNoun()
+        + ' or ordinary is a '
         + 'question about the spread of the other years, which an anomaly alone does not carry. '
         + 'Selecting another year opens it.'
     });
@@ -4029,7 +4032,8 @@
     if (VARS.TA) {
       chartCard(context, {
         title: 'The shape of every ' + peerWord(mo) + ' in the record', width: 'w-6',
-        sub: 'Daily mean temperature through the month, one line per year, this one drawn over '
+        sub: 'Daily mean temperature through the ' + spanNoun() + ', one line per year, '
+          + 'this one drawn over '
           + 'them.',
         legend: [
           { color: 'var(--series-2)', label: sc.title(mo), line: true },
