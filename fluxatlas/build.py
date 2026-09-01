@@ -698,7 +698,7 @@ BADGES = [
              f"Net uptake of {abs(s['NEE']):.0f} {s['u_NEE']} over the year"
              + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
              + (f", {ordinal(s['NEE_rank'])} largest uptake of {s['NEE_n']} years"
-                if s["NEE_rank"] else ""))
+                if s["NEE_rank"] and s["NEE_n"] else ""))
          if s["NEE"] is not None and s["NEE"] < 0 else None),
 
     dict(key="net_source", label="Net carbon source", group="Carbon", icon="leaf-fall",
@@ -710,7 +710,7 @@ BADGES = [
              f"Net release of {s['NEE']:.0f} {s['u_NEE']} over the year"
              + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
              + (f", {ordinal(s['NEE_rank_far'])} largest release of {s['NEE_n']} years"
-                if s["NEE_rank_far"] else ""))
+                if s["NEE_rank_far"] and s["NEE_n"] else ""))
          if s["NEE"] is not None and s["NEE"] > 0 else None),
 
     dict(key="long_season", label="Long growing season", group="Season", icon="sprout",

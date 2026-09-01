@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 import fluxatlas as fa
+from conftest import add_fluxes, synthetic_frame
 from fluxatlas import build
 
 
@@ -233,3 +234,27 @@ def test_the_page_can_address_a_year(full_atlas, tmp_path):
     html = out.read_text(encoding="utf-8")
     assert '<option value="year">' in html
     assert '"years":' in html or '"years": ' in html
+
+
+def test_a_record_too_short_for_a_normal_states_no_placing(tmp_path):
+    """`net_sink` and `net_source` are judged without a normal, but quote a rank out of one.
+
+    Both carry `needs_normal=False`, so they are evaluated on a record shorter than
+    `MIN_NORMAL_YEARS`; the rank they print is counted out of the normal's qualifying years, which
+    that record has none of. The badge read "3rd largest uptake of None years" on every year tile -
+    and the form it replaced raised a TypeError in the same state, so the failure was loud before
+    it was silent.
+    """
+    frame = add_fluxes(synthetic_frame(years=5))
+    path = tmp_path / "short.parquet"
+    frame.to_parquet(path)
+
+    atlas = fa.Atlas(path, ["NEE"], hourly=False, quiet=True)
+    assert atlas.payload["years"][0]["NEE"]["n"] is None,         "five years is meant to be too short for a year-scale normal; the fixture has changed"
+
+    earned = [b for row in atlas.payload["years"] for b in row["b"]
+              if b["k"] in ("net_sink", "net_source")]
+    assert earned, "the carbon badges are the point of this test and none was awarded"
+    for badge in earned:
+        assert "None" not in badge["t"], badge["t"]
+        assert "of  years" not in badge["t"], badge["t"]
