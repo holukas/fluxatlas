@@ -134,3 +134,19 @@ def test_the_seasonal_figures_are_the_months_they_are_made_of(flux_parquet_path)
         if any(p is None for p in parts) or season["PREC"]["v"] is None:
             continue                       # a season the record only partly reaches
         assert season["PREC"]["v"] == pytest.approx(sum(parts), abs=tolerance)
+
+
+def test_the_seasonal_trend_has_one_column_per_season_of_the_scheme(flux_parquet_path):
+    """The column count is the scheme's, not the four the default happens to give.
+
+    `yearly_figures` forms a year only where every one of its columns qualifies, so asking a
+    two-season scheme for four spans a year drops every year of the record. The result is
+    discarded at this call site today, which is exactly why a hard-coded four went unnoticed.
+    """
+    for spec, want in (("DJF", 4), ("DJFMAM", 2), ("J", 12)):
+        atlas = fa.Atlas(flux_parquet_path, ["TA"], hourly=False, quiet=True, seasons=spec)
+        assert len(atlas.payload["season_defs"]) == want
+        for metric in atlas.payload["metrics"]:
+            if metric["season_trend"] is None:
+                continue      # the coverage metric, which no coverage gate may be fitted through
+            assert len(metric["season_trend"]) == want, f"{metric['key']} on {spec}"

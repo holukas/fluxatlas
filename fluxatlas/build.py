@@ -2503,8 +2503,11 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         # aggregated is a different series from three series aggregated, and only the first is what
         # the season row of the grid shows.
         col_trend, year_trend = metric_trends(metric, entry["agg"], rows, lambda x: x["m"], 12)
+        # As many columns as the scheme has seasons, not the four the default happens to give:
+        # `--seasons DJFMAM` builds two, and a hard-coded four asks every year for twice the spans
+        # it holds.
         season_col_trend, _ = metric_trends(metric, entry["agg"], season_rows,
-                                            lambda x: x["s"], 4)
+                                            lambda x: x["s"], len(scheme))
         # The year scale has one column, and its slope is fitted through the year tiles themselves
         # rather than inherited from `trend_year`. The two are close but not the same series: a
         # year aggregated from twelve monthly means weights a 28-day February like a 31-day July,

@@ -5,7 +5,9 @@
 The examples lead with the case most users are in, the renderer is now executed by the test suite
 rather than only parsed, the six carbon badges are judged at the season scale as well as the month
 and the year, and half-hourly input is stated as the scope of the tool rather than as a limit
-waiting to be lifted.
+waiting to be lifted. Four defects found in review are fixed as well; two of them - input finer
+than half-hourly, and an uncertainty paired with the wrong column - put wrong numbers on a page
+without saying so.
 
 ### Added
 
@@ -104,6 +106,12 @@ waiting to be lifted.
   and `test_quiet_prints_nothing` drove a temperature-only selection, where no test is ever
   dropped. The build also stopped rebuilding the day-test list a second time to work out what it
   had lost.
+
+- **The seasonal trend has one column per season of the scheme**, rather than the four the default
+  happens to give. `--seasons DJFMAM` builds two, and asking each year for four qualifying spans
+  drops every year of the record. Invisible so far because that return value is discarded at this
+  call site.
+
 
 ## v0.2.0 | 6 Aug 2026
 
