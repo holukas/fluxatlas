@@ -205,7 +205,7 @@ RECORD_DAY_COVERAGE = 90.0  # % of a day measured before it is allowed to set a 
 # A name for each day test short enough to sit in a list on a tile. The full label states the
 # threshold and is what the day panel and the reference table use; neither fits where nine of them
 # appear side by side, and the page fell back to printing the key itself ("recwarm", "coldprec").
-# The build asserts the map covers every test that survives, so a test added without a name here
+# The build checks the map covers every test that survives, so a test added without a name here
 # fails the build instead of shipping its key to a reader.
 FLAG_SHORT = {
     "frost": "frost", "ice": "ice", "summer": "summer", "hot": "hot",
@@ -250,9 +250,17 @@ def day_flags(variables):
         flags.append(dict(bit=len(flags), var=item["var"], key=item["key"],
                           fn=item["fn"], label=variables[item["var"]].fmt(item["label"])))
     # The word is read in JavaScript, where a bitwise operation is defined on 32 bits.
-    assert len(flags) <= 30, f"{len(flags)} day flags do not fit in one 30-bit word"
+    #
+    # Raised rather than asserted, here and everywhere else in this module that checks the registry
+    # or the shape of the payload: `assert` is stripped under `python -O`, and these are validation
+    # of registry data rather than internal invariants. Under optimisation the whole set would
+    # vanish and a registry bug would ship as a page with a truncated flag word, an empty icon box
+    # or a grid of the wrong shape - none of which raises anything a reader would see.
+    if len(flags) > 30:
+        raise ValueError(f"{len(flags)} day flags do not fit in one 30-bit word")
     missing = [f["key"] for f in flags if f["key"] not in FLAG_SHORT]
-    assert not missing, (f"day test(s) {', '.join(missing)} have no entry in FLAG_SHORT - the page "
+    if missing:
+        raise ValueError(f"day test(s) {', '.join(missing)} have no entry in FLAG_SHORT - the page "
                          f"would print the key itself where it lists them on a tile")
     return flags
 
@@ -1256,7 +1264,8 @@ def season_scheme(spec=DEFAULT_SEASONS):
         out.append(dict(key=key, group=g + 1, label=label, name=label.lower(), months=months,
                         shift=season_shift(months)))
     keys = [s["key"] for s in out]
-    assert len(set(keys)) == len(keys), f"season keys are not unique: {keys}"
+    if len(set(keys)) != len(keys):
+        raise RuntimeError(f"season keys are not unique: {keys}")
     return out
 
 
@@ -1750,9 +1759,10 @@ def hourly_layer(loaded, first_year, last_year):
         scaled = (series * v.scale).round()
         out[key] = dict(scale=v.scale, units=v.units, title=v.title,
                         values=[None if pd.isna(x) else int(x) for x in scaled])
-    assert not out or len(index) == (pd.Timestamp(f"{last_year}-12-31") -
-                                     pd.Timestamp(f"{first_year}-01-01")).days * 24 + 24, \
-        "the hourly index is not a whole number of days"
+    whole_days = (pd.Timestamp(f"{last_year}-12-31")
+                  - pd.Timestamp(f"{first_year}-01-01")).days * 24 + 24
+    if out and len(index) != whole_days:
+        raise RuntimeError("the hourly index is not a whole number of days")
     return dict(start=f"{first_year}-01-01", n=len(index), vars=out)
 
 
@@ -2646,16 +2656,25 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                      for key in keys},
         season_climatology={key: {x["key"]: season_norm[key]["by_group"][x["group"]]
                                   for x in scheme} for key in keys} if scheme else {},
+        # The year's peer group is the record, so its climatology is the one group `year_norm` was
+        # built with. It is shipped for the same reason the other two are: the panel's charts draw
+        # a dashed tick at the normal, and without this the year scale silently drew none.
         hourly=hourly_layer(loaded, first_year, last_year) if with_hourly else None,
     )
 
-    # The grid is the page, so its shape is asserted rather than assumed: one tile per month of
+    # The grid is the page, so its shape is checked rather than assumed: one tile per month of
     # every year, and every tile addressing a real window of the daily arrays.
-    assert len(rows) == (last_year - first_year + 1) * 12, "the grid is not a whole number of years"
-    assert len(season_rows) == (last_year - first_year + 1) * len(scheme), \
-        "the season grid is not a whole number of years"
-    assert len(year_rows) == last_year - first_year + 1, "one tile per year of the record"
-    assert all(row["i0"] + row["n"] <= len(dates) for row in rows), "a month runs past the days"
+    span_years = last_year - first_year + 1
+    for got, want, what in ((len(rows), span_years * 12,
+                             "the grid is not a whole number of years"),
+                            (len(season_rows), span_years * len(scheme),
+                             "the season grid is not a whole number of years"),
+                            (len(year_rows), span_years,
+                             "one tile per year of the record")):
+        if got != want:
+            raise RuntimeError(f"{what}: {got} tiles against {want}")
+    if not all(row["i0"] + row["n"] <= len(dates) for row in rows):
+        raise RuntimeError("a month runs past the days")
     return payload
 
 

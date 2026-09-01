@@ -542,8 +542,17 @@ class Variable:
         # Which end of the distribution takes rank 1, and the phrase for what that means. The
         # phrase is generated from `extremes` rather than written twice, so a variable cannot end
         # up ranked one way and described the other.
+        #
+        # This check and the two index checks below raise rather than `assert`, because what they
+        # test is registry data and not an internal invariant. `assert` is removed when Python runs
+        # with `-O`, so under optimisation a mistyped `rank_first` would build a page with the
+        # ranking silently the wrong way round, and the group and stat mistakes below would surface
+        # as an indistinguishable ramp step or a bare `KeyError` in the day tests rather than as the
+        # registry error they are. A check on data has to fire whatever the interpreter was started
+        # with.
         self.rank_first = cfg.get("rank_first", "high")
-        assert self.rank_first in ("high", "low"), f"{key}: rank_first must be 'high' or 'low'"
+        if self.rank_first not in ("high", "low"):
+            raise ValueError(f"{key}: rank_first must be 'high' or 'low'")
         self.rank_note = self.extremes["low" if self.rank_first == "low" else "high"]
 
         # The words for either side of zero, where zero means something. None for every variable
@@ -562,13 +571,15 @@ class Variable:
         ramp_steps = dict(cold=2, warm=3)
         for group in self.index_groups:
             limit = ramp_steps[group["ramp"]]
-            assert len(group["items"]) <= limit, (
-                f"{key}: index group {group['title']!r} has {len(group['items'])} indices but the "
-                f"{group['ramp']} ramp has {limit} steps - split the group or add a ramp")
+            if len(group["items"]) > limit:
+                raise ValueError(
+                    f"{key}: index group {group['title']!r} has {len(group['items'])} indices but "
+                    f"the {group['ramp']} ramp has {limit} steps - split the group or add a ramp")
         for item in (i for g in self.index_groups for i in g["items"]):
-            assert item["stat"] in self.daily_stats, (
-                f"{key}: index {item['key']!r} needs the daily {item['stat']}, which is not in "
-                f"daily_stats {self.daily_stats}")
+            if item["stat"] not in self.daily_stats:
+                raise ValueError(
+                    f"{key}: index {item['key']!r} needs the daily {item['stat']}, which is not in "
+                    f"daily_stats {self.daily_stats}")
 
         # Filled in by the reader.
         self.uncertainty_note = None
