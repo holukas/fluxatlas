@@ -4,7 +4,7 @@
 </h1>
 
 [![PyPI - Version](https://img.shields.io/pypi/v/fluxatlas?style=for-the-badge&color=%23EF6C00)](https://pypi.org/project/fluxatlas/)
-[![Documentation](https://img.shields.io/readthedocs/fluxatlas/stable?style=for-the-badge)](https://fluxatlas.readthedocs.io/en/stable/)
+[![Documentation](https://img.shields.io/readthedocs/fluxatlas/latest?style=for-the-badge)](https://fluxatlas.readthedocs.io/en/latest/)
 [![Tests](https://img.shields.io/github/actions/workflow/status/holukas/fluxatlas/tests.yml?branch=main&style=for-the-badge&label=tests)](https://github.com/holukas/fluxatlas/actions/workflows/tests.yml)
 [![License](https://img.shields.io/github/license/holukas/fluxatlas?style=for-the-badge&color=%237CB342)](https://github.com/holukas/fluxatlas/blob/main/LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21815054.svg)](https://doi.org/10.5281/zenodo.21815054)
@@ -21,7 +21,7 @@ memory stick with no server and no network.
 The library and the command line build atlases for meteorology and for the turbulent fluxes.
 A desktop GUI is planned and not written.
 
-**Documentation: [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io/en/stable/)**
+**Documentation: [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io/en/latest/)**
 
 ## Install
 
@@ -66,7 +66,7 @@ Seasons default to the four meteorological ones. Name the first and the rest fol
 `--seasons DJFMAM` gives two half-years, `--seasons none` drops the seasonal scale.
 
 `python -m fluxatlas` is the same entry point. Every option is listed in the
-[command-line reference](https://fluxatlas.readthedocs.io/en/stable/cli.html).
+[command-line reference](https://fluxatlas.readthedocs.io/en/latest/cli.html).
 
 ## Use as a library
 
@@ -95,7 +95,7 @@ fa.Atlas("local_record.parquet", {
 The file has to be half-hourly, carry a timestamp, and use `-9999` or empty for missing. Half-hourly
 is the scope rather than a current limit: a file on any other spacing is refused with its own
 spacing named, and hourly or daily input is not planned.
-[Files that are not FLUXNET-standardized](https://fluxatlas.readthedocs.io/en/stable/other-formats.html)
+[Files that are not FLUXNET-standardized](https://fluxatlas.readthedocs.io/en/latest/other-formats.html)
 works through a full conversion.
 
 ## Variables

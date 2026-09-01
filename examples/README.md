@@ -103,7 +103,7 @@ fluxatlas record.csv -o atlas.html --site CH-Oe2 --site-long "Oensingen, Switzer
 fluxatlas record.csv -o atlas.html --open
 ```
 
-`fluxatlas --help` lists every option, and the [CLI reference](https://fluxatlas.readthedocs.io/en/stable/cli.html)
+`fluxatlas --help` lists every option, and the [CLI reference](https://fluxatlas.readthedocs.io/en/latest/cli.html)
 is generated from the same parser.
 
 ## The same thing from Python

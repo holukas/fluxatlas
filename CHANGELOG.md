@@ -70,6 +70,13 @@ waiting to be lifted.
   every coverage figure on the page at risk. The README, `docs/input.md` and `docs/other-formats.md`
   say so, and it is no longer listed as planned work.
 
+- **The documentation links point at `latest`.** The badge read the build status of `stable` and
+  every link into the documentation - the front page, the command-line reference and the guide to
+  files that are not FLUXNET-standardized, in both `README.md` and `examples/README.md` - landed
+  there too. `stable` is the most recent tag, while the documentation is built from `main` on every
+  push, so a reader following a link from the repository was sent to a version older than the
+  repository they were reading. The badge now reports the build it links to.
+
 ## v0.2.0 | 6 Aug 2026
 
 The index is now the start of each averaging window, a file that is not half-hourly is refused
