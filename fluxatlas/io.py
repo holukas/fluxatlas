@@ -285,14 +285,15 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
     # The uncertainty columns are resolved the same way and against the same header, so they cost
     # one more pass over a list of names rather than another read of the file.
     #
-    # Only where the variable came from a column the registry knows. `NEE_VUT_REF_RANDUNC` is the
-    # uncertainty of `NEE_VUT_REF`; attaching it to a series the caller mapped in from somewhere
-    # else would be inventing an error bar for data it does not describe.
+    # Resolved for the column the variable was actually read from, not for the variable in general.
+    # `NEE_VUT_REF_RANDUNC` is the uncertainty of `NEE_VUT_REF` and describes no other u* selection,
+    # so a caller who named `NEE_CUT_REF` with `--var` gets that column's interval or none rather
+    # than the default variant's. A column the registry knows no uncertainty for - one mapped in
+    # from another convention among them - gets none, which is where this used to invent an error
+    # bar for data it does not describe.
     unc = {}
     for key in keys:
-        known_columns = {name for name, _ in varreg.make(key).candidates}
-        unc[key] = (varreg.uncertainty(key, header)
-                    if specs[key]["column"] in known_columns else [])
+        unc[key] = varreg.uncertainty(key, header, specs[key]["column"])
         for component in unc[key]:
             for col in component["columns"]:
                 if col not in needed:

@@ -95,6 +95,15 @@ FLUX = "flux"
 # Components combine in quadrature into the figure the page shows. Where a flux has only some of
 # them - `LE` and `H` publish no u* term at all, and their `*_CORR_JOINTUNC` columns are empty in a
 # real file - the page says which components the interval covers rather than implying it is total.
+#
+# **Every component names the data column it belongs to**, because an uncertainty is the uncertainty
+# of one column and not of the variable in general. `NEE_VUT_REF_RANDUNC` is the random error of
+# `NEE_VUT_REF` and says nothing about `NEE_CUT_REF`; `GPP_NT_VUT_SE` is the threshold spread of the
+# nighttime partitioning and not of the daytime one. Resolving the two lists independently made them
+# agree only by their ordering, so a caller who named a column with `--var` - which is the documented
+# way to override the registry's choice - got the default variant's error bars under another
+# variant's figure. A resolved column with no entry here carries no interval, which is the same
+# outcome as a file that does not publish one.
 QUADRATURE = "quadrature"
 SYSTEMATIC = "systematic"
 ENSEMBLE = "ensemble"
@@ -334,12 +343,18 @@ VARIABLES = {
         # does not apply to it, and report a median year as +/- 9 g C m-2 where the ensemble says
         # +/- 121. So the two are carried apart and combined at the scale the page states.
         uncertainty=[
-            dict(kind=QUADRATURE, label="random",
-                 columns=["NEE_VUT_REF_RANDUNC", "NEE_CUT_REF_RANDUNC",
-                          "NEE_VUT_USTAR50_RANDUNC", "NEE_CUT_USTAR50_RANDUNC"]),
-            dict(kind=ENSEMBLE, label="u* threshold",
-                 members=[[f"NEE_VUT_{p}" for p in USTAR_PERCENTILES],
-                          [f"NEE_CUT_{p}" for p in USTAR_PERCENTILES]]),
+            dict(kind=QUADRATURE, label="random", columns=[
+                ("NEE_VUT_REF", ["NEE_VUT_REF_RANDUNC"]),
+                ("NEE_CUT_REF", ["NEE_CUT_REF_RANDUNC"]),
+                ("NEE_VUT_USTAR50", ["NEE_VUT_USTAR50_RANDUNC"]),
+                ("NEE_CUT_USTAR50", ["NEE_CUT_USTAR50_RANDUNC"]),
+            ]),
+            dict(kind=ENSEMBLE, label="u* threshold", columns=[
+                ("NEE_VUT_REF", [f"NEE_VUT_{p}" for p in USTAR_PERCENTILES]),
+                ("NEE_VUT_USTAR50", [f"NEE_VUT_{p}" for p in USTAR_PERCENTILES]),
+                ("NEE_CUT_REF", [f"NEE_CUT_{p}" for p in USTAR_PERCENTILES]),
+                ("NEE_CUT_USTAR50", [f"NEE_CUT_{p}" for p in USTAR_PERCENTILES]),
+            ]),
         ],
     ),
 
@@ -381,8 +396,13 @@ VARIABLES = {
         # in quadrature it would claim a median year is known to 0.03 %, which no partitioning
         # product is.
         uncertainty=[
-            dict(kind=SYSTEMATIC, label="u* threshold",
-                 columns=["GPP_NT_VUT_SE", "GPP_DT_VUT_SE", "GPP_NT_CUT_SE", "GPP_DT_CUT_SE"]),
+            dict(kind=SYSTEMATIC, label="u* threshold", columns=[
+                ("GPP_NT_VUT_REF", ["GPP_NT_VUT_SE"]),
+                ("GPP_NT_VUT_USTAR50", ["GPP_NT_VUT_SE"]),
+                ("GPP_DT_VUT_REF", ["GPP_DT_VUT_SE"]),
+                ("GPP_NT_CUT_REF", ["GPP_NT_CUT_SE"]),
+                ("GPP_DT_CUT_REF", ["GPP_DT_CUT_SE"]),
+            ]),
         ],
     ),
 
@@ -411,8 +431,13 @@ VARIABLES = {
               "keeps rising through a warm night when photosynthesis has stopped.",
         extremes=dict(high="highest respiration", low="lowest respiration"),
         uncertainty=[
-            dict(kind=SYSTEMATIC, label="u* threshold",
-                 columns=["RECO_NT_VUT_SE", "RECO_DT_VUT_SE", "RECO_NT_CUT_SE", "RECO_DT_CUT_SE"]),
+            dict(kind=SYSTEMATIC, label="u* threshold", columns=[
+                ("RECO_NT_VUT_REF", ["RECO_NT_VUT_SE"]),
+                ("RECO_NT_VUT_USTAR50", ["RECO_NT_VUT_SE"]),
+                ("RECO_DT_VUT_REF", ["RECO_DT_VUT_SE"]),
+                ("RECO_NT_CUT_REF", ["RECO_NT_CUT_SE"]),
+                ("RECO_DT_CUT_REF", ["RECO_DT_CUT_SE"]),
+            ]),
         ],
     ),
 
@@ -450,7 +475,7 @@ VARIABLES = {
         # CH-Oe2 file. The random term is what the file actually carries, so that is what is shown,
         # labelled as the random term rather than as a total.
         uncertainty=[
-            dict(kind=QUADRATURE, label="random", columns=["LE_RANDUNC"]),
+            dict(kind=QUADRATURE, label="random", columns=[("LE_F_MDS", ["LE_RANDUNC"])]),
         ],
     ),
 
@@ -474,7 +499,7 @@ VARIABLES = {
               "against each other rather than on their own.",
         extremes=dict(high="strongest heating", low="strongest cooling"),
         uncertainty=[
-            dict(kind=QUADRATURE, label="random", columns=["H_RANDUNC"]),
+            dict(kind=QUADRATURE, label="random", columns=[("H_F_MDS", ["H_RANDUNC"])]),
         ],
     ),
 }
@@ -565,24 +590,29 @@ class Variable:
         return f"<Variable {self.key} from {self.column!r} [{self.units}]>"
 
 
-def uncertainty(key, columns):
-    """The uncertainty components this file can supply for `key`, with concrete column names.
+def uncertainty(key, columns, column):
+    """The uncertainty components this file can supply for the column `key` was read from.
 
     Answered against column *names*, like everything else the reader resolves, so it costs nothing
     before the data is read. A component whose columns are absent is dropped rather than faked, and
     a variable that ends up with no components simply carries no interval - which is the honest
     outcome for a file that does not publish one.
+
+    `column` is the data column that actually supplied the variable, and it selects the component
+    rather than merely permitting it: the registry pairs each uncertainty with the one column it
+    describes, so a caller who overrode the registry's choice gets that column's interval or none.
+    A column the registry publishes no uncertainty for - one the caller mapped in from another
+    convention, or a variant the file documents no error for - gets none.
     """
     out = []
     for spec in VARIABLES.get(key, {}).get("uncertainty", []):
-        if spec["kind"] == ENSEMBLE:
-            members = next((m for m in spec["members"] if all(c in columns for c in m)), None)
-            if members:
-                out.append(dict(kind=ENSEMBLE, label=spec["label"], columns=list(members)))
-            continue
-        column = next((c for c in spec["columns"] if c in columns), None)
-        if column:
-            out.append(dict(kind=spec["kind"], label=spec["label"], columns=[column]))
+        for data_column, unc_columns in spec["columns"]:
+            if data_column != column:
+                continue
+            if all(c in columns for c in unc_columns):
+                out.append(dict(kind=spec["kind"], label=spec["label"],
+                                columns=list(unc_columns)))
+            break
     return out
 
 

@@ -260,6 +260,53 @@ def test_each_flux_gets_the_components_its_file_publishes(flux_parquet_path):
     assert loaded["LE"]["v"].uncertainty_note == "random"
 
 
+def test_the_uncertainty_is_the_one_of_the_column_the_flux_was_read_from(flux_frame, tmp_path):
+    """An uncertainty belongs to a column, not to a variable.
+
+    A FULLSET file carries several u* selections and both partitionings, each with its own error
+    columns. Resolving the data column and the uncertainty column from two ordered lists made them
+    agree only by their ordering, so naming a column with `--var` - the documented way to override
+    the registry's choice - left the default variant's error bars under another variant's figure.
+    """
+    frame = flux_frame.copy()
+    nee = frame["NEE_VUT_REF"]
+    frame["NEE_CUT_REF"] = nee
+    frame["NEE_CUT_REF_QC"] = frame["NEE_VUT_REF_QC"]
+    frame["NEE_CUT_REF_RANDUNC"] = frame["NEE_VUT_REF_RANDUNC"]
+    for pct in ("16", "25", "50", "75", "84"):
+        frame[f"NEE_CUT_{pct}"] = frame[f"NEE_VUT_{pct}"]
+    frame["GPP_DT_VUT_REF"] = frame["GPP_NT_VUT_REF"]
+    frame["GPP_DT_VUT_SE"] = frame["GPP_NT_VUT_SE"]
+    path = tmp_path / "both.parquet"
+    frame.to_parquet(path)
+
+    def columns_of(mapping, key):
+        loaded = io.read_fluxnet(path, mapping, quiet=True)
+        return [c for comp in loaded[key]["uncertainty"] for c in comp["columns"]]
+
+    gc = varreg.UMOL_TO_GC
+    # The registry's own choice, and the two overrides beside it.
+    assert all("VUT" in c for c in columns_of(["NEE"], "NEE"))
+    assert all("CUT" in c for c in
+               columns_of({"NEE": dict(column="NEE_CUT_REF", factor=gc)}, "NEE"))
+    assert columns_of({"GPP": dict(column="GPP_DT_VUT_REF", factor=gc)},
+                      "GPP") == ["GPP_DT_VUT_SE"]
+    assert columns_of({"GPP": dict(column="GPP_NT_VUT_REF", factor=gc)},
+                      "GPP") == ["GPP_NT_VUT_SE"]
+
+
+def test_a_column_the_registry_knows_no_uncertainty_for_gets_none(flux_frame, tmp_path):
+    """A series mapped in from another convention carries no error bar of another column's."""
+    frame = flux_frame.copy()
+    frame["MY_OWN_NEE"] = frame["NEE_VUT_REF"]
+    path = tmp_path / "own.parquet"
+    frame.to_parquet(path)
+    loaded = io.read_fluxnet(
+        path, {"NEE": dict(column="MY_OWN_NEE", factor=varreg.UMOL_TO_GC)}, quiet=True)
+    assert loaded["NEE"]["uncertainty"] == []
+    assert loaded["NEE"]["v"].uncertainty_note is None
+
+
 def test_a_variable_the_file_has_no_uncertainty_for_gets_none(flux_parquet_path):
     loaded = io.read_fluxnet(flux_parquet_path, ["TA"], quiet=True)
     assert loaded["TA"]["uncertainty"] == []

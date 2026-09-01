@@ -119,14 +119,18 @@ class UncertaintyTable(Directive):
         rows = []
         for key in _keys(self.arguments[0] if self.arguments else ""):
             for spec in varreg.VARIABLES[key].get("uncertainty", []):
-                if spec["kind"] == varreg.ENSEMBLE:
-                    members = spec["members"][0]
-                    columns = f"``{members[0]}`` … ``{members[-1]}``"
-                else:
-                    columns = ", ".join(f"``{c}``" for c in spec["columns"])
-                rows.append([f"``{key}``", spec["label"], columns, KIND_RULE[spec["kind"]]])
-        header = ["Key", "Component", "Columns", "Aggregated as"]
-        return _table(self, rows, header, widths=[8, 14, 30, 26])
+                # The pairing for the column that resolves first, which is the one a FULLSET file
+                # builds from unless the caller says otherwise. Listing every pairing would repeat
+                # the column table; what this table is for is which components exist and how each
+                # aggregates.
+                data_column, unc_columns = spec["columns"][0]
+                columns = (f"``{unc_columns[0]}`` … ``{unc_columns[-1]}``"
+                           if len(unc_columns) > 2
+                           else ", ".join(f"``{c}``" for c in unc_columns))
+                rows.append([f"``{key}``", spec["label"], f"``{data_column}``", columns,
+                             KIND_RULE[spec["kind"]]])
+        header = ["Key", "Component", "Of column", "Columns", "Aggregated as"]
+        return _table(self, rows, header, widths=[6, 12, 20, 26, 22])
 
 
 class AboutList(Directive):

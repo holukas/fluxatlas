@@ -87,6 +87,16 @@ waiting to be lifted.
   floored, so all three input paths refuse it alike. `TIMESTAMP_START` files were already refused
   correctly; a DatetimeIndex or a `TIMESTAMP` column was not.
 
+- **An uncertainty is paired with the column it describes.** `NEE_VUT_REF_RANDUNC` is the random
+  error of `NEE_VUT_REF` and says nothing about `NEE_CUT_REF`; `GPP_NT_VUT_SE` is the threshold
+  spread of the nighttime partitioning and not of the daytime one. The data column and the
+  uncertainty column were resolved from two ordered lists that agreed only by their ordering, so a
+  caller who named a column with `--var` - the documented way to override the registry's choice -
+  got the default variant's interval, its `unc_note` and its `unc_columns` under another variant's
+  figure. Each component in the registry now names the data column it belongs to, and a resolved
+  column with no entry carries no interval, which is what a series mapped in from another
+  convention should always have had.
+
 ## v0.2.0 | 6 Aug 2026
 
 The index is now the start of each averaging window, a file that is not half-hourly is refused
