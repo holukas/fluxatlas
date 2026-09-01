@@ -629,8 +629,12 @@
   function seasonOfMonth(mo) {
     const def = SEASON_DEFS.find(d => d.months.indexOf(mo.m) >= 0);
     if (!def) return null;
-    // December belongs to the winter labelled by the following January.
-    return seasonAt(mo.m === 12 ? mo.y + 1 : mo.y, def.key);
+    /* A season that crosses the new year is labelled by the year of its last month, so the months
+       before that boundary belong to the season labelled by the following year. Which months those
+       are is the scheme's, not December's: under `NDJF` it is November as well, and hard-coding
+       month 12 here sent every November to a season that began a year earlier. `shift` is derived
+       per scheme in Python and travels with the definition. */
+    return seasonAt(mo.y + ((def.shift || {})[mo.m] || 0), def.key);
   }
 
   const dayIndex = (y, m, d) => Math.round((Date.UTC(y, m - 1, d) - DAY0) / 86400000);
@@ -645,6 +649,17 @@
   }
   const doyAt = i => { const x = dateAt(i); return doy365(x.y, x.m, x.d); };
   const labelAt = i => { const x = dateAt(i); return x.d + ' ' + MONTH_ABBR[x.m - 1]; };
+
+  /* The nth day of a span, written as a date a reader can find. Running text used to print the
+     index as an ordinal - "on the 89th" - which is a day of the month only where the span is one:
+     a season and a year both number their days past 31. Inside a month the day alone is enough;
+     a longer span needs the month with it, and a season may begin in the previous calendar year,
+     so it carries the year as well. */
+  function hitDate(mo, d) {
+    const at = dateAt(mo.i0 + d - 1);
+    if (state.scale === 'month') return 'the ' + ord(at.d);
+    return at.d + ' ' + MONTH_NAME[at.m - 1] + (state.scale === 'year' ? '' : ' ' + at.y);
+  }
 
   /** Day of year with 29 February folded onto 1 March, matching how the normals were built. */
   function doy365(y, m, d) {
@@ -1051,12 +1066,17 @@
     host.innerHTML = parts.join('');
     host.querySelectorAll('.cell:not(.empty)').forEach(node => {
       const y = +node.dataset.y, m = node.dataset.c;
+      /* `data-c` is the column id, which is a month number only on the month scale - it is `DJF`
+         on the season scale and `YEAR` on the year scale. Looked up as a month it is undefined,
+         and the tooltip then threw on every hover and every keyboard focus of a tile at those two
+         scales. The scale's own accessor answers for all three. */
+      const span = sc.at(y, m);
       node.addEventListener('click', () => { location.hash = y + '-' + String(m).padStart(2, '0'); });
-      node.addEventListener('mousemove', ev => tip.show(cellTooltip(monthAt(y, m)), ev.clientX, ev.clientY));
+      node.addEventListener('mousemove', ev => tip.show(cellTooltip(span), ev.clientX, ev.clientY));
       node.addEventListener('mouseleave', tip.hide);
       node.addEventListener('focus', () => {
         const box = node.getBoundingClientRect();
-        tip.show(cellTooltip(monthAt(y, m)), box.left + box.width / 2, box.top);
+        tip.show(cellTooltip(span), box.left + box.width / 2, box.top);
       });
       node.addEventListener('blur', tip.hide);
     });
@@ -2120,7 +2140,7 @@
     const line = (label, hit, key, digits) => {
       if (!hit) return;
       rows.push('<dt>' + label + '</dt><dd>' + nf(hit.v, digits) + ' ' + VARS[key].units
-        + ' <span class="muted">on the ' + ord(hit.d) + '</span></dd>');
+        + ' <span class="muted">on ' + hitDate(mo, hit.d) + '</span></dd>');
     };
     if (VARS.TA) {
       line('Warmest day', best('TA', 'max', 'max'), 'TA', 1);
@@ -2133,7 +2153,7 @@
       }
       if (wd) {
         rows.push('<dt>Largest day-night range</dt><dd>' + nf(wv, 1) + ' ' + VARS.TA.units
-          + ' <span class="muted">on the ' + ord(wd) + '</span></dd>');
+          + ' <span class="muted">on ' + hitDate(mo, wd) + '</span></dd>');
       }
       if (isNum(mo.x.dtr)) {
         rows.push('<dt>Mean day-night range</dt><dd>' + nf(mo.x.dtr, 1) + ' ' + VARS.TA.units
@@ -2150,8 +2170,9 @@
     let html = '<dl class="kv">' + rows.join('') + '</dl>';
     const notes = [];
     if (mo.x.nrec) {
-      notes.push(mo.x.nrec + ' day' + (mo.x.nrec === 1 ? '' : 's') + ' in this month set a record '
-        + 'for its own calendar date. A day that was largely gap-filled cannot set one.');
+      notes.push(mo.x.nrec + ' day' + (mo.x.nrec === 1 ? '' : 's') + ' in this ' + spanNoun()
+        + ' set a record for its own calendar date. A day that was largely gap-filled cannot '
+        + 'set one.');
     }
     Object.keys(mo.ev || {}).forEach(name => {
       const ev = mo.ev[name];
@@ -2254,7 +2275,8 @@
         // since high is not better or worse for a carbon flux.
         line += key === 'TA'
           ? ' and stands ' + ord(rec.r) + ' warmest of ' + rec.n + ' ' + se.label.toLowerCase() + 's'
-          : ' and ranks ' + ord(rec.r) + ' of ' + rec.n + ' ' + se.label.toLowerCase() + 's';
+          : ' and ranks ' + ord(rec.r) + ' of ' + rec.n + ' ' + se.label.toLowerCase() + 's'
+            + (VARS[key].rank_note ? ' (1st = ' + VARS[key].rank_note + ')' : '');
       }
     }
     if (se.b.length) {
@@ -2714,7 +2736,9 @@
         const rank = here && isNum(here.values[i])
           ? series.map(s => s.values[i]).filter(isNum).filter(v => v > here.values[i]).length + 1
           : null;
-        return tipRows(d + ' ' + MONTH_ABBR[mo.m - 1], [
+        // The date this position on the axis is, derived from the span's own first day: `mo.m`
+        // exists only on the month scale, and read here it titled every tooltip "1 undefined".
+        return tipRows(labelAt(mo.i0 + d - 1), [
           { k: mo.y, v: nf(here ? here.values[i] : null, 1) + ' ' + VARS.TA.units,
             color: f.p.series[1] },
           { k: 'normal for the date', v: nf(norm.mid[i], 1) + ' ' + VARS.TA.units,
@@ -2735,8 +2759,13 @@
       if (!rec || !isNum(rec.v)) return;
       const row = document.createElement('div');
       row.className = 'strip';
+      /* "highest" states a direction the rank does not have. NEE is ranked from the negative end,
+         because the sign convention makes the most negative span the largest uptake, so its 1st is
+         the record sink rather than the largest number. The tiles and the variable page say which
+         end rank 1 is where it is not obvious; so does this. */
       const rank = isNum(rec.r) && isNum(rec.n)
-        ? '<b>' + ord(rec.r) + '</b> highest of ' + rec.n
+        ? '<b>' + ord(rec.r) + '</b> of ' + rec.n
+          + (v.rank_note ? ' (1st = ' + v.rank_note + ')' : '')
         : 'not ranked';
       row.innerHTML = '<span class="sname"><b>' + v.short + '</b>'
         + nf(rec.v, v.digits) + ' ' + v.units + '</span>'
@@ -2848,11 +2877,16 @@
     };
   }
 
-  /** The climatology of the slot a span belongs to: a calendar month, or a season. */
+  /** The climatology of the slot a span belongs to: a calendar month, a season, or the record.
+   *
+   * The year's peer group is the record itself, so it has one climatology rather than one per
+   * slot. Falling through to the month branch read `CLIM[key][undefined]`, which is why the year
+   * panel drew no dashed normal where its own cards said one would be.
+   */
   function climFor(key, mo) {
-    return state.scale === 'season'
-      ? (DATA.season_climatology[key] || {})[mo.s]
-      : (CLIM[key] || {})[String(mo.m)];
+    if (state.scale === 'season') return (DATA.season_climatology[key] || {})[mo.s];
+    if (state.scale === 'year') return (DATA.year_climatology || {})[key];
+    return (CLIM[key] || {})[String(mo.m)];
   }
 
   function drawAcrossYears(mo) {
@@ -2949,21 +2983,26 @@
     if (onClick) hit.addEventListener('click', ev => onClick(nearest(ev)));
   }
 
-  /* A season is three months, so its calendar is three calendars: a ninety-day sheet with one
-     unbroken run of weeks would put the 1st of March in the middle of a row and read as nothing. */
+  /* Anything longer than a month is drawn as one calendar per month: a ninety-day sheet with one
+     unbroken run of weeks would put the 1st of March in the middle of a row and read as nothing,
+     and a year drawn that way numbered its cells 1 to 366 under Mon-Sun headers.
+
+     A season carries the calendar months it is made of, because it may begin in the previous year;
+     a year is simply its own twelve. */
   function dayCalendar(mo) {
-    if (state.scale === 'season') {
-      return mo.months.map(ym => {
-        const child = monthAt(ym[0], ym[1]);
-        if (!child) return '';
-        // Each child keeps the month it came from, so a day opens in that month rather than
-        // as an ambiguous nth day of a season.
-        return '<p class="facet-title">' + MONTH_NAME[ym[1] - 1] + ' ' + ym[0] + '</p>'
-          + dayCalendarOf(child).replace(/data-day="/g,
-            'data-ym="' + ym[0] + '-' + ym[1] + '" data-day="');
-      }).join('');
-    }
-    return dayCalendarOf(mo);
+    const facets = state.scale === 'season' ? mo.months
+      : state.scale === 'year' ? MONTH_NAME.map((name, i) => [mo.y, i + 1])
+        : null;
+    if (!facets) return dayCalendarOf(mo);
+    return facets.map(ym => {
+      const child = monthAt(ym[0], ym[1]);
+      if (!child) return '';
+      // Each child keeps the month it came from, so a day opens in that month rather than
+      // as an ambiguous nth day of a season or a year.
+      return '<p class="facet-title">' + MONTH_NAME[ym[1] - 1] + ' ' + ym[0] + '</p>'
+        + dayCalendarOf(child).replace(/data-day="/g,
+          'data-ym="' + ym[0] + '-' + ym[1] + '" data-day="');
+    }).join('');
   }
 
   function dayCalendarOf(mo) {
@@ -4044,10 +4083,16 @@
      Level 3: one day
      ------------------------------------------------------------------------------------------ */
 
+  /* A day is opened as a day of its own month whatever span it was selected from, because that is
+     the only route the day panel has. The charts hand back a day index within the span, so the
+     calendar date is derived from the span's first day exactly as `dateAt` derives one everywhere
+     else. Built from `state.m` - which is null off the month scale - this produced `#2016-null-01`
+     and dropped the reader back on the grid. */
   function selectDay(d) {
-    if (d === null) return;
-    location.hash = state.y + '-' + String(state.m).padStart(2, '0') + '-'
-      + String(d).padStart(2, '0');
+    if (!isNum(d) || !state.span) return;
+    const at = dateAt(state.span.i0 + d - 1);
+    location.hash = at.y + '-' + String(at.m).padStart(2, '0') + '-'
+      + String(at.d).padStart(2, '0');
   }
 
   function hourlyFor(varKey, i) {

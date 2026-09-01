@@ -2677,8 +2677,14 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         months=rows,
         seasons=season_rows,
         years=year_rows,
+        # `shift` travels with the definition because the renderer needs it: to say which season a
+        # month belongs to it has to know which of a season's months fall in the calendar year
+        # before the one the season is labelled by, and that is a property of the scheme rather
+        # than of December. Without it the page hard-coded month 12 and put every November of an
+        # `NDJF` scheme in the season a year too early.
         season_defs=[dict(key=x["key"], label=x["label"], name=x["name"],
-                          months=list(x["months"])) for x in scheme],
+                          months=list(x["months"]),
+                          shift={str(m): s for m, s in x["shift"].items()}) for x in scheme],
         days=dict(
             start=f"{dates[0]:%Y-%m-%d}", n=len(dates),
             flags=[int(x) for x in word.to_numpy()],
@@ -2695,6 +2701,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         # The year's peer group is the record, so its climatology is the one group `year_norm` was
         # built with. It is shipped for the same reason the other two are: the panel's charts draw
         # a dashed tick at the normal, and without this the year scale silently drew none.
+        year_climatology={key: year_norm[key]["by_group"][1] for key in keys},
         hourly=hourly_layer(loaded, first_year, last_year) if with_hourly else None,
     )
 
