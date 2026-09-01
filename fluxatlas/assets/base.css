@@ -395,14 +395,26 @@ td.num-cold { color: var(--pole-cold); }
   border: 1px solid var(--border); border-radius: 9px;
   box-shadow: 0 6px 22px -6px rgba(0, 0, 0, .4);
   padding: 8px 11px; font-size: 12.5px; line-height: 1.45;
-  max-width: 280px;
+  /* `max-content` so the box takes the width its widest row wants and `max-width` caps it there.
+     Left to shrink-to-fit, a row whose value may wrap collapses towards its narrowest form and
+     takes the whole tooltip with it - the carbon rows came out five lines deep in a 210 px box. */
+  width: max-content;
+  max-width: 300px;
 }
 .tooltip.on { opacity: 1; }
 .tooltip .tt-title { font-weight: 600; margin-bottom: 3px; }
-.tooltip .tt-row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.tooltip .tt-row .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.tooltip .tt-row .k { color: var(--text-secondary); }
-.tooltip .tt-row .v { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+/* The row keeps its label on one line and lets the value wrap. `nowrap` on the row itself put a
+   long value outside the box: `max-width` clamps the tooltip, but content that cannot wrap simply
+   overflows it, and the carbon rows are sentences rather than numbers - "-240.26 g C m-2, net
+   uptake (more uptake than normal)" ran past the right edge with nothing to stop it. */
+.tooltip .tt-row { display: flex; align-items: baseline; gap: 8px; }
+.tooltip .tt-row .sw { width: 9px; height: 9px; border-radius: 2px; flex: none;
+  align-self: center; }
+.tooltip .tt-row .k { color: var(--text-secondary); white-space: nowrap; }
+.tooltip .tt-row .v {
+  margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600;
+  min-width: 0; text-align: right;
+}
 
 /* ---------------------------------------------------------------------------------------------
    Chart primitives drawn by dashboard.js
