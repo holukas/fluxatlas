@@ -9,6 +9,7 @@ build is much faster. Half-hourly input is now documented as the intended scope 
 
 ### Added
 
+- **Releases are published to PyPI by GitHub Actions.** `.github/workflows/publish.yml` runs when a GitHub Release is published, checks that the tag matches the package version, builds, and uploads with trusted publishing, so no API token is needed.
 - **A README for the examples**, which opens with the two commands needed for a FLUXNET file: `--list` to see what it
   contains and one call to build the page.
 - **The renderer is now tested by running it.** `tests/test_renderer_smoke.py` loads the built page under jsdom, visits
