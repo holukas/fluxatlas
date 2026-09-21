@@ -143,6 +143,22 @@ def test_quiet_prints_nothing(parquet_path, tmp_path, capsys):
     assert capsys.readouterr().out == ""
 
 
+def test_quiet_is_quiet_where_a_day_test_is_dropped(parquet_path, tmp_path, capsys):
+    """`--vars TA` drops no test, so it cannot see a notice that ignores the flag.
+
+    A precipitation-only build does: `coldprec` is filed under PREC, so it survives the variable
+    filter and is then dropped when its rule reads the air temperature that is not there. That is
+    the one notice in the package that used to print regardless.
+    """
+    run([str(parquet_path), "-o", str(tmp_path / "b.html"), "--vars", "PREC", "--no-hourly", "-q"])
+    assert capsys.readouterr().out == ""
+
+
+def test_the_dropped_day_test_is_still_reported_when_not_quiet(parquet_path, tmp_path, capsys):
+    run([str(parquet_path), "-o", str(tmp_path / "c.html"), "--vars", "PREC", "--no-hourly"])
+    assert "day tests dropped" in capsys.readouterr().out
+
+
 def test_the_module_entry_point_exists():
     import fluxatlas.__main__ as entry
     assert entry.main is cli.main

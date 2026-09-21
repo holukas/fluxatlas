@@ -2,6 +2,9 @@
 
 Ported unchanged in behaviour from the CH-LAE `build_meteo_dashboard.py`, so an atlas built here
 and a dashboard built there cannot disagree about the slope of a series or the length of a spell.
+An estimator may be made faster or made to handle a case the dashboard never met, but not made to
+answer a complete record differently; where it now covers more, the docstring says so and a test
+holds it to the old answer on the records both see.
 """
 
 from __future__ import annotations
@@ -51,14 +54,40 @@ def trend(yearly):
                 fit=pd.Series(intercept + slope * years, index=yearly.index))
 
 
+def _runs(values):
+    """First and one-past-last position of every run of True in a boolean array.
+
+    The array is padded with False at both ends so that a run touching either end is closed like
+    any other; the positions where the padded array changes then alternate start, stop, start,
+    stop.
+    """
+    edges = np.flatnonzero(np.diff(np.concatenate(([False], values, [False]))))
+    return edges[::2], edges[1::2]
+
+
+def _first_run(values, span):
+    """Position of the first day of the first run of at least `span` consecutive True, or None."""
+    starts, stops = _runs(values)
+    long_enough = np.flatnonzero(stops - starts >= span)
+    return int(starts[long_enough[0]]) if long_enough.size else None
+
+
 def longest_spell(mask):
-    """Length in days and start date of the longest run of True in a daily boolean series."""
-    mask = mask.fillna(False)
-    blocks = mask.ne(mask.shift()).cumsum()
-    runs = mask[mask].groupby(blocks[mask]).size()
-    if runs.empty:
+    """Length in days and start date of the longest run of True in a daily boolean series.
+
+    The runs are found in one numpy pass rather than by `ne(shift()).cumsum()` and a groupby. A
+    build asks this for five spell definitions on every month, season and year of the record -
+    about eighteen hundred calls over slices of thirty to a few hundred days - so what it costs is
+    pandas call overhead rather than data volume, and the answer is unchanged: ties still go to
+    the earlier run, as they did when the length came from `idxmax`.
+    """
+    values = np.asarray(mask.fillna(False), dtype=bool)
+    starts, stops = _runs(values)
+    if starts.size == 0:
         return 0, pd.NaT
-    return int(runs.max()), mask.index[blocks == runs.idxmax()][0]
+    lengths = stops - starts
+    longest = int(np.argmax(lengths))     # argmax takes the first of equal maxima, as idxmax did
+    return int(lengths[longest]), mask.index[starts[longest]]
 
 
 def growing_season(daily_mean, base, span=6):
@@ -68,17 +97,34 @@ def growing_season(daily_mean, base, span=6):
     with a daily mean above `base`, and ends on the first day of the first such span below `base`
     after 1 July. Several conventions are in use, so the numbers only mean something together with
     this definition.
+
+    Consecutive means consecutive **dates**, which is why the series is put back onto a complete
+    daily index before the runs are looked for. Both callers hand this a `dropna()`'d block, so a
+    day without a daily mean is absent from the index rather than missing in it, and counting rows
+    would let six warm days spread over three weeks open a season and then date its start to a day
+    the record does not hold. Reindexed, a gap breaks a run instead of being skipped.
+
+    A year whose days are all present is unaffected by that, so this and the CH-LAE dashboard still
+    report the same season wherever the dashboard reports one at all.
     """
-    above = daily_mean > base
-    runs = above.rolling(span).sum()
-    starts = runs[runs == span]
-    if starts.empty:
+    if daily_mean.empty:
         return None
-    start = starts.index[0] - pd.Timedelta(days=span - 1)
-    second_half = (~above).loc[f"{daily_mean.index[0].year}-07-01":]
-    runs_below = second_half.rolling(span).sum()
-    ends = runs_below[runs_below == span]
-    end = ends.index[0] - pd.Timedelta(days=span - 1) if not ends.empty else daily_mean.index[-1]
+    # Normalized, because the index has to line up with a `date_range` of whole days for the
+    # reindex to find anything at all.
+    daily_mean = daily_mean.set_axis(daily_mean.index.normalize())
+    days = pd.date_range(daily_mean.index[0], daily_mean.index[-1], freq="D")
+    above = (daily_mean > base).reindex(days, fill_value=False).to_numpy()
+    # A day the record does not hold is neither above the base nor below it. Taking `~above` alone
+    # would call it a day below and let a gap close the season; on a record with no gaps every day
+    # is present and this is exactly `~above`.
+    below = daily_mean.notna().reindex(days, fill_value=False).to_numpy() & ~above
+    opens = _first_run(above, span)
+    if opens is None:
+        return None
+    start = days[opens]
+    midsummer = days.searchsorted(pd.Timestamp(f"{daily_mean.index[0].year}-07-01"))
+    closes = _first_run(below[midsummer:], span)
+    end = days[midsummer + closes] if closes is not None else daily_mean.index[-1]
     return dict(start=start, end=end, length=(end - start).days)
 
 

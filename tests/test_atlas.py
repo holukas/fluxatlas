@@ -7,7 +7,10 @@ import json
 import re
 from pathlib import Path
 
+import pandas as pd
 import pytest
+
+from conftest import synthetic_frame
 
 import fluxatlas as fa
 from fluxatlas import build
@@ -229,3 +232,65 @@ def test_every_day_test_has_a_short_name():
             assert item["key"] in build.FLAG_SHORT
     for item in build.DERIVED_FLAGS:
         assert item["key"] in build.FLAG_SHORT
+
+
+def test_a_tie_at_the_far_end_still_earns_the_record_badge():
+    """`method="min"` gives tied spans the lower rank, so no span holds rank n.
+
+    The record badges for the far end - coldest, driest, worst carbon balance - used to test
+    `rank == n`, which two spans tying at that end makes unreachable: both take rank n-1 and the
+    badge is silently never awarded. Ranking from the far end instead makes the claim `rank == 1`,
+    which a tie satisfies for both, exactly as it already did at the near end.
+    """
+    years = list(range(2010, 2022))
+    value = pd.Series([5.0, 4.0, 3.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 1.0, 1.0],
+                      index=pd.Index(years, dtype="int64"))
+    frames = {"TA": dict(value=value, meas=pd.Series(100.0, index=value.index),
+                         avail=pd.Series(100.0, index=value.index), unc=None)}
+    norm = build.normals(frames, [1] * len(years), years)["TA"]
+
+    n = norm["by_group"][1]["n"]
+    assert not [y for y, r in zip(years, norm["ranks"]) if r == n],         "the tie is the point of this test; without one the old form would have worked"
+    assert [y for y, r in zip(years, norm["ranks_far"]) if r == 1] == [2020, 2021]
+
+
+def test_a_tie_at_the_far_end_earns_the_badge_on_every_tied_span(tmp_path):
+    """The other half of the tie: `normals` ranking correctly is not the same as a badge firing.
+
+    Reverting only the four badge rules to `rank == n` leaves the whole suite passing, because the
+    synthetic record has no ties. Two Januaries with no precipitation at all is the input that
+    separates them: under the old rule the January column awards `record_dry` to nobody, since
+    `method="min"` gives both tied months rank n-1 and no month ever holds n.
+    """
+    frame = synthetic_frame()
+    for year in (2013, 2017):
+        frame.loc[f"{year}-01", "P_F"] = 0.0
+    path = tmp_path / "tied.parquet"
+    frame.to_parquet(path)
+
+    atlas = fa.Atlas(path, ["TA", "PREC"], hourly=False, quiet=True)
+    driest = sorted(row["y"] for row in atlas.payload["months"]
+                    if row["m"] == 1 and any(b["k"] == "record_dry" for b in row["b"]))
+    assert driest == [2013, 2017]
+
+
+def test_the_hourly_layer_is_a_whole_number_of_days(tmp_path):
+    """Nothing else in the suite builds with `hourly=True`, so this layer is never exercised.
+
+    Every fixture and every command-line test passes `--no-hourly`, which is the right default for
+    a suite that builds a page per test - but it leaves the arrays behind the day panel's diurnal
+    charts, and the check on their length, unreachable. Two years is enough to shape-check them.
+    """
+    frame = synthetic_frame(years=2)
+    path = tmp_path / "hourly.parquet"
+    frame.to_parquet(path)
+
+    atlas = fa.Atlas(path, ["TA"], hourly=True, quiet=True)
+    hourly = atlas.payload["hourly"]
+    assert hourly["start"] == "2010-01-01"
+    assert hourly["n"] % 24 == 0
+    assert hourly["n"] == (365 + 365) * 24
+    assert len(hourly["vars"]["TA"]["values"]) == hourly["n"]
+
+    without = fa.Atlas(path, ["TA"], hourly=False, quiet=True)
+    assert without.payload["hourly"] is None

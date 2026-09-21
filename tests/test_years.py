@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 import fluxatlas as fa
+from conftest import add_fluxes, synthetic_frame
 from fluxatlas import build
 
 
@@ -87,6 +88,56 @@ def test_a_year_only_badge_never_lands_on_a_month_or_a_season(full_atlas):
     assert year_only
     for row in full_atlas.payload["months"] + full_atlas.payload["seasons"]:
         assert not year_only & {b["k"] for b in row["b"]}
+
+
+# The two travelling sets are written out rather than derived from each other, because a future
+# badge could belong to one and not the other. That makes drift possible, and drift is exactly how
+# the carbon badges came to be judged at the year scale and not at the season scale for a while. So
+# the relationship is pinned here: the year is the season's set less the four turning points, every
+# one of which every year holds.
+TURNING_POINTS = {"gs_start", "gs_end", "last_frost", "first_frost"}
+
+
+def test_the_two_travelling_sets_differ_only_by_the_turning_points():
+    assert build.SEASON_BADGES - build.YEAR_BADGES == TURNING_POINTS
+    assert build.YEAR_BADGES - build.SEASON_BADGES == set()
+
+
+def test_every_travelling_badge_is_a_badge():
+    """A key that no longer names a rule sits in the set forever, judged at nothing."""
+    keys = {b["key"] for b in build.BADGES}
+    assert build.SEASON_BADGES <= keys
+    assert build.YEAR_BADGES <= keys
+
+
+def test_the_carbon_badges_are_judged_at_the_season_scale():
+    """Each is a rank or a z-score against the span's own peers, so each travels as far as any."""
+    carbon = {"record_sink", "record_source", "sink_strong", "sink_weak", "gpp_high", "gpp_low"}
+    assert carbon <= build.SEASON_BADGES
+    for key in carbon:
+        badge = next(b for b in build.BADGES if b["key"] == key)
+        assert build.badge_at_scale(badge, "season") is True
+        assert build.badge_at_scale(badge, "year") is True
+
+
+def test_a_season_earns_a_carbon_badge(flux_atlas):
+    """The set says they are judged there; this says one actually lands."""
+    carbon = {"record_sink", "record_source", "sink_strong", "sink_weak", "gpp_high", "gpp_low"}
+    earned = {b["k"] for row in flux_atlas.payload["seasons"] for b in row["b"]}
+    assert carbon & earned, "no season of the record earned any carbon badge"
+
+
+def test_the_legend_names_the_scales_a_badge_is_actually_judged_at(flux_atlas):
+    """`scales` drives "not judged at this scale" in the legend, so it has to agree with the rule."""
+    by_key = {b["key"]: b for b in build.BADGES}
+    for meta in flux_atlas.payload["badges"]:
+        badge = by_key[meta["key"]]
+        assert meta["scales"] == [sc for sc in ("month", "season", "year")
+                                  if build.badge_at_scale(badge, sc)]
+        # A badge counted at a scale it is not judged at is the mismatch this guards against.
+        for scale, n in (("season", meta["n_season"]), ("year", meta["n_year"])):
+            if scale not in meta["scales"]:
+                assert n == 0, f"{meta['key']} is counted at the {scale} scale it is withheld from"
 
 
 def test_a_day_count_badge_never_lands_on_a_year(full_atlas):
@@ -183,3 +234,54 @@ def test_the_page_can_address_a_year(full_atlas, tmp_path):
     html = out.read_text(encoding="utf-8")
     assert '<option value="year">' in html
     assert '"years":' in html or '"years": ' in html
+
+
+def test_a_record_too_short_for_a_normal_states_no_placing(tmp_path):
+    """`net_sink` and `net_source` are judged without a normal, but quote a rank out of one.
+
+    Both carry `needs_normal=False`, so they are evaluated on a record shorter than
+    `MIN_NORMAL_YEARS`; the rank they print is counted out of the normal's qualifying years, which
+    that record has none of. The badge read "3rd largest uptake of None years" on every year tile -
+    and the form it replaced raised a TypeError in the same state, so the failure was loud before
+    it was silent.
+    """
+    frame = add_fluxes(synthetic_frame(years=5))
+    path = tmp_path / "short.parquet"
+    frame.to_parquet(path)
+
+    atlas = fa.Atlas(path, ["NEE"], hourly=False, quiet=True)
+    assert atlas.payload["years"][0]["NEE"]["n"] is None,         "five years is meant to be too short for a year-scale normal; the fixture has changed"
+
+    earned = [b for row in atlas.payload["years"] for b in row["b"]
+              if b["k"] in ("net_sink", "net_source")]
+    assert earned, "the carbon badges are the point of this test and none was awarded"
+    for badge in earned:
+        assert "None" not in badge["t"], badge["t"]
+        assert "of  years" not in badge["t"], badge["t"]
+
+
+def test_a_year_that_lost_carbon_states_its_placing(tmp_path):
+    """`net_source` is never awarded on the synthetic record, so its rule body never runs.
+
+    Every one of the twelve synthetic years is a net sink, which leaves the sibling badge's text -
+    including the rank it quotes, and the direction it names - entirely unexecuted. Weakening
+    photosynthesis and recomputing the net flux from the partitioning identity turns the site into
+    a source without disturbing anything else the fixture is built to carry.
+    """
+    frame = add_fluxes(synthetic_frame())
+    frame["GPP_NT_VUT_REF"] = frame["GPP_NT_VUT_REF"] * 0.35
+    frame["NEE_VUT_REF"] = frame["RECO_NT_VUT_REF"] - frame["GPP_NT_VUT_REF"]
+    for pct, factor in zip(("16", "25", "50", "75", "84"), (0.90, 0.95, 1.00, 1.05, 1.10)):
+        frame[f"NEE_VUT_{pct}"] = frame["NEE_VUT_REF"] * factor
+    path = tmp_path / "source.parquet"
+    frame.to_parquet(path)
+
+    atlas = fa.Atlas(path, ["NEE"], hourly=False, quiet=True)
+    earned = {b["k"] for row in atlas.payload["years"] for b in row["b"]}
+    assert "net_source" in earned and "net_sink" not in earned
+
+    text = next(b["t"] for row in atlas.payload["years"] for b in row["b"]
+                if b["k"] == "net_source")
+    assert "Net release of" in text
+    assert "largest release of" in text, text
+    assert "None" not in text, text

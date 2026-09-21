@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from conftest import add_fluxes, synthetic_frame, to_fluxnet_csv
+import fluxatlas as fa
 from fluxatlas import io, variables as varreg
 
 
@@ -260,6 +261,53 @@ def test_each_flux_gets_the_components_its_file_publishes(flux_parquet_path):
     assert loaded["LE"]["v"].uncertainty_note == "random"
 
 
+def test_the_uncertainty_is_the_one_of_the_column_the_flux_was_read_from(flux_frame, tmp_path):
+    """An uncertainty belongs to a column, not to a variable.
+
+    A FULLSET file carries several u* selections and both partitionings, each with its own error
+    columns. Resolving the data column and the uncertainty column from two ordered lists made them
+    agree only by their ordering, so naming a column with `--var` - the documented way to override
+    the registry's choice - left the default variant's error bars under another variant's figure.
+    """
+    frame = flux_frame.copy()
+    nee = frame["NEE_VUT_REF"]
+    frame["NEE_CUT_REF"] = nee
+    frame["NEE_CUT_REF_QC"] = frame["NEE_VUT_REF_QC"]
+    frame["NEE_CUT_REF_RANDUNC"] = frame["NEE_VUT_REF_RANDUNC"]
+    for pct in ("16", "25", "50", "75", "84"):
+        frame[f"NEE_CUT_{pct}"] = frame[f"NEE_VUT_{pct}"]
+    frame["GPP_DT_VUT_REF"] = frame["GPP_NT_VUT_REF"]
+    frame["GPP_DT_VUT_SE"] = frame["GPP_NT_VUT_SE"]
+    path = tmp_path / "both.parquet"
+    frame.to_parquet(path)
+
+    def columns_of(mapping, key):
+        loaded = io.read_fluxnet(path, mapping, quiet=True)
+        return [c for comp in loaded[key]["uncertainty"] for c in comp["columns"]]
+
+    gc = varreg.UMOL_TO_GC
+    # The registry's own choice, and the two overrides beside it.
+    assert all("VUT" in c for c in columns_of(["NEE"], "NEE"))
+    assert all("CUT" in c for c in
+               columns_of({"NEE": dict(column="NEE_CUT_REF", factor=gc)}, "NEE"))
+    assert columns_of({"GPP": dict(column="GPP_DT_VUT_REF", factor=gc)},
+                      "GPP") == ["GPP_DT_VUT_SE"]
+    assert columns_of({"GPP": dict(column="GPP_NT_VUT_REF", factor=gc)},
+                      "GPP") == ["GPP_NT_VUT_SE"]
+
+
+def test_a_column_the_registry_knows_no_uncertainty_for_gets_none(flux_frame, tmp_path):
+    """A series mapped in from another convention carries no error bar of another column's."""
+    frame = flux_frame.copy()
+    frame["MY_OWN_NEE"] = frame["NEE_VUT_REF"]
+    path = tmp_path / "own.parquet"
+    frame.to_parquet(path)
+    loaded = io.read_fluxnet(
+        path, {"NEE": dict(column="MY_OWN_NEE", factor=varreg.UMOL_TO_GC)}, quiet=True)
+    assert loaded["NEE"]["uncertainty"] == []
+    assert loaded["NEE"]["v"].uncertainty_note is None
+
+
 def test_a_variable_the_file_has_no_uncertainty_for_gets_none(flux_parquet_path):
     loaded = io.read_fluxnet(flux_parquet_path, ["TA"], quiet=True)
     assert loaded["TA"]["uncertainty"] == []
@@ -304,13 +352,23 @@ def test_the_interval_is_carried_in_the_units_of_the_variable(flux_atlas):
             f"{typical:.3g} - the unit conversion looks not to have been applied to it")
 
 
-def test_an_interval_never_rounds_away_to_zero(flux_atlas):
-    """A "± 0" reads as certainty. The payload keeps more decimals than the value it qualifies."""
-    for mo in flux_atlas.payload["months"]:
+def test_an_interval_never_rounds_away_to_zero(flux_parquet_path):
+    """A "± 0" reads as certainty. The payload keeps more decimals than the value it qualifies.
+
+    Built here rather than from `flux_atlas`, whose selection carries neither energy flux: the loop
+    below then found no record to assert on and the guard for a documented rule passed on nothing.
+    The energy fluxes are the case it exists for - a sensible heat interval of 0.4 W m-2 rounds
+    away at the variable's own precision.
+    """
+    atlas = fa.Atlas(flux_parquet_path, ["NEE", "LE", "H"], hourly=False, quiet=True)
+    seen = 0
+    for mo in atlas.payload["months"]:
         for key in ("LE", "H"):
             rec = mo.get(key)
             if rec and isNum_(rec["u"]):
                 assert rec["u"] > 0
+                seen += 1
+    assert seen, "no LE or H interval reached the payload, so this asserted nothing"
 
 
 def isNum_(x):
@@ -406,3 +464,26 @@ def test_the_refusal_names_the_columns_worth_trying_instead(tmp_path):
     frame.to_parquet(path)
     with pytest.raises(ValueError, match="LE_CORR"):
         io.read_fluxnet(path, ["LE"], quiet=True)
+
+
+def test_a_ustar_variant_is_paired_with_the_same_uncertainty_as_its_reference():
+    """A candidate differing from a covered one only by its u* selection is covered too.
+
+    `GPP_DT_VUT_USTAR50` is `GPP_DT_VUT_REF` under a stated threshold rather than the file's own
+    reference one, and a FULLSET file publishes a single `GPP_DT_VUT_SE` for both. Listing the
+    nighttime sibling and not the daytime one left a real column with no interval where the file
+    publishes one - an asymmetry no test could see while the fixture carried one variant.
+    """
+    for key in ("NEE", "GPP", "RECO"):
+        candidates = {name for name, _ in varreg.VARIABLES[key]["columns"]}
+        for spec in varreg.VARIABLES[key].get("uncertainty", []):
+            covered = {column for column, _ in spec["columns"]}
+            assert covered <= candidates, f"{key}: {covered - candidates} are not candidates"
+            for column in sorted(covered):
+                if not column.endswith("_REF"):
+                    continue
+                twin = column[: -len("_REF")] + "_USTAR50"
+                if twin in candidates:
+                    assert twin in covered, (
+                        f"{key}: {twin} is a candidate column and {column} carries a "
+                        f"{spec['label']!r} component, but {twin} carries none")

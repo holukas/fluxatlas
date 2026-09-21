@@ -134,3 +134,32 @@ def test_the_seasonal_figures_are_the_months_they_are_made_of(flux_parquet_path)
         if any(p is None for p in parts) or season["PREC"]["v"] is None:
             continue                       # a season the record only partly reaches
         assert season["PREC"]["v"] == pytest.approx(sum(parts), abs=tolerance)
+
+
+def test_the_seasonal_trend_is_fitted_over_the_scheme_s_own_seasons(flux_parquet_path):
+    """The column count is the scheme's, not the four the default happens to give.
+
+    Asserting the *number* of columns proves nothing: they are produced by grouping the season rows
+    on their own key, so their count is the scheme's whatever `n_cols` says. What `n_cols` reaches
+    is the second return value - the fit through the record's years - which `yearly_figures` forms
+    only where every one of a year's spans qualifies. Ask a two-season scheme for four and every
+    year of the record is dropped. That value is discarded at the call site in `build_payload`,
+    which is exactly why a hard-coded four survived the seasons being made derivable.
+    """
+    for spec, per_year in (("DJF", 4), ("DJFMAM", 2)):
+        atlas = fa.Atlas(flux_parquet_path, ["TA"], hourly=False, quiet=True, seasons=spec)
+        assert len(atlas.payload["season_defs"]) == per_year
+        rows = atlas.payload["seasons"]
+        metric = next(m for m in atlas.payload["metrics"] if m["key"] == "TA")
+
+        columns, over_years = build.metric_trends(
+            metric, metric["agg"], rows, lambda row: row["s"], per_year)
+        assert len(columns) == per_year
+        assert "slope" in over_years, f"{spec}: no year was formed from its own seasons"
+
+        # And the failure the hard-coded four produced, stated as the thing it actually broke.
+        if per_year != 4:
+            _, asking_for_four = build.metric_trends(
+                metric, metric["agg"], rows, lambda row: row["s"], 4)
+            assert "slope" not in asking_for_four
+            assert asking_for_four["n"] == 0

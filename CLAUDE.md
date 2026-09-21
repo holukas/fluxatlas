@@ -8,27 +8,31 @@ RECO, H, LE), meteorology, and their quality flags, resolved from the whole
 record down to the single day. One site over decades is the target; several
 sites is a later possibility, not a current requirement.
 
-**Status: released and installable.** `v0.1.0` is on PyPI, the repository is
-public, the documentation is live at
+**The input is half-hourly, and that is the scope.** Everything assumes
+30-minute records: the reader reindexes onto a `30min` grid, refuses a file whose
+spacing is anything else, and the seasonal coverage denominators are `n_days *
+48`. Hourly and daily input are not planned and are not wanted — a half-hourly
+record is what an eddy covariance site produces and what FLUXNET distributes, so
+generalizing the two places that assume it would buy nothing and would put every
+coverage figure on the page at risk. Do not add it speculatively.
+
+**Status: released and installable**, with `pip install fluxatlas`. The repository
+is public, the documentation is live at
 [fluxatlas.readthedocs.io](https://fluxatlas.readthedocs.io), each release is
 archived on Zenodo under the concept DOI `10.5281/zenodo.21815054`, and
 `.github/workflows/tests.yml` runs on every push. The library and the CLI work
 for meteorology and for the turbulent fluxes; a selection of one variable
 produces a correct one-variable page. The GUI is not written.
 
-`v0.2.0` is cut and dated in `CHANGELOG.md`, with artifacts built, and is waiting
-on the release and the publish.
+`CHANGELOG.md` says which version is current and what changed in it. This file
+does not, and neither does the README or the front page: a sentence naming a
+version has to be found and edited whenever the version moves, and every one that
+existed went stale the day it was written. State what exists; let the changelog,
+the badge and the documentation flyout carry the number.
 
-Two things to know about the first release. The `v0.1.0` tag points at the commit
-that cut it, four commits before the citation file, the README badges and three
-documentation fixes, so it does not contain its own paperwork; and its
-`.readthedocs.yaml` is the broken one, so activating that version on Read the
-Docs would fail. Neither is worth repairing. Both are avoided next time by
-cutting the release in one commit.
-
-**Version numbers do not belong in the prose.** The README and the front page
-used to open by naming the current version, which went stale within the day. The
-badge and the documentation flyout carry the number; the prose says what exists.
+**`v0.1.0` cannot be built by Read the Docs.** Its `.readthedocs.yaml` still
+carries the invalid `search: enabled: true`, so activating that version there
+would fail. Leave it deactivated; it is not worth repairing.
 
 ```bash
 fluxatlas record.csv --list                                   # what the file carries
@@ -258,23 +262,43 @@ committed** — `.gitignore` excludes `examples/data/*.csv` so it cannot be adde
 accident) is a real FLUXNET FULLSET file for the Oensingen cropland: 248 columns,
 368,208 half-hours, 2004–2024. It is what the flux work was developed and checked
 against, and the source of every number quoted in this file.
-`examples/build_oe2_flux_atlas.py` builds **one** page from it and takes `--input`
+`examples/build_fluxnet_atlas.py` builds **one** page from it and takes `--input`
 for any other FLUXNET file, `--vars` to narrow what goes on that page, and `--out`
 for a directory outside the repository, which is worth using since a page of this
-record with the hourly layer is ~6 MB. One file is the point — do not add a second
-output to this script.
+record with the hourly layer is 5.9 MB against 2.3 MB without. One file is the
+point — do not add a second output to this script.
 
-`pytest` — 183 tests, ~70 s. Most run on **synthetic** data built by
+**It is the example to keep working, and it is named for the format rather than
+for the site on purpose.** A FLUXNET-standardized file is what most users arrive
+with, so this is the front door: it prints what the file can supply, then the
+default build with nothing configured, then each option beside the flag and the
+keyword argument that set it. That order is the point of it — the first build has
+to look like one call and one path, because for a FLUXNET file that is all it is.
+`examples/README.md` says the same thing for the command line, and leads with it.
+
+It reconfigures `sys.stdout` to UTF-8 exactly as `cli.main` does. Without that it
+dies on the first `W m⁻²` it prints on a legacy Windows console code page, which
+is where most of its readers are. Any example that prints a unit needs the same
+four lines.
+
+`pytest` — ~250 tests, ~4 min, of which the renderer smoke test is about half the
+wall clock: it builds six pages, loads each into a DOM and then *drives* it —
+hovering and focusing tiles at every scale, putting every chart under the cursor,
+and opening a day by both routes from each span panel. It reads `aria-label`,
+`title` and SVG `<title>` as well as visible text, because a blank tooltip, a
+click that goes nowhere and an `undefined` inside an attribute all look like a
+working page to anything that only scans what is rendered. Most run on
+**synthetic** data built by
 `tests/conftest.py`: a twelve-year half-hourly record with seasonal and diurnal
 cycles, noise, and an imposed 0.8 K/decade warming the trend tests assert is
 recovered. Twelve years because `MIN_NORMAL_YEARS` is 8 and nothing interesting
 exists below it. The tests that read the bundled extract skip when it is absent,
 so a fresh checkout still passes.
 
-`test_years.py`, `test_variable_pages.py` and `test_renderer_syntax.py` are the
-newest three. The first two assert what the payload has to carry for the year
-scale and the variable pages, since neither can be exercised from Python
-otherwise.
+`test_years.py`, `test_variable_pages.py`, `test_renderer_syntax.py` and
+`test_renderer_smoke.py` are the newest four. The first two assert what the
+payload has to carry for the year scale and the variable pages; the last two are
+the renderer's own, and only the last of them executes it.
 
 `add_fluxes()` puts the five fluxes on top of that record. Three properties of it
 are load-bearing:
@@ -369,22 +393,11 @@ too tight on first writing and only the real file caught it.
 
 ## What is planned, and deliberately not here yet
 
-- **Wider input than half-hourly.** Everything currently assumes 30-minute
-  records: the reader reindexes onto a `30min` grid and the seasonal coverage
-  denominators are `n_days * 48`. Hourly or daily input needs those two places
-  generalized before it will give correct coverage.
 - **A desktop GUI** for choosing the file and the variables. `available()`
   exists to feed exactly that picker.
-- **A renderer smoke test.** The suite parses `calendar.js` and can go no
-  further. Executing it under a minimal DOM - opening the grid at each of the
-  four scales, a span panel at each, a day, and every variable page, failing on a
-  thrown error or on the string `undefined` in rendered text - would catch the
-  class that has bitten twice, where a card reads a field only one scale carries.
-- **The carbon badges do not travel to the season scale.** `SEASON_BADGES`
-  predates the fluxes, so `record_sink`, `sink_strong`, `sink_weak`, `gpp_high`
-  and `gpp_low` are silently unavailable on a season tile while working at the
-  month and year scales. Nothing decided that; it is an oversight with a
-  one-line fix and a test.
+
+Wider input than half-hourly is **not** on this list; see the scope statement at
+the top of this file.
 
 Both front ends are meant to be thin wrappers. Anything either would need goes
 in `atlas.py`, not in them.
@@ -428,27 +441,50 @@ to specific variable keys. Most are guarded by `if (VARS.TA)` and are fine. One
 was not: `seasonLine` read `se.TA.v` outright, which threw for **any** selection
 without air temperature — the fluxes alone, or precipitation alone — and was
 never caught because every tested build included TA. It now reads through
-`leadKey()`, and `test_the_renderer_never_dereferences_a_fixed_variable_on_a_span`
-asserts the shape statically, since pytest cannot execute the renderer.
-
-When adding a variable, check a build of **that variable alone** in a browser.
-The Python suite cannot catch this class of bug.
+`leadKey()`, `test_the_renderer_never_dereferences_a_fixed_variable_on_a_span`
+asserts the shape statically, and the smoke test below drives a no-TA selection
+so the same mistake made anywhere else fails rather than shipping.
 
 **The renderer is one IIFE, so any syntax error in it blanks the whole page** —
 markup loads, nothing draws, and no error reaches a reader. A stray `;` inside a
 `chartCard({...})` string did exactly that while all 149 tests passed.
 `test_the_renderer_has_no_statement_break_inside_a_card_literal` guards the one
 shape that caused it, and `tests/test_renderer_syntax.py` parses both
-`calendar.js` and the inlined copy with `node --check`, skipping where node is
-absent. That catches syntax and nothing else — a page that parses and then throws
-at run time looks identical to a blank one — so **open the built page after
-touching `calendar.js`** and check the console.
+`calendar.js` and the inlined copy with `node --check`.
 
-The class of bug no parser sees is the renderer reading a field only one scale
+**`tests/test_renderer_smoke.py` then runs it.** The built page is loaded under
+jsdom by `tests/js/smoke.mjs` and walked: the grid at each of the four scales and
+under every metric, a span panel at each of the three span scales, a day, every
+variable page, and an unknown hash. It fails on anything thrown, on a view that
+renders almost no text, and on `undefined`, `NaN` or `[object Object]` reaching
+text a reader can see. Six selections are driven, including the fluxes with no
+air temperature and `seasons="none"`, because the bugs of this class have always
+been selection-specific.
+
+Its three failure modes were each confirmed by mutation before it was committed:
+a cross-scale field in a title reproduces "Every undefined in the record"
+verbatim, `VARS.TA.label` in `renderVariable` fails **only** the no-TA selection,
+and a throw at load fails everything.
+
+jsdom is a node package, not a Python one, so it is installed on its own:
+
+```bash
+cd tests/js && npm install
+```
+
+Without it — or without node — the smoke tests skip, and the older instruction
+stands in for them: **open the built page after touching `calendar.js`** and
+check the console. CI installs it, so the renderer is executed on every push.
+
+The class of bug this exists for is the renderer reading a field only one scale
 carries. `MONTH_NAME[state.m - 1]` in eight card titles produced "Every undefined
 in the record" on both the season and the year panel, and nothing failed.
 Anything a panel prints goes through `scale()`, `peerOf`, `peerWord`, `spanNoun`
 or `normalWord`; reaching for `mo.m` outside the month scale is the bug.
+
+When adding a variable, add a selection to the smoke test that carries **that
+variable alone**, and check the built page in a browser as well: jsdom has no
+layout, so nothing that depends on a real measurement is tested by it.
 
 Chart row labels are measured, not estimated: `textWidth` sizes the left margin
 off the real glyph widths and `trimText` shortens anything that still will not
@@ -512,6 +548,10 @@ package. Keep them aligned unless there is a reason not to:
 
 ### Cutting a release
 
+0. **Finish the work first, then cut the release in one commit.** Both releases so
+   far bumped the version, then kept editing, so both tags point at a commit that
+   does not contain its own paperwork - `v0.1.0` misses the citation file and the
+   README badges, `v0.2.0` misses the last documentation fixes.
 1. Bump `version` in `pyproject.toml` **and** in `CITATION.cff`, and open a dated
    `## vX.Y.Z | D Mon YYYY` entry in `CHANGELOG.md`. A test asserts all three
    agree with the installed distribution.
@@ -542,8 +582,8 @@ from the installed distribution, as `diive` does, and the page footer prints tha
 `CITATION.cff` state the same number, and that the five files in `assets/` are
 installed - a wheel built without them imports cleanly and then writes a page
 with no styles, no renderer and no mark, which nothing else would catch because
-every other test reads the source tree. `.github/workflows/tests.yml` runs the suite, the `-W` docs build and
-that wheel check on 3.12 and 3.13.
+every other test reads the source tree. `.github/workflows/tests.yml` runs the
+suite, the `-W -j auto` docs build and that wheel check on 3.12 and 3.13.
 
 The `Read-Host` form keeps the token out of `ConsoleHost_history.txt`, which
 records anything typed on the command line. Use a **project-scoped** token.
@@ -552,8 +592,10 @@ is not yet configured; it would remove the token from the process altogether.
 
 `CITATION.cff` is what Zenodo builds its record from - the ORCID and the
 affiliation on the archived record came from there, not from the GitHub profile.
-It carries the **concept** DOI, which resolves to whichever version is current,
-and the version DOI beside it. Cite the concept one.
+It carries the **concept** DOI alone, which resolves to whichever version is
+current. Zenodo mints a version DOI at every release; recording that one here as
+well would mean editing this file after every publish, and the concept DOI is the
+one a citation should follow anyway.
 
 ## Naming
 
@@ -590,10 +632,16 @@ favicon, where no custom property is defined, fall back to the light one.
 - **Update `CHANGELOG.md` with the work.** `v0.1.0` is released and dated, so new
   work opens an unreleased entry above it rather than editing that one. Same
   terms as the rest of the file.
+- **Work on `indev`. Never commit to `main`.** `main` is the released branch: it
+  is what Read the Docs builds, what the badges report, and what a release is cut
+  from. It advances by merging `indev`, and that merge is the author's to make.
+  Check the branch before committing; if the checkout is on `main`, switch.
 - **Commit only when explicitly asked**, never on your own initiative, and never
-  `git push`. When asked, split the work into **logical groups** — one commit per
-  coherent change, not one commit per session — and write subject + body with
-  **no `Co-Authored-By` or "Generated with Claude Code" trailer**.
+  `git push`. Being asked once authorizes that commit and no later one: after it,
+  go back to leaving the tree alone until asked again. When asked, split the work
+  into **logical groups** — one commit per coherent change, not one commit per
+  session — and write subject + body with **no `Co-Authored-By` or "Generated
+  with Claude Code" trailer**.
 - **Never publish to PyPI.** Building (`uv build`) is fine; `uv publish` is the
   author's to run, since it is public and needs their token.
 

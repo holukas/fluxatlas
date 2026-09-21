@@ -24,8 +24,9 @@ Five things, and only the first two are hard to change after the fact.
 
 **1. Half-hourly records.** Everything assumes a 30-minute averaging window: the reader builds a
 `30min` index and coverage denominators are `n_days * 48`. A file on any other spacing is refused
-with its own spacing named, rather than read as a record that is half missing. Hourly or daily
-input is [planned, not present](development.md#what-is-planned).
+with its own spacing named, rather than read as a record that is half missing. This is the
+[scope of the tool](input.md#half-hourly-is-the-scope), not a gap in it: hourly and daily input are
+out of scope and are not planned.
 
 **2. A timestamp the reader can build an index from.** The index is the **start** of each window:
 
@@ -68,7 +69,11 @@ and the reader says which.
 
 `factor`
 : What the column is multiplied by to reach the canonical unit. The unit each variable expects is on
-  the [variables](variables.md) page, and `fluxatlas --list` prints it.
+  the [variables](variables.md) page, and `fluxatlas --list` prints it. Optional, and only needed
+  for a column the registry has never heard of: where the column you name is one of that key's own
+  candidates - `{"NEE": "NEE_CUT_REF"}`, naming the variant your file carries - the registry's
+  factor comes with it, so the series reads in the canonical unit exactly as it would unaided.
+  Anything else is read as it stands. A factor you state is used whatever the column is called.
 
 The forms combine, so a file where some columns follow FLUXNET names and some do not is read in one
 call:

@@ -1,5 +1,92 @@
 # Changelog
 
+## v0.3.0 | 21 Sep 2026
+
+This release fixes a number of bugs, several of which produced wrong numbers on a page with no
+warning. The renderer is now tested by running it in a headless browser, the six carbon badges
+also appear on seasons, the example scripts are easier to start from, and one slow step of the
+build is much faster. Half-hourly input is now documented as the intended scope of the tool.
+
+### Added
+
+- **A README for the examples**, which opens with the two commands needed for a FLUXNET file: `--list` to see what it
+  contains and one call to build the page.
+- **The renderer is now tested by running it.** `tests/test_renderer_smoke.py` loads the built page under jsdom, visits
+  every view, and fails if anything throws or if `undefined`, `NaN` or `[object Object]` shows up in text a reader could
+  see.
+- **Six variable selections are covered by that test**, including the fluxes without air temperature and a build without
+  seasons, because renderer bugs tend to depend on which variables were selected.
+- **jsdom has to be installed separately** with `npm install` in `tests/js`; it is not a dependency of `fluxatlas`, the
+  smoke tests skip without it, and CI installs it.
+
+### Fixed
+
+- **The six carbon badges now appear on seasons.** They already worked for months and years and were missing from
+  seasons only because the list of badges that apply there was written before the fluxes existed.
+- **The badge legend no longer lists a scale a badge does not apply to.** A frost-day count, for example, was shown as a
+  season badge that no season ever earned.
+- **A file with records closer together than 30 minutes is refused.** Before, a ten-minute file was silently reduced to
+  every third record and reported as complete.
+- **The uncertainty shown for a flux now belongs to the column that was actually read.** Selecting `NEE_CUT_REF` with
+  `--var` used to show the uncertainty, note and column names of `NEE_VUT_REF`.
+- **`--quiet` now silences the notice about dropped day tests.** It was the one message that ignored the flag.
+- **Trends for seasons work with any number of seasons.** The code asked every year for four seasons regardless of the
+  scheme, so `--seasons DJFMAM` produced no seasonal trend at all.
+- **A column selected with `--var` keeps the unit conversion the registry knows for it.** `--var NEE=NEE_CUT_REF` used
+  to lose the conversion from µmol to g C and fail the unit check.
+- **A column selected with `--var` also keeps its quality flag**, using `<column>_QC` where it exists, so a flux
+  selected this way no longer reports 100 % measured on a record that is half gap-filled.
+- **`GPP_DT_VUT_USTAR50` and `RECO_DT_VUT_USTAR50` now show their uncertainty**, which had been linked only to the
+  nighttime columns.
+- **The growing season is counted in calendar days, not in available records.** Missing days now break a run of warm
+  days instead of being skipped over, so the season no longer starts on a date the record does not contain.
+- **The badges for the coldest, driest and largest-source span are awarded even when two spans tie**, which used to
+  leave no span holding the last rank and no badge given.
+- **Internal consistency checks no longer disappear under `python -O`.** They were written as `assert` statements, which
+  the optimiser removes, and are now explicit checks that raise.
+- **The check that every badge has an icon reads the icon table directly** instead of scanning `calendar.js` for
+  indented quoted strings.
+- **The ensemble branch of `aggregate_uncertainty` now says that it only supports summed variables.** Every current
+  caller sums, so nothing changes, but the assumption was undocumented.
+- **Ranks are only printed where there is something to rank against.** A record too short for a year-scale normal used
+  to print "3rd largest uptake of None years" on every year tile.
+- **Hovering or tabbing to a grid tile works at the season and year scales.** Both used to throw and show no tooltip.
+- **Clicking a day in a season or year chart opens that day.** It used to produce a broken link and send the reader back
+  to the grid.
+- **The rank strips for net ecosystem exchange name the right end.** Rank 1 there is the largest uptake, not the highest
+  value.
+- **A year's day calendar is drawn as a year.** It was drawn as one 366-day month with no leading blanks and "undefined"
+  in every cell's `aria-label`.
+- **Seasons that cross the new year link to the right season from the month view.** December was hard-coded as the only
+  month that belonged to the following season, which was wrong for a scheme such as `NDJF`.
+- **Highlighted days in a span panel show the day of the month** and say which scale they are on, instead of an internal
+  index and "in this month" everywhere.
+- **The tooltip on the month-shape chart no longer reads "1 undefined"** outside the month scale.
+- **The year panel draws the dashed record-normal line it announces.** The data for it is now included in the page.
+- **The smoke test interacts with the page** by hovering and focusing tiles, moving the cursor over every chart, opening
+  a day both ways, and checking `aria-label`, `title` and SVG `<title>` text as well as visible text.
+
+### Changed
+
+- **`examples/build_oe2_flux_atlas.py` is renamed to `examples/build_fluxnet_atlas.py`**, and it now shows what the file
+  contains, then the default build, then each option with the flag and keyword argument that sets it.
+- **The example script sets its output encoding to UTF-8**, as the command line already did, so printing a unit such as
+  `W m⁻²` no longer crashes on an older Windows console.
+- **Half-hourly input is documented as the scope of the tool** in the README, `docs/input.md` and
+  `docs/other-formats.md`, and hourly or daily input is no longer listed as planned.
+- **The documentation badge and links point at `latest`**, which is built from `main` on every push, instead of at
+  `stable`.
+
+### Performance
+
+- **`longest_spell` uses a single numpy pass.** On the bundled 21-year extract its share of the build time drops from
+  21.5 % to 2.2 %, with identical results.
+
+### Removed
+
+- **A redundant line in the span statistics** that wrote a wrong value to `{key}_daymin` and was immediately overwritten
+  by the right one.
+
 ## v0.2.0 | 6 Aug 2026
 
 The index is now the start of each averaging window, a file that is not half-hourly is refused

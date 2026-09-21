@@ -205,7 +205,7 @@ RECORD_DAY_COVERAGE = 90.0  # % of a day measured before it is allowed to set a 
 # A name for each day test short enough to sit in a list on a tile. The full label states the
 # threshold and is what the day panel and the reference table use; neither fits where nine of them
 # appear side by side, and the page fell back to printing the key itself ("recwarm", "coldprec").
-# The build asserts the map covers every test that survives, so a test added without a name here
+# The build checks the map covers every test that survives, so a test added without a name here
 # fails the build instead of shipping its key to a reader.
 FLAG_SHORT = {
     "frost": "frost", "ice": "ice", "summer": "summer", "hot": "hot",
@@ -250,9 +250,17 @@ def day_flags(variables):
         flags.append(dict(bit=len(flags), var=item["var"], key=item["key"],
                           fn=item["fn"], label=variables[item["var"]].fmt(item["label"])))
     # The word is read in JavaScript, where a bitwise operation is defined on 32 bits.
-    assert len(flags) <= 30, f"{len(flags)} day flags do not fit in one 30-bit word"
+    #
+    # Raised rather than asserted, here and everywhere else in this module that checks the registry
+    # or the shape of the payload: `assert` is stripped under `python -O`, and these are validation
+    # of registry data rather than internal invariants. Under optimisation the whole set would
+    # vanish and a registry bug would ship as a page with a truncated flag word, an empty icon box
+    # or a grid of the wrong shape - none of which raises anything a reader would see.
+    if len(flags) > 30:
+        raise ValueError(f"{len(flags)} day flags do not fit in one 30-bit word")
     missing = [f["key"] for f in flags if f["key"] not in FLAG_SHORT]
-    assert not missing, (f"day test(s) {', '.join(missing)} have no entry in FLAG_SHORT - the page "
+    if missing:
+        raise ValueError(f"day test(s) {', '.join(missing)} have no entry in FLAG_SHORT - the page "
                          f"would print the key itself where it lists them on a tile")
     return flags
 
@@ -303,7 +311,7 @@ BADGES = [
          about="The coldest occurrence of this calendar month in the record.",
          rule=lambda s: (f"Coldest {s['month_name']} in the record: {s['TA']:.1f} {s['u_TA']} "
                          f"mean, {s['TA_anom']:+.1f} {s['u_TA']} against the normal of "
-                         f"{s['TA_n']} years") if s["TA_rank"] == s["TA_n"] else None),
+                         f"{s['TA_n']} years") if s["TA_rank_far"] == 1 else None),
 
     dict(key="warm", label="Warmer than normal", group="Temperature", icon="arrow-up",
          tone="warm", priority=4, needs=("TA",),
@@ -367,7 +375,7 @@ BADGES = [
          rule=lambda s: (f"Driest {s['month_name']} in the record: {s['PREC']:.0f} "
                          f"{s['u_PREC']}, {s['PREC_pctn']:.0f} % of the normal of "
                          f"{s['PREC_norm']:.0f} {s['u_PREC']}")
-         if s["PREC_rank"] == s["PREC_n"] else None),
+         if s["PREC_rank_far"] == 1 else None),
 
     dict(key="wet", label="Wet month", group="Precipitation", icon="droplets", tone="wet",
          priority=4, needs=("PREC",),
@@ -519,7 +527,7 @@ BADGES = [
              + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
              + ("more release" if s["NEE_norm"] > 0 else "less uptake")
              + f" than the normal of {s['NEE_n']} years")
-         if s["NEE_rank"] == s["NEE_n"] else None),
+         if s["NEE_rank_far"] == 1 else None),
 
     dict(key="sink_strong", label="Shifted toward uptake", group="Carbon", icon="arrow-down",
          tone="grow", priority=4, needs=("NEE",),
@@ -690,7 +698,7 @@ BADGES = [
              f"Net uptake of {abs(s['NEE']):.0f} {s['u_NEE']} over the year"
              + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
              + (f", {ordinal(s['NEE_rank'])} largest uptake of {s['NEE_n']} years"
-                if s["NEE_rank"] else ""))
+                if s["NEE_rank"] and s["NEE_n"] else ""))
          if s["NEE"] is not None and s["NEE"] < 0 else None),
 
     dict(key="net_source", label="Net carbon source", group="Carbon", icon="leaf-fall",
@@ -701,8 +709,8 @@ BADGES = [
          rule=lambda s: (
              f"Net release of {s['NEE']:.0f} {s['u_NEE']} over the year"
              + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
-             + (f", {ordinal(s['NEE_n'] - s['NEE_rank'] + 1)} largest release of {s['NEE_n']} years"
-                if s["NEE_rank"] else ""))
+             + (f", {ordinal(s['NEE_rank_far'])} largest release of {s['NEE_n']} years"
+                if s["NEE_rank_far"] and s["NEE_n"] else ""))
          if s["NEE"] is not None and s["NEE"] > 0 else None),
 
     dict(key="long_season", label="Long growing season", group="Season", icon="sprout",
@@ -1256,7 +1264,8 @@ def season_scheme(spec=DEFAULT_SEASONS):
         out.append(dict(key=key, group=g + 1, label=label, name=label.lower(), months=months,
                         shift=season_shift(months)))
     keys = [s["key"] for s in out]
-    assert len(set(keys)) == len(keys), f"season keys are not unique: {keys}"
+    if len(set(keys)) != len(keys):
+        raise RuntimeError(f"season keys are not unique: {keys}")
     return out
 
 
@@ -1281,22 +1290,28 @@ def season_note(scheme):
 # count of days or a run of them does not, because "five frost days" is a remarkable January and an
 # unremarkable winter. The counts are still shown on a season's page, as numbers rather than as
 # claims.
+#
+# The six carbon badges satisfy that criterion - each is a rank or a z-score against the span's own
+# peer group - and they belong here for the same reason the temperature ones do. They were absent
+# for a while only because this set was written before the fluxes existed, which made a season the
+# one scale that could show a carbon metric and then say nothing about it.
 SEASON_BADGES = {
     "sparse", "record_warm", "record_cold", "warm", "cold", "record_wet", "record_dry",
     "wet", "dry", "sunny", "dull", "vpd_record", "vpd_high", "vpd_low", "vpd_soil",
-    "soil_dry", "soil_wet", "hot_dry", "gs_start", "gs_end", "last_frost", "first_frost",
+    "soil_dry", "soil_wet", "hot_dry",
+    "record_sink", "record_source", "sink_strong", "sink_weak", "gpp_high", "gpp_low",
+    "gs_start", "gs_end", "last_frost", "first_frost",
 }
 
-# The same rule one scale further out, with two differences from the seasonal set.
+# The same rule one scale further out, and it differs from the seasonal set in exactly one way: the
+# four turning points drop out. Every year holds a last frost and a growing season, so at this scale
+# the four of them would land on all twenty-one tiles and distinguish none of them; what a year has
+# to say about its season is how long it ran and how late it began, which is what the year-only
+# badges above state instead.
 #
-# The four turning points drop out. Every year holds a last frost and a growing season, so at this
-# scale the four of them would land on all twenty-one tiles and distinguish none of them; what a
-# year has to say about its season is how long it ran and how late it began, which is what the
-# year-only badges below state instead.
-#
-# The carbon badges come in. A year is the scale the carbon balance is normally quoted at, and the
-# sign of the annual figure is a statement no month can make: every summer month is a sink and
-# every winter month a source.
+# What a year adds beyond this set is not here but in `only=("year",)`: the sign of the annual
+# carbon balance, the length of the growing season, and the frost dates are claims no shorter span
+# can make.
 YEAR_BADGES = {
     "sparse", "record_warm", "record_cold", "warm", "cold", "record_wet", "record_dry",
     "wet", "dry", "sunny", "dull", "vpd_record", "vpd_high", "vpd_low", "vpd_soil",
@@ -1744,9 +1759,10 @@ def hourly_layer(loaded, first_year, last_year):
         scaled = (series * v.scale).round()
         out[key] = dict(scale=v.scale, units=v.units, title=v.title,
                         values=[None if pd.isna(x) else int(x) for x in scaled])
-    assert not out or len(index) == (pd.Timestamp(f"{last_year}-12-31") -
-                                     pd.Timestamp(f"{first_year}-01-01")).days * 24 + 24, \
-        "the hourly index is not a whole number of days"
+    whole_days = (pd.Timestamp(f"{last_year}-12-31")
+                  - pd.Timestamp(f"{first_year}-01-01")).days * 24 + 24
+    if out and len(index) != whole_days:
+        raise RuntimeError("the hourly index is not a whole number of days")
     return dict(start=f"{first_year}-01-01", n=len(index), vars=out)
 
 
@@ -1779,6 +1795,15 @@ def aggregate_uncertainty(d, grouped, index):
             # after the aggregation and never before it.
             members = pd.concat([grouped(s) for s in component["series"]], axis=1)
             part = (members.max(axis=1) - members.min(axis=1)) / 2
+            if mean_like:
+                # `grouped` sums, because that is what every caller passes, so a variable whose
+                # own aggregation is a mean divides by the length of the span exactly as the
+                # branch below does. Unreachable while NEE is the only ensemble variable and NEE
+                # sums; stated here rather than left as a constraint nothing records.
+                part = part / grouped(pd.Series(1.0, index=component["series"][0].index))
+            # No coverage scaling: the members are whole versions of the flux and are published
+            # wherever the flux is, unlike the `*_RANDUNC` and `*_SE` columns below, which a file
+            # fills for about three quarters of its records.
         else:
             sigma = component["series"][0]
             n_present = grouped(sigma.notna().astype(float))
@@ -1870,11 +1895,22 @@ def normals(frames_by_var, groups, years):
                                min_year=int(block_years[int(np.argmin(block.to_numpy()))]),
                                max_year=int(block_years[int(np.argmax(block.to_numpy()))]))
         # Ranks are computed within the qualifying spans only, so a sparse span is not ranked.
+        #
+        # Ranked from both ends. A record badge for the far end used to test `rank == n`, which
+        # `method="min"` makes unreachable the moment two spans tie there: both take rank n-1, no
+        # span ever holds n, and the badge is silently never awarded. Ranked from the end the badge
+        # is about, the claim is `rank == 1`, and a tie awards both exactly as it already did at
+        # the near end.
+        near = varreg.rank_first(key)
+        far = "low" if near == "high" else "high"
         ranks = pd.Series(pd.NA, index=value.index, dtype="Int64")
+        ranks_far = pd.Series(pd.NA, index=value.index, dtype="Int64")
         for g in sorted(set(groups.tolist())):
             sel = groups == g
-            ranks[sel] = rank_of(value[sel], qualifies[sel], first=varreg.rank_first(key))
-        out[key] = dict(by_group=by_group, ranks=ranks, qualifies=qualifies)
+            ranks[sel] = rank_of(value[sel], qualifies[sel], first=near)
+            ranks_far[sel] = rank_of(value[sel], qualifies[sel], first=far)
+        out[key] = dict(by_group=by_group, ranks=ranks, ranks_far=ranks_far,
+                        qualifies=qualifies)
     return out
 
 
@@ -1923,6 +1959,8 @@ def span_stats(sp, keys, frames_by_var, norm, counts, spells, day, events, loade
         s[f"{key}_sd"] = nm["sd"] if nm else None
         s[f"{key}_n"] = nm["n"] if nm else None
         s[f"{key}_rank"] = None if pd.isna(rank) else int(rank)
+        rank_far = n["ranks_far"].get(idx)
+        s[f"{key}_rank_far"] = None if pd.isna(rank_far) else int(rank_far)
         if value is not None and nm:
             s[f"{key}_anom"] = value - nm["mean"]
             s[f"{key}_z"] = (value - nm["mean"]) / nm["sd"] if nm["sd"] else None
@@ -1930,9 +1968,13 @@ def span_stats(sp, keys, frames_by_var, norm, counts, spells, day, events, loade
         else:
             s[f"{key}_anom"] = s[f"{key}_z"] = s[f"{key}_pctn"] = None
 
-        # The extreme day of the span, which is what a badge quotes as its evidence.
+        # The extreme day of the span, which is what a badge quotes as its evidence: the high end
+        # of the daily maximum and of the daily total, and the *low* end of the daily minimum,
+        # which is what a reader means by the coldest night of the month. `min` was in the loop as
+        # well, taking the highest daily minimum before the line below replaced it - a dead write
+        # that read like a bug in a function whose numbers land in badge text.
         block = day[key].loc[sp["start"]:sp["end"]]
-        for stat in ("min", "max", "sum"):
+        for stat in ("max", "sum"):
             if stat in block.columns:
                 col = block[stat].dropna()
                 s[f"{key}_day{stat}"] = float(col.max()) if len(col) else None
@@ -2253,12 +2295,11 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     daily_norm = daily_normals(day, dates, keys)
     nrm = normal_accessor(daily_norm, dates)
 
-    flags = day_flags({k: loaded[k]["v"] for k in keys})
-    word, hits, flags = flag_words(flags, day, meas, nrm, dates)
-    dropped = [f["key"] for f in day_flags({k: loaded[k]["v"] for k in keys})
-               if f["key"] not in hits]
-    if dropped:
-        print(f"  day tests dropped for want of a variable: {', '.join(dropped)}")
+    offered = day_flags({k: loaded[k]["v"] for k in keys})
+    word, hits, flags = flag_words(offered, day, meas, nrm, dates)
+    dropped = [f["key"] for f in offered if f["key"] not in hits]
+    if dropped and not quiet:
+        say(f"  day tests dropped for want of a variable: {', '.join(dropped)}")
 
     counts_month = {k: v.resample("MS").sum().reindex(months) for k, v in hits.items()}
     # Spells are the runs a count cannot show: a month can reach a high count without ever holding
@@ -2498,8 +2539,11 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         # aggregated is a different series from three series aggregated, and only the first is what
         # the season row of the grid shows.
         col_trend, year_trend = metric_trends(metric, entry["agg"], rows, lambda x: x["m"], 12)
+        # As many columns as the scheme has seasons, not the four the default happens to give:
+        # `--seasons DJFMAM` builds two, and a hard-coded four asks every year for twice the spans
+        # it holds.
         season_col_trend, _ = metric_trends(metric, entry["agg"], season_rows,
-                                            lambda x: x["s"], 4)
+                                            lambda x: x["s"], len(scheme))
         # The year scale has one column, and its slope is fitted through the year tiles themselves
         # rather than inherited from `trend_year`. The two are close but not the same series: a
         # year aggregated from twelve monthly means weights a 28-day February like a 31-day July,
@@ -2512,22 +2556,37 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         metrics.append(entry)
 
     # -- Badge registry, with the icons checked against the ones the page can draw ------------
-    icons = set(re.findall(r"^\s{4}'([\w-]+)':", (ASSETS / "calendar.js").read_text(encoding="utf-8"),
-                           flags=re.M))
+    # Read out of the icon map itself rather than off the indentation. The check used to match
+    # any four-space-indented quoted key anywhere in the renderer, so what the build validated
+    # against depended on how that file happened to be formatted.
+    renderer = (ASSETS / "calendar.js").read_text(encoding="utf-8")
+    opens = renderer.find("const ICONS = {")
+    if opens < 0:
+        raise RuntimeError("calendar.js has no `const ICONS = {...}` block, so the badge "
+                           "icons cannot be checked against the ones the page can draw")
+    icon_block = renderer[opens:renderer.index("};", opens)]
+    icons = {line.strip().split(":", 1)[0].strip().strip(chr(39))
+             for line in icon_block.splitlines() if line.strip().startswith(chr(39))}
     badge_meta = []
     for badge in BADGES:
-        assert badge["icon"] in icons, (
-            f"badge {badge['key']!r} asks for icon {badge['icon']!r}, which calendar.js does not "
-            f"draw - it would render as an empty box")
+        if badge["icon"] not in icons:
+            raise ValueError(
+                f"badge {badge['key']!r} asks for icon {badge['icon']!r}, which calendar.js does "
+                f"not draw - it would render as an empty box")
         # Counted per scale, because a badge means a different number of things at each: the legend
         # says "18 months" beside a month grid and "4 years" beside a year grid, and a year-only
         # badge would otherwise report zero of a thing it cannot be.
         def earned_by(span_rows, key=badge["key"]):
             return sum(1 for row in span_rows for b in row["b"] if b["k"] == key)
 
+        # Asked of `badge_at_scale` rather than read off `only`, because `only` is one of the three
+        # things that decide it. Reading `only` alone told the legend that a count of frost days was
+        # judged at the season scale, where it is not, and the count of zero it then printed read as
+        # "no season had one" rather than "this is not a claim a season makes".
         badge_meta.append(dict(key=badge["key"], label=badge["label"], group=badge["group"],
                                icon=badge["icon"], tone=badge["tone"],
-                               scales=list(badge.get("only", ("month", "season", "year"))),
+                               scales=[sc for sc in ("month", "season", "year")
+                                       if badge_at_scale(badge, sc)],
                                about=badge["about"].format(
                                    sparse=SPARSE_COVERAGE,
                                    flux_sparse=varreg.FLUX_COVERAGE.warn),
@@ -2618,8 +2677,14 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         months=rows,
         seasons=season_rows,
         years=year_rows,
+        # `shift` travels with the definition because the renderer needs it: to say which season a
+        # month belongs to it has to know which of a season's months fall in the calendar year
+        # before the one the season is labelled by, and that is a property of the scheme rather
+        # than of December. Without it the page hard-coded month 12 and put every November of an
+        # `NDJF` scheme in the season a year too early.
         season_defs=[dict(key=x["key"], label=x["label"], name=x["name"],
-                          months=list(x["months"])) for x in scheme],
+                          months=list(x["months"]),
+                          shift={str(m): s for m, s in x["shift"].items()}) for x in scheme],
         days=dict(
             start=f"{dates[0]:%Y-%m-%d}", n=len(dates),
             flags=[int(x) for x in word.to_numpy()],
@@ -2633,16 +2698,26 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                      for key in keys},
         season_climatology={key: {x["key"]: season_norm[key]["by_group"][x["group"]]
                                   for x in scheme} for key in keys} if scheme else {},
+        # The year's peer group is the record, so its climatology is the one group `year_norm` was
+        # built with. It is shipped for the same reason the other two are: the panel's charts draw
+        # a dashed tick at the normal, and without this the year scale silently drew none.
+        year_climatology={key: year_norm[key]["by_group"][1] for key in keys},
         hourly=hourly_layer(loaded, first_year, last_year) if with_hourly else None,
     )
 
-    # The grid is the page, so its shape is asserted rather than assumed: one tile per month of
+    # The grid is the page, so its shape is checked rather than assumed: one tile per month of
     # every year, and every tile addressing a real window of the daily arrays.
-    assert len(rows) == (last_year - first_year + 1) * 12, "the grid is not a whole number of years"
-    assert len(season_rows) == (last_year - first_year + 1) * len(scheme), \
-        "the season grid is not a whole number of years"
-    assert len(year_rows) == last_year - first_year + 1, "one tile per year of the record"
-    assert all(row["i0"] + row["n"] <= len(dates) for row in rows), "a month runs past the days"
+    span_years = last_year - first_year + 1
+    for got, want, what in ((len(rows), span_years * 12,
+                             "the grid is not a whole number of years"),
+                            (len(season_rows), span_years * len(scheme),
+                             "the season grid is not a whole number of years"),
+                            (len(year_rows), span_years,
+                             "one tile per year of the record")):
+        if got != want:
+            raise RuntimeError(f"{what}: {got} tiles against {want}")
+    if not all(row["i0"] + row["n"] <= len(dates) for row in rows):
+        raise RuntimeError("a month runs past the days")
     return payload
 
 

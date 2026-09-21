@@ -1,0 +1,13 @@
+{
+  "name": "fluxatlas-renderer-smoke",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Drives the built page under jsdom, so the renderer is executed rather than only parsed. Not part of the distribution, and not needed to install or use fluxatlas.",
+  "scripts": {
+    "smoke": "node smoke.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

@@ -118,24 +118,25 @@ registry-found and hand-named variables can appear in one build. See
 
 ## Working examples
 
-`examples/` holds two scripts, and together they show what a selection does.
+`examples/` holds two scripts, and they are the two kinds of file this package reads. Its
+[README](https://github.com/holukas/fluxatlas/blob/main/examples/README.md) works through both,
+and through the flags worth knowing.
+
+```bash
+uv run python examples/build_fluxnet_atlas.py --input YOUR_FULLSET.csv --open
+```
+
+**Start here if you have a FLUXNET file.** It prints what the file can supply, then the default
+build with nothing configured, then every option beside the flag and the keyword argument that set
+it. Its default input is a real FULLSET record that is not committed, so point `--input` at your
+own; `--out` writes outside the repository, which is worth doing, since a page of a
+twenty-one-year record runs to 5.9 MB with the hourly layer and 2.3 MB without.
 
 ```bash
 uv run python examples/build_lae_meteo_atlas.py --open
 ```
 
-This builds two atlases from the committed twenty-one-year CH-LAE meteo extract: one of all six
-variables, one of air temperature alone, which is the [selection](selection.md) behaviour in one
-run. The extract keeps its CH-LAE column names, because naming columns by hand is the general
-case.
-
-```bash
-uv run python examples/build_oe2_flux_atlas.py --open
-uv run python examples/build_oe2_flux_atlas.py --input SOME_OTHER_FULLSET.csv --vars NEE,GPP,RECO
-```
-
-The other case: a real FLUXNET FULLSET record, whose columns the registry finds unaided, carrying
-the fluxes. The script prints what the file can supply, then builds one page from all of it. Its
-default input is not committed. `--input` points it at any FLUXNET-standardized half-hourly file,
-and `--out` writes outside the repository, which is worth doing: a page of a record that long runs
-to several megabytes.
+The other case, and it needs no data of yours: two atlases from the committed twenty-one-year
+CH-LAE meteo extract, one of all six variables and one of air temperature alone, which is the
+[selection](selection.md) behaviour in one run. The extract keeps its CH-LAE column names, because
+naming columns by hand is the general case for a local product.

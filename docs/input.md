@@ -103,8 +103,13 @@ registry does not know raises an error listing the keys it does.
 satisfy, the three fields of a mapping, a worked conversion, and the two things a mapped column
 gives up.
 
-## Input that is not half-hourly
+## Half-hourly is the scope
 
 Everything assumes 30-minute records: the reader reindexes onto a `30min` grid, and seasonal
-coverage denominators are `n_days * 48`. Hourly or daily input needs those two places generalized
-first, or coverage will be wrong. See [what is planned](development.md#what-is-planned).
+coverage denominators are `n_days * 48`. A file on any other spacing is refused, with its own
+spacing named.
+
+This is a deliberate limit rather than an unfinished one. A half-hourly record is what an eddy
+covariance system produces and what FLUXNET distributes, so hourly and daily input are out of scope
+and are not planned. Aggregate such a record to 30 minutes before building an atlas from it, or
+read it with the tool that suits it.

@@ -18,7 +18,8 @@ Four things are decided here rather than left to the caller.
 - **Whole years.** The grid is a whole number of years and the coverage denominators are the
   half-hours a month *should* hold, so a partial first or last year is dropped rather than
   averaged in. What was dropped is reported.
-- **Units.** The registry's candidate list carries the factor onto the canonical unit, and
+- **Units.** The registry's candidate list carries the factor onto the canonical unit - including
+  for a candidate the caller named explicitly, which is a choice of column and not of unit - and
   `limits` is checked afterwards, so a wrong factor fails the read naming the column.
 
 Why the file is read twice
@@ -121,18 +122,32 @@ def _timestamp_index(df):
     flooring maps both onto the same start; without it, a middle-stamped file would land between
     the grid's points and read as empty.
     """
+    stamps, on_grid = _raw_stamps(df)
+    return stamps if on_grid else stamps.floor(FREQ)
+
+
+def _raw_stamps(df):
+    """The timestamps as the file states them, and whether they already name the window start.
+
+    Kept apart from `_timestamp_index` because the **spacing** of a file is a fact about these and
+    not about the index built from them. Flooring maps a middle-stamped 30-minute record onto the
+    window it belongs to, which is why it is done; it maps three ten-minute records onto that same
+    window just as willingly, and de-duplication then drops two of them. Measured after that, a
+    ten-minute file is indistinguishable from a half-hourly one, so it is measured before.
+    """
     if isinstance(df.index, pd.DatetimeIndex):
-        return df.index.floor(FREQ)
+        return df.index, False
 
     def parse(col):
-        return pd.to_datetime(df[col].astype("int64").astype(str), format="%Y%m%d%H%M")
+        return pd.DatetimeIndex(pd.to_datetime(df[col].astype("int64").astype(str),
+                                               format="%Y%m%d%H%M"))
 
     if "TIMESTAMP_START" in df.columns:
-        return parse("TIMESTAMP_START")
+        return parse("TIMESTAMP_START"), True
     if "TIMESTAMP_END" in df.columns:
-        return parse("TIMESTAMP_END") - pd.Timedelta(FREQ)
+        return parse("TIMESTAMP_END") - pd.Timedelta(FREQ), True
     if "TIMESTAMP" in df.columns:
-        return parse("TIMESTAMP").dt.floor(FREQ)
+        return parse("TIMESTAMP"), False
     raise ValueError("no TIMESTAMP_START/TIMESTAMP_END column and no DatetimeIndex - this does not "
                      "look like a FLUXNET-standardized file")
 
@@ -200,6 +215,12 @@ def resolve(source, keys, label="the file"):
       registry describes, because that is where the units, the thresholds and the aggregation come
       from; only the column name is the caller's to choose.
 
+    A mapping that states no `factor` inherits the registry's own wherever the column it names is
+    one of that key's candidates, so `{"NEE": "NEE_CUT_REF"}` reads in g C m-2 exactly as the
+    unaided resolution of that file would. A column the registry does not list for the key has no
+    factor to inherit and keeps 1.0, which is what a series named to a local convention needs. A
+    `factor` the caller states always wins, including an explicit `1.0`.
+
     `source` is a path, a frame, or a list of column names - the resolution is a question about
     names, and answering it before the data is read is what lets the read be projected.
     """
@@ -239,7 +260,38 @@ def resolve(source, keys, label="the file"):
         qc = spec.get("qc")
         if qc and qc not in columns:
             raise KeyError(f"{label} has no column {qc!r}, named as the quality flag for {key}")
-        specs[key] = dict(column=spec["column"], factor=float(spec.get("factor", 1.0)), qc=qc)
+        # The quality flag follows the column for the same reason the factor does, and leaving it
+        # to default was the more damaging half of the same gap: naming the very column the
+        # registry would have chosen dropped the flag beside it, and a flux read without its flag
+        # counts every present record as measured. On the CH-Oe2 record that is 100 % against the
+        # 42 % the file states, so no span is hatched, no sparse badge is awarded, and the build's
+        # coverage warning falls silent on a record that is half gap-filled by design.
+        #
+        # `<column>_QC` is preferred so the flag stays with the variant it describes; an ordered
+        # candidate list cannot do that once the caller has picked a column out of order. The list
+        # is the fallback, and is what GPP and RECO need: neither is measured, so both take the
+        # flag of the NEE they were partitioned from.
+        if "qc" not in spec:
+            candidates = varreg.make(key).qc_candidates
+            direct = f"{spec['column']}_QC"
+            qc = (direct if direct in candidates and direct in columns
+                  else next((q for q in candidates if q in columns), None))
+        # The unit conversion follows the column, not the form the caller used to name it. Naming
+        # one of the registry's own candidates - `--var NEE=NEE_CUT_REF`, to take the variant the
+        # file carries rather than the one the registry prefers - is a choice of column and not a
+        # choice of unit, so the factor the registry holds for that candidate is inherited. Without
+        # that, a carbon flux named explicitly arrives in umol m-2 s-1 and fails `limits` with a
+        # unit error the caller has no reason to expect, and is unreadable until the conversion is
+        # restated by hand.
+        #
+        # A stated factor wins, and `1.0` stated is a statement: `spec.get("factor", 1.0)` cannot
+        # tell it from silence, so the key is tested for instead.
+        if "factor" in spec:
+            factor = float(spec["factor"])
+        else:
+            candidates = dict(varreg.make(key).candidates)
+            factor = float(candidates.get(spec["column"], 1.0))
+        specs[key] = dict(column=spec["column"], factor=factor, qc=qc)
     return specs
 
 
@@ -271,37 +323,46 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
     # The uncertainty columns are resolved the same way and against the same header, so they cost
     # one more pass over a list of names rather than another read of the file.
     #
-    # Only where the variable came from a column the registry knows. `NEE_VUT_REF_RANDUNC` is the
-    # uncertainty of `NEE_VUT_REF`; attaching it to a series the caller mapped in from somewhere
-    # else would be inventing an error bar for data it does not describe.
+    # Resolved for the column the variable was actually read from, not for the variable in general.
+    # `NEE_VUT_REF_RANDUNC` is the uncertainty of `NEE_VUT_REF` and describes no other u* selection,
+    # so a caller who named `NEE_CUT_REF` with `--var` gets that column's interval or none rather
+    # than the default variant's. A column the registry knows no uncertainty for - one mapped in
+    # from another convention among them - gets none, which is where this used to invent an error
+    # bar for data it does not describe.
     unc = {}
     for key in keys:
-        known_columns = {name for name, _ in varreg.make(key).candidates}
-        unc[key] = (varreg.uncertainty(key, header)
-                    if specs[key]["column"] in known_columns else [])
+        unc[key] = varreg.uncertainty(key, header, specs[key]["column"])
         for component in unc[key]:
             for col in component["columns"]:
                 if col not in needed:
                     needed.append(col)
 
     df = _read_frame(path, usecols=needed)
-    index = _timestamp_index(df)
-    df = df.set_index(pd.DatetimeIndex(index))
-    df = df[~df.index.duplicated(keep="first")].sort_index()
 
-    # Half-hourly is what this reads, and an hourly file lands on the half-hourly grid rather than
-    # missing it: every hour is also a half hour. Reindexed onto 30 minutes it would come out as a
-    # record that is half missing, with every coverage figure on the page halved and nothing to say
-    # why, so the spacing is checked rather than inferred. The mode rather than the mean, because a
-    # record with genuine gaps still has 30 minutes as its commonest step.
-    if len(df.index) > 1:
-        steps = pd.Series(df.index).diff().dropna()
+    # Half-hourly is what this reads, and a file on any other spacing lands on the half-hourly grid
+    # rather than missing it. An hourly file fills every second slot, so reindexed onto 30 minutes
+    # it comes out half missing with every coverage figure on the page halved and nothing to say
+    # why. A file finer than half-hourly is worse, because it does not even look wrong: flooring
+    # puts each of its records inside a window and the duplicates are dropped, so a ten-minute
+    # record reads as a complete half-hourly one built from every third value.
+    #
+    # So the spacing is measured on the stamps the file states, before they are floored - after
+    # that the two cases are indistinguishable. Distinct stamps only, so duplicated rows do not
+    # make zero the commonest step; and the mode rather than the mean, because a record with
+    # genuine gaps still has 30 minutes as its commonest step.
+    stamps, _ = _raw_stamps(df)
+    if len(stamps) > 1:
+        steps = pd.Series(stamps.drop_duplicates().sort_values()).diff().dropna()
         common = steps.mode()
         if len(common) and common.iloc[0] != pd.Timedelta(FREQ):
             raise ValueError(
                 f"{path.name}: its records are {common.iloc[0]} apart, and this reads half-hourly "
                 f"records. Resample to 30 minutes first, or see the documentation on input that is "
                 f"not half-hourly.")
+
+    index = _timestamp_index(df)
+    df = df.set_index(pd.DatetimeIndex(index))
+    df = df[~df.index.duplicated(keep="first")].sort_index()
 
     first, last = _whole_years(df.index, first_year, last_year)
     dropped = sorted(set(df.index.year) - set(range(first, last + 1)))
