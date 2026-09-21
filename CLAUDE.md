@@ -564,7 +564,14 @@ package. Keep them aligned unless there is a reason not to:
    release and not on a bare tag, so a release that exists only as a tag is not
    archived and not citable. The release body is the changelog entry. Afterwards,
    `git fetch --tags`.
-5. `uv publish`, which is the author's to run.
+5. **PyPI publishes itself.** `.github/workflows/publish.yml` runs on a published
+   release: it checks that the tag equals the package version, builds, and
+   uploads with trusted publishing, so no token exists anywhere. The publisher is
+   registered on PyPI against this repository, that file name and the `pypi`
+   environment; renaming any of the three breaks it until the PyPI entry is
+   updated. Watch the Actions run after publishing the release.
+
+If the workflow cannot run, the manual fallback is a project-scoped token:
 
 ```
 uv build
@@ -574,7 +581,9 @@ $env:UV_PUBLISH_TOKEN = (Read-Host 'PyPI token'); uv publish
 The username `uv publish` asks for is the literal string `__token__`, and the
 token is the password. Pasting the token into the username prompt fails with
 "Username/Password authentication is no longer supported", which does not sound
-like the mistake it is. The environment variable avoids the prompt entirely.
+like the mistake it is. The environment variable avoids the prompt entirely, and
+the `Read-Host` form keeps the token out of `ConsoleHost_history.txt`, which
+records anything typed on the command line.
 
 **The version is declared once**, in `pyproject.toml`; `__init__.py` reads it back
 from the installed distribution, as `diive` does, and the page footer prints that.
@@ -584,11 +593,8 @@ installed - a wheel built without them imports cleanly and then writes a page
 with no styles, no renderer and no mark, which nothing else would catch because
 every other test reads the source tree. `.github/workflows/tests.yml` runs the
 suite, the `-W -j auto` docs build and that wheel check on 3.12 and 3.13.
-
-The `Read-Host` form keeps the token out of `ConsoleHost_history.txt`, which
-records anything typed on the command line. Use a **project-scoped** token.
-Trusted publishing from GitHub Actions is the intended path for real releases and
-is not yet configured; it would remove the token from the process altogether.
+`publish.yml` runs `uv build` again on the release, so what reaches PyPI is
+built from the tagged commit on a clean checkout, not from a local `dist/`.
 
 `CITATION.cff` is what Zenodo builds its record from - the ORCID and the
 affiliation on the archived record came from there, not from the GitHub profile.
@@ -642,7 +648,8 @@ favicon, where no custom property is defined, fall back to the light one.
   into **logical groups** — one commit per coherent change, not one commit per
   session — and write subject + body with **no `Co-Authored-By` or "Generated
   with Claude Code" trailer**.
-- **Never publish to PyPI.** Building (`uv build`) is fine; `uv publish` is the
+- **Never publish to PyPI.** Building (`uv build`) is fine; the upload is the
+  release workflow's job, and the manual `uv publish` is the
   author's to run, since it is public and needs their token.
 
 ## Register

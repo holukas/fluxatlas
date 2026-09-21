@@ -1,0 +1,42 @@
+# Publish to PyPI when a GitHub Release is published.
+#
+# Trusted publishing: PyPI accepts the OpenID Connect token that GitHub mints for this job
+# (`id-token: write`), so no API token is stored anywhere. The publisher is registered on PyPI
+# under the project's settings, keyed on this repository, this file name and the `pypi`
+# environment; all three have to match or PyPI refuses the upload.
+#
+# A release is the trigger rather than a tag, so publishing to PyPI and archiving on Zenodo
+# happen from the same action. The tag is checked against the package version first, so a
+# release tagged with the wrong number stops before anything is uploaded.
+
+name: publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Check that the tag matches the package version
+        run: |
+          version=$(uv version --short)
+          test "v$version" = "${{ github.event.release.tag_name }}" \
+            || { echo "tag ${{ github.event.release.tag_name }} but version $version"; exit 1; }
+
+      - name: Build
+        run: uv build
+
+      - name: Publish
+        run: uv publish

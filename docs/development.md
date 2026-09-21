@@ -154,16 +154,18 @@ the one that ran. A test asserts the two agree and that the changelog opens with
 4. Publish a GitHub Release. Its "Choose a tag" field creates the tag on publish,
    from the target branch as the remote has it. Zenodo archives a published release
    and not a bare tag, so a tag on its own is not citable.
-5. Publish to PyPI, which is the author's to run since it is public and needs their
-   token:
+5. Publishing the release also publishes to PyPI. `.github/workflows/publish.yml`
+   runs on a published release, checks that the tag equals the package version,
+   builds, and uploads with trusted publishing, so no token is stored anywhere.
+
+Should the workflow be unavailable, a project-scoped token still works:
 
 ```powershell
 $env:UV_PUBLISH_TOKEN = (Read-Host 'PyPI token'); uv publish
 ```
 
 The `Read-Host` form keeps the token out of `ConsoleHost_history.txt`, which records anything typed
-on the command line. Use a project-scoped token. Trusted publishing from GitHub Actions is the
-intended path for real releases and is not configured yet.
+on the command line.
 
 ### What is checked, and where
 
