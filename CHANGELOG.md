@@ -1,217 +1,91 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 | 21 Sep 2026
 
-The examples lead with the case most users are in, the renderer is now executed by the test suite
-rather than only parsed, the six carbon badges are judged at the season scale as well as the month
-and the year, and half-hourly input is stated as the scope of the tool rather than as a limit
-waiting to be lifted. Four defects found in review are fixed as well; two of them - input finer
-than half-hourly, and an uncertainty paired with the wrong column - put wrong numbers on a page
-without saying so.
+This release fixes a number of bugs, several of which produced wrong numbers on a page with no
+warning. The renderer is now tested by running it in a headless browser, the six carbon badges
+also appear on seasons, the example scripts are easier to start from, and one slow step of the
+build is much faster. Half-hourly input is now documented as the intended scope of the tool.
 
 ### Added
 
-- **`examples/README.md`**, which leads with the command a FLUXNET file needs and nothing else:
-  `--list` to see what the file carries, then one call to build the page. The flags worth knowing
-  come after it, each with the reason to reach for it, and the Python equivalent after those.
-
-  `examples/` had no command-line example at all before this, and both of its scripts were named
-  for a site rather than for a case, so a user arriving with their own FULLSET record had no
-  obvious place to start. A FLUXNET file is the case that needs no configuration, and the examples
-  now say so first.
-
-- **The renderer is run, not just parsed.** `tests/test_renderer_smoke.py` loads the built page
-  under jsdom and walks it: the grid at each of the four scales and under every metric, a span panel
-  at each of the three span scales, a day, every variable page, and an unknown hash. It fails on
-  anything thrown, on a view that renders almost no text, and on `undefined`, `NaN` or
-  `[object Object]` reaching text a reader can see. Six selections are driven, among them the fluxes
-  with no air temperature and a build with no seasons, because a renderer bug is usually specific to
-  what was selected.
-
-  This closes the gap that `node --check` could not: a page that parses and then throws looks
-  exactly like one that does not parse, and a card reading a field only one scale carries usually
-  does not throw at all - it renders the word `undefined` in a sentence. Both bugs of that shape
-  that shipped were confirmed to fail the new test before it was committed.
-
-  jsdom is a node package and is deliberately not a dependency of `fluxatlas`. It is installed on
-  its own with `npm install` in `tests/js`, and the smoke tests skip without it, as the syntax tests
-  already skip without node. CI installs it, so the renderer is executed on every push.
+- **A README for the examples**, which opens with the two commands needed for a FLUXNET file: `--list` to see what it
+  contains and one call to build the page.
+- **The renderer is now tested by running it.** `tests/test_renderer_smoke.py` loads the built page under jsdom, visits
+  every view, and fails if anything throws or if `undefined`, `NaN` or `[object Object]` shows up in text a reader could
+  see.
+- **Six variable selections are covered by that test**, including the fluxes without air temperature and a build without
+  seasons, because renderer bugs tend to depend on which variables were selected.
+- **jsdom has to be installed separately** with `npm install` in `tests/js`; it is not a dependency of `fluxatlas`, the
+  smoke tests skip without it, and CI installs it.
 
 ### Fixed
 
-- **The six carbon badges are judged at the season scale.** `record_sink`, `record_source`,
-  `sink_strong`, `sink_weak`, `gpp_high` and `gpp_low` are each a rank or a z-score against the
-  span's own peer group, which is the stated criterion for a badge that travels, and each already
-  worked at the month and the year scale. They were absent from a season only because the set that
-  decides this was written before the fluxes existed. A season could show a carbon metric and then
-  say nothing about it.
-
-- **The badge legend no longer claims a scale a badge is not judged at.** The payload derived a
-  badge's scales from `only` alone, which is one of three things that decide it, so a count of frost
-  days was listed as judged at the season scale and reported zero seasons - which reads as "no
-  season had one" rather than "this is not a claim a season makes". It is now asked of
-  `badge_at_scale`, the one place that decides.
-
-- **A file finer than half-hourly is refused rather than silently thinned.** The spacing check ran
-  after the stamps had been floored onto the 30-minute grid and the duplicates dropped, which is
-  the one order in which it cannot work: flooring is what puts a middle-stamped record on the grid,
-  and it puts three ten-minute records in the same window just as willingly. A ten-minute file
-  therefore passed the check and was read as a complete half-hourly record built from every third
-  value - the right number of records, 100 % available, two thirds of the data gone and nothing on
-  the page to say so. The spacing is now read off the stamps the file states, before anything is
-  floored, so all three input paths refuse it alike. `TIMESTAMP_START` files were already refused
-  correctly; a DatetimeIndex or a `TIMESTAMP` column was not.
-
-- **An uncertainty is paired with the column it describes.** `NEE_VUT_REF_RANDUNC` is the random
-  error of `NEE_VUT_REF` and says nothing about `NEE_CUT_REF`; `GPP_NT_VUT_SE` is the threshold
-  spread of the nighttime partitioning and not of the daytime one. The data column and the
-  uncertainty column were resolved from two ordered lists that agreed only by their ordering, so a
-  caller who named a column with `--var` - the documented way to override the registry's choice -
-  got the default variant's interval, its `unc_note` and its `unc_columns` under another variant's
-  figure. Each component in the registry now names the data column it belongs to, and a resolved
-  column with no entry carries no interval, which is what a series mapped in from another
-  convention should always have had.
-
-- **`--quiet` is quiet.** The notice naming day tests dropped for want of a variable was the one
-  message in the package that neither checked the flag nor went through `say()`. A
-  precipitation-only build prints it, because `coldprec` is filed under `PREC`, survives the
-  variable filter and is then dropped when its rule reads the air temperature that is not there -
-  and `test_quiet_prints_nothing` drove a temperature-only selection, where no test is ever
-  dropped. The build also stopped rebuilding the day-test list a second time to work out what it
-  had lost.
-
-- **The seasonal trend has one column per season of the scheme**, rather than the four the default
-  happens to give. `--seasons DJFMAM` builds two, and asking each year for four qualifying spans
-  drops every year of the record. Invisible so far because that return value is discarded at this
-  call site.
-
-- **A column named by hand inherits the registry's unit factor.** `resolve` defaulted `factor` to
-  1.0 for every explicit mapping, so `--var NEE=NEE_CUT_REF` - naming a column the registry itself
-  lists, and the documented way to override its choice - dropped the µmol to g C conversion and
-  failed the limits check with a unit error. The factor now follows the column wherever the
-  registry knows it; a stated factor still wins, including a stated 1.0, and a column the registry
-  does not know still gets 1.0.
-
-- **The growing season counts runs of dates, not runs of rows.** `rolling(span)` counted
-  consecutive *records*, and both callers pass a series with its gaps dropped, so six above-base
-  days spread over three weeks satisfied the run and the start was then back-dated five calendar
-  days as though they had been adjacent. On a thinned spring the reported start was a date the
-  record does not hold. The series is now reindexed onto a complete daily index first, so a gap
-  breaks a run; a day the record does not hold no longer counts as a day below the base either,
-  which would have closed the season on the first outage. A gapless year gets the same answer as
-  before, which is asserted.
-
-- **A record badge for the far end survives a tie.** `record_cold`, `record_dry` and
-  `record_source` tested `rank == n`, and `method="min"` gives tied spans the lower rank, so two
-  spans tying at that end left no span holding rank n and the badge was silently never awarded.
-  Ranks are now taken from both ends and the claim is `rank == 1`, which a tie satisfies for both,
-  exactly as it already did at the near end.
-
-- **Registry and payload checks survive `python -O`.** The checks on the 30-bit day-flag word, the
-  `FLAG_SHORT` map, the badge icons, the season keys, the hourly index and the shape of the grid
-  were `assert`s, as were the three registry checks in `Variable`. Under optimisation all of them
-  vanish and a registry bug ships as a truncated flag word, an empty icon box or a grid of the
-  wrong shape - none of which raises anything a reader would see. They raise now.
-
-- **The badge-icon check reads the icon map.** It matched any four-space-indented quoted key
-  anywhere in `calendar.js`, so what the build validated against depended on how that file happened
-  to be formatted.
-
-- **The ensemble uncertainty states its aggregation constraint.** The `ENSEMBLE` branch of
-  `aggregate_uncertainty` never divided by the length of the span, which is correct only because
-  every caller passes a summing aggregation and `NEE` - the only variable with an ensemble - sums.
-  A mean-aggregated variable with an ensemble would have been out by the length of the span.
-  Unreachable today; stated rather than left as a constraint nothing records.
-
-- **The quality flag follows the column a variable was read from.** Naming a column explicitly left
-  the flag unset, so a flux named with `--var` counted every present record as measured: on the
-  CH-Oe2 record 100 % against the 42 % the file states, which hatches no span, awards no sparse
-  badge and silences the build's coverage warning on a record that is half gap-filled by design.
-  The flag is now inherited exactly as the unit factor is, preferring `<column>_QC` so it stays
-  with the variant it describes; a flag named with `--qc` still wins, and `GPP` and `RECO` still
-  take the flag of the `NEE` they were partitioned from. The two halves of this were one gap: the
-  factor fix is what made a carbon flux named by hand readable at all, and so made the wrong
-  coverage figure reachable.
-
-- **`GPP_DT_VUT_USTAR50` and `RECO_DT_VUT_USTAR50` carry their uncertainty.** Both are registry
-  candidates and a FULLSET file publishes `GPP_DT_VUT_SE` and `RECO_DT_VUT_SE` beside them, but the
-  pairing named only the nighttime sibling, so a page built on the daytime partitioning under that
-  u* selection showed a carbon total with no interval where the file publishes one.
-
-- **A rank is only stated where there is a peer group to state it against.** `net_sink` and
-  `net_source` are judged without a normal, but the rank they quote is counted out of the normal's
-  years, so a record too short for a year-scale normal printed "3rd largest uptake of None years"
-  on every year tile.
-
-- **Eight defects in the renderer, none of which the page could report.** A blank tooltip, a click
-  that goes nowhere and an `undefined` inside an `aria-label` all look like a working page, and the
-  smoke harness only read the visible text of a view it never interacted with.
-
-  - The grid tile's hover and focus handlers resolved the span with the *column* id, so at the
-    season and year scale every hover and every keyboard focus threw and no tooltip was ever shown.
-  - `selectDay` built the hash from the month scale's state, so clicking a day in any season or
-    year chart produced `#2016-null-01` and dropped the reader back on the grid.
-  - The rank strips printed "Nth highest" whatever the variable, which for the net exchange names
-    the wrong end: rank 1 there is the largest uptake.
-  - The day calendar had a season branch and no year branch, so a year was drawn as a month: 366
-    cells, no leading blanks, and every `aria-label` reading "undefined".
-  - `seasonOfMonth` still hard-coded December as the month belonging to the following season, which
-    this file has claimed for a while that nothing does. `season_defs` now ships the scheme's own
-    `shift`, so under `NDJF` a November no longer links to the season that began a year earlier.
-  - The span highlights printed a within-span day index as though it were a day of the month, and
-    said "in this month" at every scale.
-  - The month-shape tooltip titled its points "1 undefined" away from the month scale.
-  - The year panel promised a dashed record normal it never drew, because the year scale fell
-    through to the month climatology. `year_climatology` is now shipped and read.
-
-- **The smoke harness drives the page rather than reading it.** It now hovers and focuses grid
-  tiles at every scale, puts every chart under the cursor, opens a day by both routes from each
-  span panel and fails when the hash carries `null` or the click lands back on the grid, and scans
-  `aria-label`, `title` and SVG `<title>` as well as visible text. Four of the eight defects above
-  were re-introduced and confirmed to fail it. It costs nothing: sharing one page walk between the
-  two full-page tests more than pays for the extra driving.
+- **The six carbon badges now appear on seasons.** They already worked for months and years and were missing from
+  seasons only because the list of badges that apply there was written before the fluxes existed.
+- **The badge legend no longer lists a scale a badge does not apply to.** A frost-day count, for example, was shown as a
+  season badge that no season ever earned.
+- **A file with records closer together than 30 minutes is refused.** Before, a ten-minute file was silently reduced to
+  every third record and reported as complete.
+- **The uncertainty shown for a flux now belongs to the column that was actually read.** Selecting `NEE_CUT_REF` with
+  `--var` used to show the uncertainty, note and column names of `NEE_VUT_REF`.
+- **`--quiet` now silences the notice about dropped day tests.** It was the one message that ignored the flag.
+- **Trends for seasons work with any number of seasons.** The code asked every year for four seasons regardless of the
+  scheme, so `--seasons DJFMAM` produced no seasonal trend at all.
+- **A column selected with `--var` keeps the unit conversion the registry knows for it.** `--var NEE=NEE_CUT_REF` used
+  to lose the conversion from µmol to g C and fail the unit check.
+- **A column selected with `--var` also keeps its quality flag**, using `<column>_QC` where it exists, so a flux
+  selected this way no longer reports 100 % measured on a record that is half gap-filled.
+- **`GPP_DT_VUT_USTAR50` and `RECO_DT_VUT_USTAR50` now show their uncertainty**, which had been linked only to the
+  nighttime columns.
+- **The growing season is counted in calendar days, not in available records.** Missing days now break a run of warm
+  days instead of being skipped over, so the season no longer starts on a date the record does not contain.
+- **The badges for the coldest, driest and largest-source span are awarded even when two spans tie**, which used to
+  leave no span holding the last rank and no badge given.
+- **Internal consistency checks no longer disappear under `python -O`.** They were written as `assert` statements, which
+  the optimiser removes, and are now explicit checks that raise.
+- **The check that every badge has an icon reads the icon table directly** instead of scanning `calendar.js` for
+  indented quoted strings.
+- **The ensemble branch of `aggregate_uncertainty` now says that it only supports summed variables.** Every current
+  caller sums, so nothing changes, but the assumption was undocumented.
+- **Ranks are only printed where there is something to rank against.** A record too short for a year-scale normal used
+  to print "3rd largest uptake of None years" on every year tile.
+- **Hovering or tabbing to a grid tile works at the season and year scales.** Both used to throw and show no tooltip.
+- **Clicking a day in a season or year chart opens that day.** It used to produce a broken link and send the reader back
+  to the grid.
+- **The rank strips for net ecosystem exchange name the right end.** Rank 1 there is the largest uptake, not the highest
+  value.
+- **A year's day calendar is drawn as a year.** It was drawn as one 366-day month with no leading blanks and "undefined"
+  in every cell's `aria-label`.
+- **Seasons that cross the new year link to the right season from the month view.** December was hard-coded as the only
+  month that belonged to the following season, which was wrong for a scheme such as `NDJF`.
+- **Highlighted days in a span panel show the day of the month** and say which scale they are on, instead of an internal
+  index and "in this month" everywhere.
+- **The tooltip on the month-shape chart no longer reads "1 undefined"** outside the month scale.
+- **The year panel draws the dashed record-normal line it announces.** The data for it is now included in the page.
+- **The smoke test interacts with the page** by hovering and focusing tiles, moving the cursor over every chart, opening
+  a day both ways, and checking `aria-label`, `title` and SVG `<title>` text as well as visible text.
 
 ### Changed
 
-- **`examples/build_oe2_flux_atlas.py` is now `examples/build_fluxnet_atlas.py`**, and is
-  restructured so the default build comes first and the options come after it. The script always
-  read any FLUXNET-standardized file; its name said it read one site's. It now prints what the file
-  can supply, then the default build with nothing configured, then each option beside the flag and
-  the keyword argument that set it. CH-Oe2 remains the default input, and it is still one page out.
-
-- **The example prints units without dying on a Windows console.** It reconfigures `sys.stdout` to
-  UTF-8 as `fluxatlas.cli.main` already did, which the example scripts bypass by calling the library
-  directly. Listing what a file carries crashed on the first `W m⁻²` under a legacy console code
-  page - which is where most of its readers are.
-
-- **Half-hourly input is the scope, not a gap.** Everything assumes 30-minute records, and a file on
-  any other spacing is already refused with its own spacing named. That is what an eddy covariance
-  system produces and what FLUXNET distributes, so hourly and daily input are out of scope rather
-  than planned; generalizing the two places that assume 30 minutes would buy nothing and would put
-  every coverage figure on the page at risk. The README, `docs/input.md` and `docs/other-formats.md`
-  say so, and it is no longer listed as planned work.
-
-- **The documentation links point at `latest`.** The badge read the build status of `stable` and
-  every link into the documentation - the front page, the command-line reference and the guide to
-  files that are not FLUXNET-standardized, in both `README.md` and `examples/README.md` - landed
-  there too. `stable` is the most recent tag, while the documentation is built from `main` on every
-  push, so a reader following a link from the repository was sent to a version older than the
-  repository they were reading. The badge now reports the build it links to.
+- **`examples/build_oe2_flux_atlas.py` is renamed to `examples/build_fluxnet_atlas.py`**, and it now shows what the file
+  contains, then the default build, then each option with the flag and keyword argument that sets it.
+- **The example script sets its output encoding to UTF-8**, as the command line already did, so printing a unit such as
+  `W m⁻²` no longer crashes on an older Windows console.
+- **Half-hourly input is documented as the scope of the tool** in the README, `docs/input.md` and
+  `docs/other-formats.md`, and hourly or daily input is no longer listed as planned.
+- **The documentation badge and links point at `latest`**, which is built from `main` on every push, instead of at
+  `stable`.
 
 ### Performance
 
-- **`longest_spell` finds runs in one numpy pass**, rather than rebuilding a grouped cumulative sum
-  per span. It is called 1,785 times on a six-variable build - five spell definitions across the
-  month, season and year scales - and the cost was pandas call overhead rather than data volume.
-  Measured on the bundled 21-year extract it falls from 21.5 % of the build to 2.2 %. Signature,
-  return value and tie-breaking are unchanged, which is asserted against the previous
-  implementation over a set of awkward masks.
+- **`longest_spell` uses a single numpy pass.** On the bundled 21-year extract its share of the build time drops from
+  21.5 % to 2.2 %, with identical results.
 
 ### Removed
 
-- **A dead write in the span statistics.** `{key}_daymin` was assigned the *highest* daily minimum
-  by the loop above it and then immediately overwritten with the lowest. The final value was
-  always right; the dead write read like a bug in a function whose numbers land in badge text.
+- **A redundant line in the span statistics** that wrote a wrong value to `{key}_daymin` and was immediately overwritten
+  by the right one.
 
 ## v0.2.0 | 6 Aug 2026
 
