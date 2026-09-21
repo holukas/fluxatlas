@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.1 | 21 Sep 2026
+
+Identical to v0.3.0 in every file that is installed. Release v0.3.0 was published before the
+workflow that uploads to PyPI existed on the tagged commit, so it was archived on Zenodo but
+never reached PyPI. This release is the same code published again with the workflow in place.
+
 ## v0.3.0 | 21 Sep 2026
 
 This release fixes a number of bugs, several of which produced wrong numbers on a page with no
