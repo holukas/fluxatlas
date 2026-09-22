@@ -1078,6 +1078,12 @@ def daily_normals(day, dates, keys):
     the days around New Year use the end of the previous year.
     """
     doy = doy365(dates)
+    # The days inside each date's window depend on the calendar alone, so they are found once and
+    # shared by every variable and statistic rather than recomputed for each of them.
+    windows = [None] * 366
+    for target in range(1, 366):
+        dist = np.abs(doy - target)
+        windows[target] = np.flatnonzero(np.minimum(dist, 365 - dist) <= CLIM_WINDOW)
     normals = {}
     for key in keys:
         stats = {}
@@ -1089,15 +1095,12 @@ def daily_normals(day, dates, keys):
             p10 = np.full(366, np.nan)
             p90 = np.full(366, np.nan)
             for target in range(1, 366):
-                dist = np.abs(doy - target)
-                sel = np.minimum(dist, 365 - dist) <= CLIM_WINDOW
-                block = values[sel]
+                block = values[windows[target]]
                 block = block[~np.isnan(block)]
                 if block.size < 20:
                     continue
                 mean[target] = block.mean()
-                p10[target] = np.percentile(block, 10)
-                p90[target] = np.percentile(block, 90)
+                p10[target], p90[target] = np.percentile(block, (10, 90))
             stats[stat] = dict(mean=mean, p10=p10, p90=p90)
         normals[key] = stats
     return normals
