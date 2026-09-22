@@ -163,3 +163,20 @@ def test_the_seasonal_trend_is_fitted_over_the_scheme_s_own_seasons(flux_parquet
                 metric, metric["agg"], rows, lambda row: row["s"], 4)
             assert "slope" not in asking_for_four
             assert asking_for_four["n"] == 0
+
+
+# -- Span lookups --------------------------------------------------------------------------------
+
+def test_a_grouping_key_is_shared_only_by_series_on_the_same_index():
+    import pandas as pd
+
+    built = []
+    group_of = build._shared_key(lambda index: built.append(index) or index.year)
+    first = pd.date_range("2005-01-01", periods=96, freq="30min")
+    same = pd.date_range("2005-01-01", periods=96, freq="30min")
+    other = pd.date_range("2006-01-01", periods=96, freq="30min")
+    assert list(group_of(first)) == list(first.year)
+    group_of(same)
+    assert len(built) == 1
+    assert list(group_of(other)) == list(other.year)
+    assert len(built) == 2

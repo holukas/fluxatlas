@@ -1505,6 +1505,23 @@ def year_periods(first_year, last_year):
     return out
 
 
+def _shared_key(make):
+    """A grouping key built once and handed to every variable that shares its index.
+
+    Every series the reader returns sits on the same half-hourly index, so the season or year each
+    record belongs to is the same for all of them. Building it per variable cost as much as the
+    grouping it served. A series on a different index still gets a key of its own.
+    """
+    cached = {}
+
+    def group_of(index):
+        if "index" not in cached or not (index is cached["index"]
+                                         or index.equals(cached["index"])):
+            cached.update(index=index, key=make(index))
+        return cached["key"]
+    return group_of
+
+
 def yearly_frames(loaded, spans):
     """The same three frames per calendar year, with coverage measured against a whole year.
 
@@ -1514,9 +1531,10 @@ def yearly_frames(loaded, spans):
     index = pd.Index([sp["y"] for sp in spans], dtype="int64")
     expected = pd.Series([sp["n_days"] * 48 for sp in spans], index=index, dtype=float)
     out = {}
+    group_of = _shared_key(lambda index: pd.Series(index.year, index=index))
     for key, d in loaded.items():
         v = d["v"]
-        group = pd.Series(d["series"].index.year, index=d["series"].index)
+        group = group_of(d["series"].index)
         value = (d["series"].groupby(group).sum(min_count=1) if v.agg == "sum"
                  else d["series"].groupby(group).mean()).reindex(index)
         meas = (d["measured"].astype(float).groupby(group).sum().reindex(index)
@@ -1853,9 +1871,10 @@ def seasonal_frames(loaded, spans, scheme):
     index = pd.Index([sp["period"] for sp in spans], dtype="int64")
     expected = pd.Series([sp["n_days"] * 48 for sp in spans], index=index, dtype=float)
     out = {}
+    group_of = _shared_key(lambda index: season_ids(index, scheme))
     for key, d in loaded.items():
         v = d["v"]
-        group = season_ids(d["series"].index, scheme)
+        group = group_of(d["series"].index)
         value = (d["series"].groupby(group).sum(min_count=1) if v.agg == "sum"
                  else d["series"].groupby(group).mean()).reindex(index)
         meas = (d["measured"].astype(float).groupby(group).sum().reindex(index)
