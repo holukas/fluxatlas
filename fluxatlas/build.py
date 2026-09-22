@@ -1956,34 +1956,71 @@ class SpanStats(dict):
         raise KeyError(key)
 
 
-def span_stats(sp, keys, frames_by_var, norm, counts, spells, day, events, loaded):
+def span_table(frames_by_var, norm, counts, spells):
+    """One scale's frames, normals, counts and spells as plain dicts, for `span_stats` to read.
+
+    Built once per scale rather than looked up span by span: a build reads about a dozen figures
+    per variable for each of several hundred spans, and a label lookup into a pandas Series costs
+    far more than the figure it returns. The values are the ones the Series hold, so nothing a
+    span is told changes.
+    """
+    def as_dict(series):
+        return None if series is None else series.to_dict()
+
+    variables = {}
+    for key, frames in frames_by_var.items():
+        n = norm[key]
+        variables[key] = dict(value=as_dict(frames["value"]), unc=as_dict(frames.get("unc")),
+                              meas=as_dict(frames["meas"]), avail=as_dict(frames["avail"]),
+                              ranks=as_dict(n["ranks"]), ranks_far=as_dict(n["ranks_far"]),
+                              by_group=n["by_group"])
+    return dict(variables=variables,
+                counts={k: as_dict(v) for k, v in counts.items()},
+                spells={k: as_dict(v) for k, v in spells.items()})
+
+
+def day_positions(dates, start, end):
+    """The days from `start` to `end` inclusive, as positions: what `.loc[start:end]` selects."""
+    return slice(int(dates.searchsorted(start, "left")), int(dates.searchsorted(end, "right")))
+
+
+def _present(values):
+    return values[~np.isnan(values)]
+
+
+def span_stats(sp, keys, table, day_values, dates, events, loaded):
     """Every number a badge rule may read, for one span, as one flat dictionary.
 
-    A span is a month or a season. Both carry an index label into the aggregated frames, a slot of
-    the cycle to be judged against, and a stretch of days; nothing below this line needs to know
-    which of the two it has, which is what keeps a winter and a July describable by one registry.
+    A span is a month, a season or a year. Each carries an index label into the aggregated frames,
+    a slot of the cycle to be judged against, and a stretch of days; nothing below this line needs
+    to know which it has, which is what keeps a winter and a July describable by one registry.
+
+    `table` is the scale's `span_table`, and `day_values` the daily statistics as arrays on
+    `dates`, so a span's days are a slice of positions rather than a lookup by label.
     """
     idx, group = sp["idx"], sp["group"]
+    days = day_positions(dates, sp["start"], sp["end"])
     s = SpanStats(y=sp["y"], m=sp.get("m"), month_name=sp["name"], n_days=sp["n_days"],
                   keys=list(keys))
     for key in keys:
         v = loaded[key]["v"]
-        frames, n = frames_by_var[key], norm[key]
-        value = frames["value"].get(idx)
+        t = table["variables"][key]
+        value = t["value"].get(idx)
         value = None if pd.isna(value) else float(value)
-        nm = n["by_group"][group]
-        rank = n["ranks"].get(idx)
+        nm = t["by_group"][group]
+        rank = t["ranks"].get(idx)
         s[key] = value
         s[f"u_{key}"] = v.units
-        unc = None if frames.get("unc") is None else frames["unc"].get(idx)
+        unc = None if t["unc"] is None else t["unc"].get(idx)
         s[f"{key}_unc"] = None if unc is None or pd.isna(unc) else float(unc)
-        s[f"{key}_meas"] = None if pd.isna(frames["meas"].get(idx)) else float(frames["meas"][idx])
-        s[f"{key}_avail"] = None if pd.isna(frames["avail"].get(idx)) else float(frames["avail"][idx])
+        meas, avail = t["meas"].get(idx), t["avail"].get(idx)
+        s[f"{key}_meas"] = None if pd.isna(meas) else float(meas)
+        s[f"{key}_avail"] = None if pd.isna(avail) else float(avail)
         s[f"{key}_norm"] = nm["mean"] if nm else None
         s[f"{key}_sd"] = nm["sd"] if nm else None
         s[f"{key}_n"] = nm["n"] if nm else None
         s[f"{key}_rank"] = None if pd.isna(rank) else int(rank)
-        rank_far = n["ranks_far"].get(idx)
+        rank_far = t["ranks_far"].get(idx)
         s[f"{key}_rank_far"] = None if pd.isna(rank_far) else int(rank_far)
         if value is not None and nm:
             s[f"{key}_anom"] = value - nm["mean"]
@@ -1997,27 +2034,27 @@ def span_stats(sp, keys, frames_by_var, norm, counts, spells, day, events, loade
         # which is what a reader means by the coldest night of the month. `min` was in the loop as
         # well, taking the highest daily minimum before the line below replaced it - a dead write
         # that read like a bug in a function whose numbers land in badge text.
-        block = day[key].loc[sp["start"]:sp["end"]]
+        stats = day_values[key]
         for stat in ("max", "sum"):
-            if stat in block.columns:
-                col = block[stat].dropna()
+            if stat in stats:
+                col = _present(stats[stat][days])
                 s[f"{key}_day{stat}"] = float(col.max()) if len(col) else None
-        if "min" in block.columns:
-            col = block["min"].dropna()
+        if "min" in stats:
+            col = _present(stats["min"][days])
             s[f"{key}_daymin"] = float(col.min()) if len(col) else None
 
-    for key, series in counts.items():
-        s[f"n_{key}"] = int(series.get(idx, 0))
-    for key, series in spells.items():
-        s[f"spell_{key}"] = int(series.get(idx, 0))
+    for key, found in table["counts"].items():
+        s[f"n_{key}"] = int(found.get(idx, 0))
+    for key, found in table["spells"].items():
+        s[f"spell_{key}"] = int(found.get(idx, 0))
 
     # Statistics that belong to the span rather than to one of its variables. They are what the
     # tiles beyond the six products are built from, and what the extra metrics colour by.
     s["x"] = {}
     if "TA" in keys:
-        block = day["TA"].loc[sp["start"]:sp["end"]]
-        dtr = (block["max"] - block["min"]).dropna()
-        gdd = (block["mean"] - GROWING_SEASON_BASE).clip(lower=0).dropna()
+        ta = day_values["TA"]
+        dtr = _present(ta["max"][days] - ta["min"][days])
+        gdd = _present(np.clip(ta["mean"][days] - GROWING_SEASON_BASE, 0, None))
         s["x"]["dtr"] = float(dtr.mean()) if len(dtr) else None
         s["x"]["gdd"] = float(gdd.sum()) if len(gdd) else None
     s["x"]["nrec"] = sum(s.get(f"n_{k}", 0) for k in ("recwarm", "reccold", "recwet"))
@@ -2334,8 +2371,9 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         spell_defs["dry"] = ~hits["wet"] & day["PREC"]["sum"].notna()
     spells = {}
     for name, mask in spell_defs.items():
-        spells[name] = pd.Series({ts: longest_spell(mask.loc[f"{ts:%Y-%m}"])[0] for ts in months},
-                                 dtype="int64")
+        spells[name] = pd.Series(
+            {ts: longest_spell(mask.iloc[day_positions(dates, ts, ts + pd.offsets.MonthEnd(0))])[0]
+             for ts in months}, dtype="int64")
 
     monthly = monthly_frames(loaded, months)
     norm = normals(monthly, [ts.month for ts in months], [ts.year for ts in months])
@@ -2364,18 +2402,23 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                          .reindex(season_index).fillna(0) for k, v in hits.items()}
         for name, mask in spell_defs.items():
             season_spells[name] = pd.Series(
-                {sp["period"]: longest_spell(mask.loc[sp["start"]:sp["end"]])[0]
+                {sp["period"]: longest_spell(
+                    mask.iloc[day_positions(dates, sp["start"], sp["end"])])[0]
                  for sp in season_spans}, dtype="int64")
 
-    def span_row(sp, frames_by_var, group_norm, counts, spell_set, scale, extra=None):
+    # The daily statistics as arrays, which is what a span's days are sliced out of.
+    day_values = {key: {stat: day[key][stat].to_numpy(dtype=float) for stat in day[key].columns}
+                  for key in keys}
+
+    def span_row(sp, table, scale, extra=None):
         """One tile's worth of payload, for any of the three span scales.
 
-        `extra` writes the statistics that belong to one scale alone onto the span before its
-        badges are judged, which is how the year-only rules reach the lengths and counts that no
-        month carries.
+        `table` is the scale's `span_table`. `extra` writes the statistics that belong to one
+        scale alone onto the span before its badges are judged, which is how the year-only rules
+        reach the lengths and counts that no month carries.
         """
-        st = span_stats(sp, keys, frames_by_var, group_norm, counts, spell_set, day, events,
-                        loaded)
+        spell_set = table["spells"]
+        st = span_stats(sp, keys, table, day_values, dates, events, loaded)
         if extra is not None:
             extra(st)
         earned, suppressed = evaluate_badges(st, keys, scale=scale)
@@ -2408,23 +2451,25 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
 
     # -- Months ------------------------------------------------------------------------------
     rows, all_stats = [], []
+    month_table = span_table(monthly, norm, counts_month, spells)
     for ts in months:
         y, m = int(ts.year), int(ts.month)
         sp = dict(idx=ts, group=m, y=y, m=m, name=calendar.month_name[m],
                   n_days=calendar.monthrange(y, m)[1], start=ts,
                   end=ts + pd.offsets.MonthEnd(0), event_keys=[(y, m)])
-        row, st = span_row(sp, monthly, norm, counts_month, spells, "month")
+        row, st = span_row(sp, month_table, "month")
         row["m"] = m
         rows.append(row)
         all_stats.append(st)
 
     season_rows = []
+    season_table = span_table(seasonal, season_norm, season_counts, season_spells)
     for sp in season_spans:
         # A month of a season that reaches back over the new year belongs to the previous calendar
         # year, which the scheme's own shift states rather than a hard-coded December.
         calendar_months = [[sp["y"] - sp["shift"][mm], mm] for mm in sp["months"]]
         sp = dict(sp, idx=sp["period"], event_keys=[(y, mm) for y, mm in calendar_months])
-        row, _ = span_row(sp, seasonal, season_norm, season_counts, season_spells, "season")
+        row, _ = span_row(sp, season_table, "season")
         row.update(s=sp["skey"], label=sp["label"], title=sp["title"], months=calendar_months)
         season_rows.append(row)
 
@@ -2439,17 +2484,20 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     year_norm = normals(yearly, [1] * len(year_spans), [sp["y"] for sp in year_spans])
     year_counts = {k: pd.Series(v.groupby(dates.year).sum()).reindex(year_index).fillna(0)
                    for k, v in hits.items()}
-    year_spells = {name: pd.Series({sp["y"]: longest_spell(mask.loc[sp["start"]:sp["end"]])[0]
-                                    for sp in year_spans}, dtype="int64")
+    year_spells = {name: pd.Series(
+                       {sp["y"]: longest_spell(
+                           mask.iloc[day_positions(dates, sp["start"], sp["end"])])[0]
+                        for sp in year_spans}, dtype="int64")
                    for name, mask in spell_defs.items()}
     lengths = year_events(day, dates)
 
     year_rows, year_stats = [], []
+    year_table = span_table(yearly, year_norm, year_counts, year_spells)
     for i, sp in enumerate(year_spans):
         sp = dict(sp, idx=sp["y"], event_keys=[(sp["y"], m) for m in range(1, 13)])
         months_in_year = all_stats[i * 12:(i + 1) * 12]
         row, st = span_row(
-            sp, yearly, year_norm, year_counts, year_spells, "year",
+            sp, year_table, "year",
             extra=lambda s, mm=months_in_year, found=lengths.get(sp["y"], {}):
                 year_extras(s, mm, found))
         row.update(s=YEAR_SLUG, label=str(sp["y"]), title=str(sp["y"]))

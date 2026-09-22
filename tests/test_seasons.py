@@ -167,6 +167,22 @@ def test_the_seasonal_trend_is_fitted_over_the_scheme_s_own_seasons(flux_parquet
 
 # -- Span lookups --------------------------------------------------------------------------------
 
+def test_a_span_selects_by_position_the_days_it_selected_by_label():
+    """Including a winter that reaches back before the record, which is clipped to its start."""
+    import pandas as pd
+
+    dates = pd.date_range("2005-01-01", "2008-12-31", freq="D")
+    days = pd.Series(range(len(dates)), index=dates)
+    spans = [("2004-12-01", "2005-02-28"), ("2005-01-01", "2005-01-31"),
+             ("2008-02-01", "2008-02-29"), ("2006-01-01", "2006-12-31"),
+             ("2008-12-01", "2009-02-28")]
+    for start, end in spans:
+        start, end = pd.Timestamp(start), pd.Timestamp(end)
+        by_label = days.loc[start:end]
+        by_position = days.iloc[build.day_positions(dates, start, end)]
+        assert by_position.equals(by_label), (start, end)
+
+
 def test_a_grouping_key_is_shared_only_by_series_on_the_same_index():
     import pandas as pd
 
