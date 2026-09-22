@@ -38,6 +38,25 @@ def test_end_stamp_alone_still_lands_on_the_right_day():
     assert io._timestamp_index(df)[0] == pd.Timestamp("2020-01-01 00:00")
 
 
+def test_stamps_parse_to_what_the_format_string_parse_gave():
+    """The arithmetic parse is a faster route to the same index, across leap days and new years."""
+    index = pd.date_range("2015-12-31 00:00", "2024-03-01 23:30", freq="30min")
+    column = pd.Series(index.strftime("%Y%m%d%H%M").astype("int64"))
+    parsed = io._parse_stamps(column)
+    by_format = pd.DatetimeIndex(pd.to_datetime(column.astype("int64").astype(str),
+                                                format="%Y%m%d%H%M"))
+    assert parsed.equals(by_format)
+    assert parsed.dtype == by_format.dtype
+    assert parsed.equals(pd.DatetimeIndex(index))
+
+
+@pytest.mark.parametrize("stamp", [20200101, 202013010000, 202002300000])
+def test_a_stamp_that_is_not_a_valid_minute_is_refused(stamp):
+    """A daily stamp, a thirteenth month and a 30 February all fail rather than land somewhere."""
+    with pytest.raises(ValueError):
+        io._parse_stamps(pd.Series([202001010000, stamp]))
+
+
 def test_a_datetimeindex_is_floored_onto_the_window_grid(frame):
     """Local products stamp the start or the middle, and both mean the same window."""
     assert io._timestamp_index(frame).equals(frame.index.floor("30min"))

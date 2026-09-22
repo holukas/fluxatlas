@@ -122,8 +122,32 @@ def _timestamp_index(df):
     flooring maps both onto the same start; without it, a middle-stamped file would land between
     the grid's points and read as empty.
     """
-    stamps, on_grid = _raw_stamps(df)
+    return _window_starts(*_raw_stamps(df))
+
+
+def _window_starts(stamps, on_grid):
+    """The raw stamps as window starts: as they stand where they already are, floored otherwise."""
     return stamps if on_grid else stamps.floor(FREQ)
+
+
+def _parse_stamps(column):
+    """A FLUXNET `YYYYMMDDHHMM` column as a DatetimeIndex.
+
+    Split arithmetically rather than through strings: formatting 368,000 integers as text and
+    parsing them back with a format string took half a second per column on a 21-year record, and
+    this takes a fraction of that. A column that is not twelve digits throughout goes the old way,
+    so whatever that path refused, and the error it gave, is unchanged.
+    """
+    values = column.astype("int64").to_numpy()
+    if values.size and (values.min() < 10**11 or values.max() >= 10**12):
+        return pd.DatetimeIndex(pd.to_datetime(column.astype("int64").astype(str),
+                                               format="%Y%m%d%H%M"))
+    year, rest = np.divmod(values, 10**8)
+    month, rest = np.divmod(rest, 10**6)
+    day, rest = np.divmod(rest, 10**4)
+    hour, minute = np.divmod(rest, 100)
+    return pd.DatetimeIndex(pd.to_datetime(dict(year=year, month=month, day=day, hour=hour,
+                                                minute=minute)))
 
 
 def _raw_stamps(df):
@@ -139,8 +163,7 @@ def _raw_stamps(df):
         return df.index, False
 
     def parse(col):
-        return pd.DatetimeIndex(pd.to_datetime(df[col].astype("int64").astype(str),
-                                               format="%Y%m%d%H%M"))
+        return _parse_stamps(df[col])
 
     if "TIMESTAMP_START" in df.columns:
         return parse("TIMESTAMP_START"), True
@@ -350,7 +373,8 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
     # that the two cases are indistinguishable. Distinct stamps only, so duplicated rows do not
     # make zero the commonest step; and the mode rather than the mean, because a record with
     # genuine gaps still has 30 minutes as its commonest step.
-    stamps, _ = _raw_stamps(df)
+    # Parsed once and used twice: for the spacing here, and floored into the index below.
+    stamps, on_grid = _raw_stamps(df)
     if len(stamps) > 1:
         steps = pd.Series(stamps.drop_duplicates().sort_values()).diff().dropna()
         common = steps.mode()
@@ -360,7 +384,7 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
                 f"records. Resample to 30 minutes first, or see the documentation on input that is "
                 f"not half-hourly.")
 
-    index = _timestamp_index(df)
+    index = _window_starts(stamps, on_grid)
     df = df.set_index(pd.DatetimeIndex(index))
     df = df[~df.index.duplicated(keep="first")].sort_index()
 
