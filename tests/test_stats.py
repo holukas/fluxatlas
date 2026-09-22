@@ -27,6 +27,28 @@ def test_rlist_rounds_a_series():
     assert stats.rlist(series, 1) == [1.2, None, 5.7]
 
 
+@pytest.mark.parametrize("digits", [0, 1, 2, 3, 4])
+def test_rlist_gives_exactly_what_r_gives_value_by_value(digits):
+    """The list form is only a faster route to the same numbers.
+
+    The values include ties at the rounding digit and the floats whose decimal form sits just
+    below one, which is where a rounding of a scaled copy and Python's `round` part company.
+    """
+    rng = np.random.default_rng(7)
+    awkward = [0.125, 2.675, 0.285, 1.005, -0.5, -2.5, 1e12 + 0.5, -0.0, 0.0,
+               np.nan, np.inf, -np.inf]
+    values = np.concatenate([awkward, rng.normal(0, 1000, 5000), rng.normal(0, 1e-3, 5000)])
+    expected = [stats.r(v, digits) for v in values]
+    assert stats.rlist(pd.Series(values), digits) == expected
+    assert stats.rlist(values, digits) == expected
+    assert all(type(v) is float for v in stats.rlist(values, digits) if v is not None)
+
+
+def test_rlist_maps_a_nullable_integer_na_onto_none():
+    series = pd.Series([1, pd.NA, 3], dtype="Int64")
+    assert stats.rlist(series, 2) == [stats.r(v, 2) for v in series] == [1.0, None, 3.0]
+
+
 # -- Trend ---------------------------------------------------------------------------------------
 
 def test_a_known_slope_is_recovered_per_decade():

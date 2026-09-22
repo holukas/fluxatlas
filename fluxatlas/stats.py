@@ -34,8 +34,19 @@ def r(value, digits=2):
 
 
 def rlist(series, digits=2):
-    """A pandas series as a rounded plain list."""
-    return [r(v, digits) for v in series.to_numpy()]
+    """A pandas series, or any array of numbers, as a rounded plain list.
+
+    The same answer `r` gives value by value, without paying for its type checks on every one of
+    them: the missing and non-finite values are found in one numpy pass, and what remains is a
+    Python float handed to the same `round`. That keeps every figure identical to `r`'s, which a
+    vectorised `np.round` would not quite do, since it rounds a scaled copy rather than the value.
+    """
+    if isinstance(series, pd.Series):
+        values = series.to_numpy(dtype=float, na_value=np.nan)
+    else:
+        values = np.asarray(series, dtype=float)
+    keep = np.isfinite(values).tolist()
+    return [round(v, digits) if ok else None for v, ok in zip(values.tolist(), keep)]
 
 
 def trend(yearly):

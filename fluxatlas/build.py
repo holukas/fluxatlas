@@ -1108,7 +1108,7 @@ def daily_normals(day, dates, keys):
 
 def normals_payload(normals):
     """The daily normals rounded for JSON, which is the only place they are rounded."""
-    return {key: {stat: {which: [r(x, 2) for x in arr] for which, arr in bands.items()}
+    return {key: {stat: {which: rlist(arr, 2) for which, arr in bands.items()}
                   for stat, bands in stats.items()} for key, stats in normals.items()}
 
 
@@ -1759,9 +1759,11 @@ def hourly_layer(loaded, first_year, last_year):
             continue
         how = "sum" if v.agg == "sum" else "mean"
         series = resample_agg(d["series"], "h", how).reindex(index)
-        scaled = (series * v.scale).round()
+        scaled = (series * v.scale).round().to_numpy(dtype=float)
+        present = (~np.isnan(scaled)).tolist()
         out[key] = dict(scale=v.scale, units=v.units, title=v.title,
-                        values=[None if pd.isna(x) else int(x) for x in scaled])
+                        values=[int(x) if ok else None
+                                for x, ok in zip(scaled.tolist(), present)])
     whole_days = (pd.Timestamp(f"{last_year}-12-31")
                   - pd.Timestamp(f"{first_year}-01-01")).days * 24 + 24
     if out and len(index) != whole_days:
