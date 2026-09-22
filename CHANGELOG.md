@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+A build of the 21-year CH-Oe2 FULLSET record is more than twice as fast, 2.8 s instead of 6.0 s on
+the same machine. Every figure on the page is unchanged, which was checked by comparing the complete
+payload of three builds before and after.
+
+### Performance
+
+- **Timestamps are parsed once, and without going through text.** The reader parsed the timestamp column twice, once for the spacing check and once for the index, and each parse turned 368,000 integers into strings for `strptime`; splitting the integers arithmetically takes about a seventh of the time.
+- **The daily normals find each date's window once** and share it across every variable and statistic, which halves the time of that step.
+- **Rounding a series for the page checks for missing values in one NumPy pass** and still rounds each value with Python's `round`, because `np.round` gives a different last digit for some values and a test now holds the two to the same answer.
+- **The hourly layer converts its values to integers the same way**, instead of testing each of its roughly 184,000 hourly values per variable one at a time.
+- **Trends are computed directly instead of through SciPy's public functions**, which spent most of their time on input handling for series of about 21 points; the new code repeats SciPy's arithmetic step by step, and a test holds it to SciPy's result to the last bit, including tied values and series longer than 33 years.
+- **The statistics of each month, season and year are read from tables built once per scale** rather than looked up one value at a time in pandas, and each span's days are found by position rather than by date label.
+- **The season and year each record belongs to are worked out once** and shared by every variable, since all of them sit on the same half-hourly index.
+
 ## v0.3.1 | 21 Sep 2026
 
 Identical to v0.3.0 in every file that is installed. Release v0.3.0 was published before the
