@@ -78,6 +78,41 @@ def test_a_flat_series_has_no_significant_trend():
     assert out["pvalue"] > 0.05 or np.isnan(out["pvalue"])
 
 
+def _trend_cases():
+    """Series of the shapes a build fits: noisy, tied counts, gaps between years, and the edges."""
+    rng = np.random.default_rng(3)
+    cases = []
+    for n in (3, 5, 10, 21, 33, 34, 40):
+        years = np.arange(2000, 2000 + n)
+        for _ in range(12):
+            cases.append(pd.Series(rng.normal(0, 1, n) + 0.05 * years, index=years))
+            cases.append(pd.Series(rng.integers(0, 6, n).astype(float), index=years))
+            gaps = np.sort(rng.choice(np.arange(2000, 2000 + 2 * n), n, replace=False))
+            cases.append(pd.Series(rng.normal(0, 50, n), index=gaps))
+    cases.append(pd.Series([5.0] * 21, index=range(2000, 2021)))
+    cases.append(pd.Series(np.arange(21.0), index=range(2000, 2021)))
+    cases.append(pd.Series(np.arange(21.0)[::-1], index=range(2000, 2021)))
+    cases.append(pd.Series([-0.0, 0.0, 1.0, 2.0, 0.0, -0.0, 3.0, 1.0, 2.0, 5.0], index=range(10)))
+    return cases
+
+
+@pytest.mark.filterwarnings("ignore")
+def test_the_trend_is_scipys_to_the_last_bit():
+    """The direct path is only a faster route to what `theilslopes` and `kendalltau` return.
+
+    Compared with `==` rather than a tolerance, because the stats module promises the answer a
+    complete record got before. The cases cover ties, which switch Kendall's p-value to its normal
+    approximation and add Sen's tie term to the interval, and lengths on both sides of 33, where
+    the exact p-value stops being used.
+    """
+    for series in _trend_cases():
+        fast, reference = stats.trend(series), stats._trend_scipy(series)
+        for field in ("slope", "low", "high", "tau", "pvalue"):
+            a, b = float(fast[field]), float(reference[field])
+            assert a == b or (np.isnan(a) and np.isnan(b)), (len(series), field, a, b)
+        assert fast["fit"].equals(reference["fit"])
+
+
 # -- Spells --------------------------------------------------------------------------------------
 
 def test_longest_spell_finds_the_run_and_where_it_starts():

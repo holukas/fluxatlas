@@ -13,7 +13,16 @@ import math
 
 import numpy as np
 import pandas as pd
+from scipy import special
 from scipy.stats import kendalltau, theilslopes
+
+try:
+    # The exact null distribution of Kendall's statistic, which `kendalltau` uses for a short
+    # series without ties. It is private, so a SciPy that moves it sends `trend` back to the public
+    # functions rather than failing; see `_kendall`.
+    from scipy.stats._mstats_basic import _kendall_p_exact
+except ImportError:                                     # pragma: no cover - depends on SciPy
+    _kendall_p_exact = None
 
 
 def r(value, digits=2):
@@ -55,7 +64,29 @@ def trend(yearly):
     Theil-Sen rather than least squares because a single extreme year does not move it, and
     Kendall's tau because it tests a monotonic trend without assuming normal residuals. Years
     without a value are dropped rather than interpolated.
+
+    The figures are SciPy's `theilslopes` and `kendalltau`, computed directly: a build fits over
+    five hundred of these on about twenty points each, and nearly all of what the two functions
+    cost at that size is their input handling rather than the arithmetic. `_theil_sen` and
+    `_kendall` repeat that arithmetic step for step, and a test holds them to `_trend_scipy`, the
+    plain SciPy call, to the last bit. A series they were not written for goes to SciPy itself.
     """
+    yearly = yearly.dropna()
+    years = yearly.index.to_numpy(dtype=float)
+    values = yearly.to_numpy(dtype=float)
+    if len(values) < 3 or not (np.isfinite(years).all() and np.isfinite(values).all()):
+        return _trend_scipy(yearly)
+    kendall = _kendall(years, values)
+    if kendall is None:
+        return _trend_scipy(yearly)
+    slope, intercept, low, high = _theil_sen(values, years)
+    tau, pvalue = kendall
+    return dict(slope=slope * 10, low=low * 10, high=high * 10, tau=tau, pvalue=pvalue,
+                fit=pd.Series(intercept + slope * years, index=yearly.index))
+
+
+def _trend_scipy(yearly):
+    """`trend` through SciPy's public functions: the reference the direct path is held to."""
     yearly = yearly.dropna()
     years = yearly.index.to_numpy(dtype=float)
     values = yearly.to_numpy(dtype=float)
@@ -63,6 +94,103 @@ def trend(yearly):
     tau, pvalue = kendalltau(years, values)
     return dict(slope=slope * 10, low=low * 10, high=high * 10, tau=tau, pvalue=pvalue,
                 fit=pd.Series(intercept + slope * years, index=yearly.index))
+
+
+def _median(values):
+    """The median as `scipy.stats.quantile` takes it by default, which `theilslopes` uses.
+
+    Hyndman and Fan's method 7 at p = 0.5. On an even count this is `0.5 * a + 0.5 * b` rather
+    than numpy's `(a + b) / 2`; the two agree, but this is the form SciPy evaluates.
+    """
+    ordered = np.sort(values)
+    n = float(ordered.size)
+    jg = 0.5 * n + (1 - 0.5)
+    jp1 = jg // 1
+    j = jp1 - 1
+    g = jg % 1
+    j = min(max(j, 0.0), n - 1)
+    jp1 = min(max(jp1, 0.0), n - 1)
+    return (1 - g) * ordered[int(j)] + g * ordered[int(jp1)]
+
+
+def _tie_term(values):
+    """Sen's correction for ties, the sum of t(t - 1)(2t + 5) over each group of equal values."""
+    _, counts = np.unique(values, return_counts=True)
+    t = counts.astype(float)
+    return float(np.sum(t * (t - 1) * (2 * t + 5)))
+
+
+def _theil_sen(y, x, alpha=0.95):
+    """`scipy.stats.theilslopes(y, x, alpha)` with its default method, for finite 1-D input."""
+    upper = np.triu(np.ones((x.size, x.size)), k=1).astype(bool)
+    deltax = (x[:, np.newaxis] - x[np.newaxis, :])[upper]
+    deltay = (y[:, np.newaxis] - y[np.newaxis, :])[upper]
+    deltax[deltax == 0] = np.nan
+    slopes = deltay / deltax
+    finite = slopes[~np.isnan(slopes)]
+    medslope = _median(finite)
+    medinter = _median(y) - medslope * _median(x)
+
+    # The interval, equation 2.6 of Sen (1968), in the order SciPy evaluates it.
+    if alpha > 0.5:
+        alpha = 1. - alpha
+    z = float(special.ndtri(alpha / 2.))
+    nt = float(np.count_nonzero(np.isfinite(slopes)))
+    ny = float(y.size)
+    sigsq = 1 / 18. * (ny * (ny - 1) * (2 * ny + 5) - _tie_term(x) - _tie_term(y))
+    sigma = np.sqrt(max(sigsq, 0.0))
+    upper_rank = min(int(np.round((nt - z * sigma) / 2.)), int(nt) - 1)
+    lower_rank = max(int(np.round((nt + z * sigma) / 2.)) - 1, 0)
+    ordered = np.sort(slopes)
+    low, high = ordered[lower_rank], ordered[upper_rank]
+    if sigsq < 0:
+        low = high = np.nan
+    return medslope, medinter, low, high
+
+
+def _pairs_within(groups):
+    """Pairs, and the two sums `kendalltau` needs, over groups of tied values given as labels."""
+    _, counts = np.unique(groups, axis=0, return_counts=True)
+    cnt = counts[counts > 1].astype("int64")
+    return (int((cnt * (cnt - 1) // 2).sum()),
+            int((cnt * (cnt - 1.) * (cnt - 2)).sum()),
+            int((cnt * (cnt - 1.) * (2 * cnt + 5)).sum()))
+
+
+def _kendall(x, y):
+    """`scipy.stats.kendalltau(x, y)` with its defaults (tau-b, method `auto`), for finite input.
+
+    Returns None where the exact null distribution is needed and this SciPy does not offer it
+    where it is looked for, so the caller can hand the series to `kendalltau` itself.
+    """
+    # A signed zero would count as its own group where rows are compared as bytes, and SciPy's
+    # ranking treats -0.0 and 0.0 as one value. Adding zero makes them one here as well.
+    x, y = x + 0.0, y + 0.0
+    size = x.size
+    i, j = np.triu_indices(size, k=1)
+    dis = int(np.count_nonzero((x[i] - x[j]) * (y[i] - y[j]) < 0))
+    xtie, x0, x1 = _pairs_within(x)
+    ytie, y0, y1 = _pairs_within(y)
+    ntie, _, _ = _pairs_within(np.column_stack((x, y)))
+    tot = (size * (size - 1)) // 2
+    if xtie == tot or ytie == tot:
+        return np.nan, np.nan
+
+    con_minus_dis = tot - xtie - ytie + ntie - 2 * dis
+    tau = con_minus_dis / np.sqrt(tot - xtie) / np.sqrt(tot - ytie)
+    tau = float(np.minimum(1., max(-1., tau)))
+
+    if xtie == 0 and ytie == 0 and (size <= 33 or min(dis, tot - dis) <= 1):
+        if _kendall_p_exact is None:
+            return None
+        pvalue = float(_kendall_p_exact(size, tot - dis, "two-sided"))
+    else:
+        m = size * (size - 1.)
+        var = ((m * (2 * size + 5) - x1 - y1) / 18 +
+               (2 * xtie * ytie) / m + x0 * y0 / (9 * m * (size - 2)))
+        z = con_minus_dis / np.sqrt(var)
+        pvalue = float(2 * special.ndtr(-np.abs(z)))
+    return tau, pvalue
 
 
 def _runs(values):
