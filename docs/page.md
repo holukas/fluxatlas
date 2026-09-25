@@ -82,6 +82,21 @@ The carbon balance leads whatever it placed, because the sign of the annual figu
 statement of a flux year. The list is built in Python, where the other years are in hand: half of
 what makes a year notable is its place among them, which the year alone cannot see.
 
+### The carbon balance through the year
+
+Where the page carries `NEE`, a year's panel also draws the standard figure of a flux site: the
+running total of daily net exchange from 1 January, one line per year, the open year drawn over
+the others and the running total of the daily normals dashed. Below zero the balance since
+1 January is net uptake and is tinted green; above it, net release and red. The tooltip gives the
+year's running total with its direction, the normal by that date, the range of the other years and
+the year's place among them, ranked as `NEE` is ranked everywhere else, so first is the largest
+uptake. Selecting a date opens that day.
+
+A day without a value adds nothing to a running total, which holds level across it. That is the
+rule the accumulated precipitation of a span panel already follows, and the card states it and
+counts the years it affects, since a year with missing days is short by whatever those days
+carried.
+
 ## A page for each variable
 
 The grid answers what happened in a given month. Each variable also has a page of its own, which
@@ -102,6 +117,9 @@ The rest of the page:
   no band, because the spread of twelve monthly totals is not an uncertainty of their sum;
 - the shape of the year: each calendar month's normal, one standard deviation either side, and the
   full range it has covered, with the year of each extreme;
+- for a variable that sums (precipitation and the carbon fluxes), the total accumulated through the
+  year, as described for the year panel above, with the last year of the record drawn over the
+  others;
 - the five highest and five lowest months, each linking to its own panel, named from the registry's
   words for each end so that the highest five months of `NEE` are labelled as its largest releases;
 - how much of each year was available and how much was measured, against the variable's warning
@@ -116,6 +134,52 @@ The rest of the page:
 Nothing on the page is computed twice. The slopes are the ones the grid's foot row prints, and the
 fitted line is drawn from the two endpoints the build ships rather than re-fitted in the browser,
 so a line cannot disagree with the number printed beside it.
+
+## Addresses
+
+Every view has an address, so any of them can be bookmarked or sent as a link:
+
+| Address | View |
+| --- | --- |
+| `#grid` | the grid |
+| `#2016-05` | May 2016 |
+| `#2016-JJA` | summer 2016, under the season scheme the page was built with |
+| `#2016-YEAR` | the year 2016 |
+| `#2016-05-12` | 12 May 2016, inside its month |
+| `#var-TA` | the page of one variable |
+
+After a `?` the address also carries the metric the grid is coloured by and the scale it is drawn
+at, for example `#grid?metric=PREC_pctn&scale=season`. A choice at its default is left out.
+Choosing a metric or a scale rewrites the address in place rather than adding a step to the
+browser's history, so Back leaves the view rather than stepping through every metric it was shown
+in. A reload, or a link opened elsewhere, restores both. An address without the `?` keeps whatever
+was already chosen, which is how opening a month and coming back leaves the metric where it was.
+
+The address is rewritten by a fragment navigation, which every browser permits on a page opened
+from disk, where the history API may be refused.
+
+## Downloading the grid
+
+**Download CSV**, beside the scale picker, saves what the grid shows: the selected metric at the
+selected scale, one row per year and one column per span, with the year's figure from the margin
+as the last column. The unit is in every header, and the file is named for the site, the metric
+and the scale, for example `CH-Oe2_NEE_season.csv`. At the day scale there is one column per
+calendar date, 29 February included and left empty in the years that have none.
+
+A span without a value is an empty cell. The file begins with a UTF-8 byte-order mark, because the
+units carry characters outside ASCII and a spreadsheet opening a CSV without one misreads them.
+It is built inside the page, so it works from disk with no server.
+
+## The footer
+
+The footer names the file the page was built from. Where the build records the file's size and
+SHA-256, both follow the name; the hash is shown shortened and is copied whole, and hovering or
+focusing it shows all of it. Beneath that, **What was read from the file** lists, for each variable,
+the column it was read from, the quality flag that separated measured from gap-filled records, and
+the factor that converted the column onto the unit the page states.
+
+Everything the caller supplied - the site name and description, the file name, the column names
+and the page title - is written as text, never as markup.
 
 ## Why more than one chart per variable
 
