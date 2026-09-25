@@ -135,6 +135,10 @@ complete payloads of three builds were compared before and after, and no figure 
   carbon total reads 1500 rather than 1500.00, and its unit stands beside the widest tick, with the margin widened where
   there is no room. X-axis labels at either end are anchored at their tick, and on a narrow chart the labels thin out
   instead of overlapping.
+- **Two charts crowded their own labels.** The trend-by-month chart put its scale among the variable names, overlapped
+  its month names on a narrow page and clipped its caption; the scale is now on the right, narrow months are labelled
+  by their initial, and a shorter caption is used where the full one does not fit. The season chart shortens its median
+  labels where they would meet each other or the column of uptake days.
 - **Cards in two consecutive grids touched.** On the year panel, the card of what stood out sat directly on the cards
   below it. Two grids with no heading between them are now spaced as the cards inside a grid are.
 - **Page text that held for one site only.** The near-saturation badge described a tower 47 m up on a ridge, the

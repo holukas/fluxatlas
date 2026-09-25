@@ -2320,8 +2320,8 @@
     const left = Math.min(textWidth(items.map(v => v.short), 'ax-text') + 14,
       Math.round(width * 0.4));
     const f = frame(host, {
-      height: 22 + items.length * TREND_ROW + 30,
-      margin: { top: 22, right: 14, bottom: 30, left: Math.max(46, left) },
+      height: 22 + items.length * TREND_ROW + 34,
+      margin: { top: 22, right: 28, bottom: 34, left: Math.max(46, left) },
       ariaLabel: 'Trend per calendar month, in standard deviations per decade, by variable'
     });
 
@@ -2351,9 +2351,10 @@
         if (Math.abs(level) > lim) return;
         el('line', { x1: f.m.left, x2: f.m.left + f.iw, y1: sy(level), y2: sy(level),
           class: level === 0 ? 'ax-line' : 'gridline' }, g);
+        // On the right, where nothing else is: the left column holds the variable names.
         if (k === 0 && level !== 0) {
-          svgText(f.svg, f.m.left - 6, sy(level) + 3, nfs(level, 0), 'ax-text',
-            { 'text-anchor': 'end' });
+          svgText(f.svg, f.m.left + f.iw + 5, sy(level) + 3, nfs(level, 0), 'ax-text',
+            { 'text-anchor': 'start' });
         }
       });
       trimText(svgText(f.svg, f.m.left - 6, top + TREND_ROW / 2 + 4, v.short, 'ax-text',
@@ -2372,12 +2373,17 @@
     });
 
     const bottom = f.m.top + items.length * TREND_ROW;
+    // A month too narrow for "Jan" is labelled by its initial, as the grid's narrow header is.
+    const narrow = band < textWidth(['May'], 'ax-text') + 6;
     for (let m = 1; m <= 12; m++) {
-      svgText(f.svg, bx(m) + band / 2, bottom + 14, MONTH_ABBR[m - 1], 'ax-text',
-        { 'text-anchor': 'middle' });
+      svgText(f.svg, bx(m) + band / 2, bottom + 14,
+        narrow ? MONTH_ABBR[m - 1][0] : MONTH_ABBR[m - 1], 'ax-text', { 'text-anchor': 'middle' });
     }
-    svgText(f.svg, f.m.left, bottom + 28, 'standard deviations per decade, against that '
-      + 'calendar month’s own spread', 'ax-title', { 'text-anchor': 'start' });
+    const caption = 'standard deviations per decade, against that calendar month’s own spread';
+    const room = f.width - f.m.left - 4;
+    trimText(svgText(f.svg, f.m.left, bottom + 28,
+      textWidth([caption], 'ax-title') <= room ? caption : 'sd per decade, against the month’s spread',
+      'ax-title', { 'text-anchor': 'start' }), room, caption);
 
     // The bars are small, so everything a slope needs to be judged by travels in the tooltip.
     const local = ev => {
@@ -4575,17 +4581,30 @@
       // The record medians, which are the dates the season badges call usual. Each label reads
       // away from the middle of the year, and turns back where it would run off the chart.
       const med = T.median || {};
-      [['start', 0], ['end', through]].forEach(([name, shift]) => {
-        if (!isNum(med[name])) return;
-        const x = sx(med[name] + shift);
-        el('line', { x1: x, x2: x, y1: f.m.top - 4, y2: f.m.top + f.ih, stroke: f.p.ink,
+      const marks = [['start', 0], ['end', through]].filter(([name]) => isNum(med[name]))
+        .map(([name, shift]) => ({ name: name, x: sx(med[name] + shift) }));
+      marks.forEach(mk => {
+        el('line', { x1: mk.x, x2: mk.x, y1: f.m.top - 4, y2: f.m.top + f.ih, stroke: f.p.ink,
           'stroke-width': 1.2, 'stroke-dasharray': '2 3', opacity: 0.7 }, f.svg);
-        const label = 'median ' + name + ' ' + doyLabel(med[name]);
-        const w = textWidth([label], 'ax-text');
-        const left = name === 'start' ? x - w >= 0 : x + w > f.width;
-        svgText(f.svg, x + (left ? -4 : 4), f.m.top - 8, label, 'ax-text',
-          { 'text-anchor': left ? 'end' : 'start' });
       });
+      /* Where the two medians are close on a narrow chart their labels would run into each other,
+         so they shorten until they do not: "median start 10 Mar", then "start 10 Mar", then the
+         date alone. */
+      // The column of uptake days has its own heading at the right, which a label must not reach.
+      const edge = uptake ? f.m.left + f.iw + 4 : f.width;
+      const place = words => marks.map(mk => {
+        const text = words(mk.name) + doyLabel(med[mk.name]);
+        const w = textWidth([text], 'ax-text');
+        const left = mk.name === 'start' ? mk.x - 4 - w >= 0 : mk.x + 4 + w > edge;
+        return { text: text, left: left, at: mk.x + (left ? -4 : 4),
+          x0: left ? mk.x - 4 - w : mk.x + 4, x1: left ? mk.x - 4 : mk.x + 4 + w };
+      });
+      const clear = ls => ls.length < 2 || ls[0].x1 + 6 <= ls[1].x0 || ls[1].x1 + 6 <= ls[0].x0;
+      let medLabels = place(name => 'median ' + name + ' ');
+      if (!clear(medLabels)) medLabels = place(name => name + ' ');
+      if (!clear(medLabels)) medLabels = place(() => '');
+      medLabels.forEach(l => svgText(f.svg, l.at, f.m.top - 8, l.text, 'ax-text',
+        { 'text-anchor': l.left ? 'end' : 'start' }));
 
       // The fitted slopes of the start and the end, drawn through the rows they were fitted on,
       // from the two endpoints the build published rather than a fit made here.
