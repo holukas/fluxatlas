@@ -4910,9 +4910,15 @@
     /* A theme change repaints every mark, including the charts of whichever view is not on screen
        and the ones the view being rebuilt does not own - the coverage chart sits on the grid view
        and is not touched by renderGrid. */
+    /* The grid is repainted whichever view is showing, since its tiles carry their colours inline
+       and Back returns to it; then the view on screen. A variable page is not a span, and
+       repainting it as one - which this did whenever the grid was hidden - threw on the null span
+       and left the page in the old colours. */
     function repaint() {
       sync();
-      if (document.getElementById('view-grid').hidden) { renderMonth(); } else { renderGrid(); }
+      renderGrid();
+      if (!document.getElementById('view-month').hidden && state.span) renderMonth();
+      if (!document.getElementById('view-var').hidden && state.variable) renderVariable();
       redrawAll();
     }
     btn.addEventListener('click', () => {
