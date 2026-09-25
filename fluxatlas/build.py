@@ -1542,7 +1542,9 @@ def yearly_frames(loaded, spans):
         avail = (d["series"].notna().astype(float).groupby(group).sum().reindex(index)
                  .fillna(0) / expected * 100)
         unc = aggregate_uncertainty(d, lambda s: s.groupby(group).sum(min_count=1), index)
-        out[key] = dict(value=value, meas=meas, avail=avail, unc=unc)
+        fill = fill_shares(d, lambda f: f.groupby(group).sum().reindex(index).fillna(0)
+                           .div(expected, axis=0) * 100)
+        out[key] = dict(value=value, meas=meas, avail=avail, unc=unc, fill=fill)
     return out
 
 
@@ -1905,8 +1907,51 @@ def aggregate_uncertainty(d, grouped, index):
     return total
 
 
+def fill_shares(d, share):
+    """The share of each span at each fill level of the variable's flag, in percent.
+
+    `share` turns a frame of per-record booleans into one row per span, against the same
+    denominator the measured and available shares of that scale use, so the levels and the measured
+    share add up to the available share. One column per entry of `v.fill_levels`, numbered from 1;
+    level 0 is the measured share, which the span already carries. `None` for a variable read
+    without a flag, whose unmeasured records are simply missing and have no level to report.
+
+    This describes a figure and gates nothing: every statistic is computed on availability whatever
+    these say, exactly as it is whatever the measured share says.
+    """
+    fill = d.get("fill")
+    if fill is None or not d["v"].fill_levels:
+        return None
+    levels = range(1, len(d["v"].fill_levels) + 1)
+    onehot = pd.DataFrame({i: (fill == i).to_numpy() for i in levels}, index=fill.index)
+    return share(onehot)
+
+
+def fill_table(frames_by_var):
+    """Each span's fill shares as the payload carries them: whole percent, trailing zeros dropped.
+
+    Keyed by variable and then by span index. A variable without a flag is absent, and a span with
+    nothing filled has no entry, so a fully measured span costs nothing in the payload.
+    """
+    out = {}
+    for key, frames in frames_by_var.items():
+        shares = frames.get("fill")
+        if shares is None:
+            continue
+        by_span = {}
+        for idx, values in zip(shares.index, shares.to_numpy(dtype=float)):
+            levels = [0 if np.isnan(x) else int(round(x)) for x in values]
+            while levels and not levels[-1]:
+                levels.pop()
+            if levels:
+                by_span[idx] = levels
+        out[key] = by_span
+    return out
+
+
 def monthly_frames(loaded, months):
-    """Monthly aggregate, measured share, available share and uncertainty, per variable."""
+    """Monthly aggregate, measured share, available share, uncertainty and fill shares, per
+    variable."""
     out = {}
     for key, d in loaded.items():
         v = d["v"]
@@ -1914,7 +1959,8 @@ def monthly_frames(loaded, months):
         meas = (d["measured"].astype(float).resample("MS").mean() * 100).reindex(months)
         avail = (d["series"].notna().astype(float).resample("MS").mean() * 100).reindex(months)
         unc = aggregate_uncertainty(d, lambda s: s.resample("MS").sum(min_count=1), months)
-        out[key] = dict(value=value, meas=meas, avail=avail, unc=unc)
+        fill = fill_shares(d, lambda f: (f.resample("MS").mean() * 100).reindex(months))
+        out[key] = dict(value=value, meas=meas, avail=avail, unc=unc, fill=fill)
     return out
 
 
@@ -1939,7 +1985,9 @@ def seasonal_frames(loaded, spans, scheme):
         avail = (d["series"].notna().astype(float).groupby(group).sum().reindex(index)
                  .fillna(0) / expected * 100)
         unc = aggregate_uncertainty(d, lambda s: s.groupby(group).sum(min_count=1), index)
-        out[key] = dict(value=value, meas=meas, avail=avail, unc=unc)
+        fill = fill_shares(d, lambda f: f.groupby(group).sum().reindex(index).fillna(0)
+                           .div(expected, axis=0) * 100)
+        out[key] = dict(value=value, meas=meas, avail=avail, unc=unc, fill=fill)
     return out
 
 
@@ -2474,6 +2522,10 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     day_values = {key: {stat: day[key][stat].to_numpy(dtype=float) for stat in day[key].columns}
                   for key in keys}
 
+    # The fill shares per scale, rounded once rather than span by span. The year's are added once
+    # its frames exist.
+    fill_tables = dict(month=fill_table(monthly), season=fill_table(seasonal))
+
     def span_row(sp, table, scale, extra=None):
         """One tile's worth of payload, for any of the three span scales.
 
@@ -2511,6 +2563,11 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                             # many of these decimals to show.
                             u=r(st[f"{key}_unc"], digits + 3),
                             meas=r(st[f"{key}_meas"], 0), avail=r(st[f"{key}_avail"], 0))
+            # How the unmeasured part was filled, one share per level of the variable's flag
+            # (`variables[].fill` names them). Only where there is a flag and something was filled.
+            filled = fill_tables[scale].get(key, {}).get(sp["idx"])
+            if filled:
+                row[key]["f"] = filled
         return row, st
 
     # -- Months ------------------------------------------------------------------------------
@@ -2544,6 +2601,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     # it can say about them - how many of them departed, and which departed furthest.
     year_spans = year_periods(first_year, last_year)
     yearly = yearly_frames(loaded, year_spans)
+    fill_tables["year"] = fill_table(yearly)
     year_index = pd.Index([sp["y"] for sp in year_spans], dtype="int64")
     year_norm = normals(yearly, [1] * len(year_spans), [sp["y"] for sp in year_spans])
     year_counts = {k: pd.Series(v.groupby(dates.year).sum()).reindex(year_index).fillna(0)
@@ -2771,6 +2829,14 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                               unc_note=v.uncertainty_note,
                               unc_columns=[c for comp in loaded[key]["uncertainty"]
                                            for c in comp["columns"]],
+                              # What each level of `row[key].f` is called, in the convention of
+                              # the flag it was read from. A code means different things in
+                              # different columns - 2 is medium-quality fill in `NEE_VUT_REF_QC`
+                              # and reanalysis in `TA_F_QC` - so the words travel per variable.
+                              fill=(dict(flag=v.qc_column, convention=v.qc_convention.name,
+                                         levels=list(v.fill_levels),
+                                         note=v.qc_convention.note)
+                                    if v.fill_levels else None),
                               about=v.about))
 
     payload = dict(
