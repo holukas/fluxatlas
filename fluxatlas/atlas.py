@@ -17,7 +17,10 @@ either of them would need belongs here rather than in them.
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ._console import say
@@ -54,6 +57,19 @@ def _guess_site(path):
     return match.group(1) if match else Path(path).stem[:20]
 
 
+def _fingerprint(path):
+    """Size in bytes and SHA-256 digest of the file at `path`.
+
+    The file is streamed through the hash in fixed-size chunks, so a FULLSET file of several
+    hundred megabytes costs a buffer rather than its own size in memory. The whole file is hashed,
+    not only the columns the atlas reads: a reprocessed file keeps its name, and the digest is what
+    tells two releases apart.
+    """
+    with open(path, "rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256")
+    return dict(bytes=Path(path).stat().st_size, sha256=digest.hexdigest())
+
+
 class Atlas:
     """One atlas: a file, a selection of variables, and the page they produce.
 
@@ -70,8 +86,14 @@ class Atlas:
         self.hourly = hourly
         self.seasons = seasons
 
-        self.loaded = _io.read_fluxnet(self.path, variables, first_year=first_year,
-                                       last_year=last_year, quiet=quiet)
+        # The digest is taken on a second thread while the file is parsed. Hashing releases the
+        # interpreter lock and reading the selected columns is mostly parsing, so the two overlap
+        # and the digest adds little to the build instead of a second pass over the file after it.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            fingerprint = pool.submit(_fingerprint, self.path)
+            self.loaded = _io.read_fluxnet(self.path, variables, first_year=first_year,
+                                           last_year=last_year, quiet=quiet)
+            fingerprint = fingerprint.result()
         self.variables = list(self.loaded)
         self.first_year, self.last_year = _io.span(self.loaded)
         if not quiet:
@@ -80,9 +102,22 @@ class Atlas:
                 f"{'' if hourly else ', without hourly detail'} ...")
         self.payload = _build.build_payload(
             self.loaded, site=self.site, site_long=self.site_long, source=self.path.name,
-            with_hourly=hourly, quiet=quiet, seasons=seasons)
+            with_hourly=hourly, quiet=quiet, seasons=seasons, fingerprint=fingerprint)
         if not quiet:
             self.report()
+
+    @property
+    def provenance(self):
+        """What produced this atlas, as the page records it in `meta["provenance"]`.
+
+        A dict with the input file's name (`file`), its size in bytes (`bytes`) and its SHA-256
+        digest (`sha256`); under `columns`, for each variable, the column it was read from, its
+        quality flag column or None, and the factor applied onto the canonical unit; and the season
+        specification, the first and last year and whether the hourly layer was built. FLUXNET
+        files are reprocessed under an unchanged name, so the digest rather than the name is what
+        identifies the input. The dict is a copy, so changing it does not change the page.
+        """
+        return copy.deepcopy(self.payload["meta"]["provenance"])
 
     @property
     def metrics(self):

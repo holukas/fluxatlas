@@ -93,6 +93,25 @@ atlas.write("//share/published/CH-LAE_atlas.html")   # nothing is recomputed
 The payload is built once, on construction. That is the expensive step. `write` can then run as
 often as you need.
 
+## What the page records about its input
+
+A page records the file it was built from: the name, the size, the SHA-256 digest, and for each
+variable the column, quality flag and conversion factor it was read with, together with the season
+scheme, the years and whether the hourly layer was included. FLUXNET files are reprocessed under an
+unchanged name, so the digest is what identifies the exact file behind a page opened years later.
+The same record is available from the library:
+
+```python
+atlas.provenance
+# {'file': 'EUF_CH-Oe2_FLUXNET_FLUXMET_HH_2004-2024_v1.3_r1.csv',
+#  'bytes': 578493687, 'sha256': '4e33402b1aa1116f...',
+#  'columns': {'TA': {'column': 'TA_F', 'qc': 'TA_F_QC', 'factor': 1.0}, ...},
+#  'seasons': 'DJF', 'first_year': 2004, 'last_year': 2024, 'hourly': True}
+```
+
+The digest is taken while the file is being read, so it adds little to a build: on a 552 MB
+FULLSET file it takes about 0.3 s on its own and is hidden almost entirely behind the read.
+
 ## Files named to another convention
 
 Most real files do not use FLUXNET names. Name the columns instead:

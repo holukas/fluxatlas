@@ -2401,7 +2401,14 @@ def epoch_split(metric, agg, span_rows, n_cols):
 # ----------------------------------------------------------------------------------------------
 
 def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, quiet=False,
-                  seasons=DEFAULT_SEASONS):
+                  seasons=DEFAULT_SEASONS, fingerprint=None):
+    """Everything the page is built from, as one JSON-serialisable mapping.
+
+    `loaded` is what `io.read_fluxnet` returns and `source` the name of the file it was read from.
+    `fingerprint` is that file's size and digest, `{"bytes": ..., "sha256": ...}`, which
+    `meta["provenance"]` records so that a page can be matched to the exact file that produced it;
+    a caller that omits it gets a page whose provenance states both as null.
+    """
     keys = list(loaded)
     first_year, last_year = span(loaded)
     dates = pd.date_range(f"{first_year}-01-01", f"{last_year}-12-31", freq="D")
@@ -2795,6 +2802,22 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
             composite=composite_correlation(all_stats, months, keys,
                                             {k: loaded[k]["v"].title for k in keys}),
             source=source,
+            # What produced this page, stated exactly enough to reproduce it. A page travels apart
+            # from its input, and FLUXNET files are reprocessed under an unchanged name, so the name
+            # alone does not identify the file: the digest does. The columns are the ones each
+            # variable was actually read from, which a FULLSET file offers a dozen variants of.
+            provenance=dict(
+                file=source,
+                bytes=None if fingerprint is None else int(fingerprint["bytes"]),
+                sha256=None if fingerprint is None else str(fingerprint["sha256"]),
+                columns={key: dict(column=loaded[key]["v"].column,
+                                   qc=loaded[key]["v"].qc_column or None,
+                                   factor=float(loaded[key]["v"].factor))
+                         for key in keys},
+                seasons=None if seasons is None else str(seasons),
+                first_year=int(first_year), last_year=int(last_year),
+                hourly=bool(with_hourly),
+            ),
             author=AUTHOR, affiliation=AFFILIATION, affiliation_url=AFFILIATION_URL,
             repository=REPOSITORY, version=VERSION,
         ),
