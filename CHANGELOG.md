@@ -57,7 +57,8 @@
   linking to its day. Half-hours of a carbon flux are given in µmol m⁻² s⁻¹, the rate the file publishes.
 - **Every hour of the record in one image**: one column per day and one row per hour for each variable in the hourly
   layer, so the daily cycle, the seasons and the years can be read together. It is drawn on a canvas, the first on the
-  page, because its roughly 184,000 cells are too many for SVG.
+  page, because its roughly 184,000 cells are too many for SVG. The net exchange is drawn on a red-yellow-blue scale
+  centred on zero, blue for uptake and red for release.
 - **`--list` marks the variables a build takes only when named.**
 
 ### Changed

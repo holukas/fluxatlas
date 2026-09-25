@@ -5529,6 +5529,8 @@
   const HOURLY_QUANTILES = [0.01, 0.99];
   const HOURLY_SCHEMES = {};          // per variable: the domain is fixed, only the colours move
   const HOURLY_GAP = '--text-muted';  // a grey that is neither end of any ramp, in either theme
+  // A variable signed by a convention (NEE) is drawn red-yellow-blue, blue for negative (uptake).
+  const HOURLY_SIGNED = Array.from({ length: 11 }, (_, i) => '--rdylbu-' + (i + 1));
 
   function quantileOf(sorted, q) {
     if (!sorted.length) return null;
@@ -5570,7 +5572,7 @@
       if (v.sign && pole) {
         const dev = Float64Array.from(all, x => Math.abs(x)).sort();
         const half = quantileOf(dev, HOURLY_QUANTILES[1]) || 1;
-        out = { kind: 'centred', lo: -half, hi: half, center: 0, stops: pole };
+        out = { kind: 'centred', lo: -half, hi: half, center: 0, stops: HOURLY_SIGNED };
       } else if (v.agg === 'sum' && !v.sign) {
         const pos = Float64Array.from(positive).sort();
         out = { kind: 'zero', lo: 0, hi: quantileOf(pos, HOURLY_QUANTILES[1]) || 1,

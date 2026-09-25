@@ -38,6 +38,12 @@
   --pole-warm: #e34948;
   --neutral-mid: #f0efec;
 
+  /* Red-yellow-blue (ColorBrewer RdYlBu, 11 classes), blue at the low end. The net exchange's
+     hour-by-hour heatmap uses it, so uptake, which is negative, is blue. The same in both themes. */
+  --rdylbu-1: #313695; --rdylbu-2: #4575b4; --rdylbu-3: #74add1; --rdylbu-4: #abd9e9;
+  --rdylbu-5: #e0f3f8; --rdylbu-6: #ffffbf; --rdylbu-7: #fee090; --rdylbu-8: #fdae61;
+  --rdylbu-9: #f46d43; --rdylbu-10: #d73027; --rdylbu-11: #a50026;
+
   /* Sequential blue ramp, light -> dark */
   --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #6da7ec; --seq-4: #3987e5;
   --seq-5: #256abf; --seq-6: #184f95; --seq-7: #0d366b;

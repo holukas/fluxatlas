@@ -169,8 +169,8 @@ The rest of the page:
   column per day and one row per hour of it, midnight at the bottom, coloured by the hourly mean (or
   total, for a variable that sums) on the file's own clock. The daily cycle, the seasons and the
   years read together. The colour domain is the 1st to 99th percentile of the hours, so a few
-  extreme hours do not wash out the rest, and the net exchange diverges about zero, green for uptake
-  and red for release. Where the page is narrower than the record is long, a column is the mean of
+  extreme hours do not wash out the rest, and the net exchange diverges about zero on a red-yellow-blue
+  scale, blue for uptake and red for release. Where the page is narrower than the record is long, a column is the mean of
   several days. Hovering reads one hour and selecting it opens that day. A page built with
   `--no-hourly` has no such chart and says so.
 

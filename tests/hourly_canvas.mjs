@@ -91,7 +91,7 @@ await tick();
 
 const token = name => window.getComputedStyle(doc.documentElement).getPropertyValue(name).trim();
 const out = { errors, gap: spec.gap, tokens: {}, vars: {} };
-['--text-muted', '--neutral-mid', '--series-3', '--pole-warm', '--pole-cold']
+['--text-muted', '--neutral-mid', '--pole-warm', '--pole-cold', '--rdylbu-1', '--rdylbu-11']
   .forEach(t => { out.tokens[t] = token(t); });
 
 const tipNode = doc.getElementById('tooltip');

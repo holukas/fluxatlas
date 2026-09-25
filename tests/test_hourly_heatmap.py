@@ -119,7 +119,7 @@ def grid(data, key):
 # -- What is drawn ----------------------------------------------------------------------------
 
 def test_each_cell_is_one_hour_of_one_day_with_midnight_at_the_bottom(fine, data):
-    """One pixel per day and per hour, the hour counting up the axis, and NEE green where it is
+    """One pixel per day and per hour, the hour counting up the axis, and NEE blue where it is
     uptake and red where it is release - which a flipped axis or a transposed index would break,
     since the synthetic site takes up carbon by day and releases it at night."""
     row = fine["vars"]["NEE"]
@@ -135,8 +135,8 @@ def test_each_cell_is_one_hour_of_one_day_with_midnight_at_the_bottom(fine, data
     uptake = values < -0.2 * half
     release = values > 0.2 * half
     assert uptake.sum() > 1000 and release.sum() > 100
-    green, red = cells[..., 1] - cells[..., 0], cells[..., 0] - cells[..., 1]
-    assert (green[uptake] > 0).all(), "an hour of uptake was not drawn green"
+    blue, red = cells[..., 2] - cells[..., 0], cells[..., 0] - cells[..., 2]
+    assert (blue[uptake] > 0).all(), "an hour of uptake was not drawn blue"
     assert (red[release] > 0).all(), "an hour of release was not drawn red"
 
 
@@ -169,7 +169,7 @@ def test_the_colour_domain_is_a_percentile_range_and_nee_diverges_about_zero(fin
     nee = grid(data, "NEE")
     cells = image(fine["vars"]["NEE"])[::-1].transpose(1, 0, 2)
     half = np.nanquantile(np.abs(nee), 0.99)
-    sink, source = hex_rgb(fine["tokens"]["--series-3"]), warm
+    sink, source = hex_rgb(fine["tokens"]["--rdylbu-1"]), hex_rgb(fine["tokens"]["--rdylbu-11"])
     assert ((cells[nee < -half - 0.002] == sink).all(axis=-1)).all()
     assert ((cells[nee > half + 0.002] == source).all(axis=-1)).all()
     legend = fine["vars"]["NEE"]["legend"]
