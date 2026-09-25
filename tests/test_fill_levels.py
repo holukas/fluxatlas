@@ -342,6 +342,24 @@ def test_the_build_warning_says_a_partitioned_flux_rests_on_the_net_flux(flagged
 
 
 @needs_jsdom
+def test_a_badge_withheld_for_coverage_is_listed_on_the_span(tmp_path):
+    """Three weeks of March 2011 without air temperature: its badges cannot be evaluated, and the
+    panel says so. A badge withheld because its variable is not in the build is not listed."""
+    frame = add_fluxes(synthetic_frame(years=YEARS))
+    frame.loc["2011-03-05":"2011-03-26", "TA_F"] = np.nan
+    path = tmp_path / "gap_HH.parquet"
+    frame.to_parquet(path)
+    built = fa.Atlas(path, ["TA", "NEE"], site="XX-Gap", hourly=False, quiet=True)
+    month = next(r for r in built.payload["months"] if r["y"] == 2011 and r["m"] == 3)
+    assert any(s["c"] == "coverage" for s in month["sup"])
+    _, found = read_page(built, tmp_path, "#2011-03")
+    note = found["#2011-03"]["badges"]
+    assert "Badges not evaluated:" in note
+    assert "TA covers" in note and "% required for a badge" in note
+    assert "not included in this build" not in note
+
+
+@needs_jsdom
 @pytest.mark.parametrize("which", ["unstated", "unflagged"])
 def test_a_flag_without_a_convention_and_no_flag_at_all_render_cleanly(which, request, tmp_path):
     built = request.getfixturevalue(which)

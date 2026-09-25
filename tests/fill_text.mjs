@@ -9,8 +9,9 @@
  * installed twice.
  *
  * Usage: node fill_text.mjs <atlas.html> <hash> [<hash> ...]
- * Prints {hash: {tiles, titles, cov}}: the text of the month panel's tiles, the `title` of every
- * element inside them, and the text of the variable page's coverage card.
+ * Prints {hash: {tiles, titles, cov, badges}}: the text of the month panel's tiles, the `title` of
+ * every element inside them, the text of the variable page's coverage card, and the month panel's
+ * badges with the note on those not evaluated.
  */
 
 import { readFileSync } from 'node:fs';
@@ -53,10 +54,12 @@ for (const hash of hashes) {
   const doc = window.document;
   const tiles = doc.getElementById('month-tiles');
   const cov = doc.getElementById('var-cov');
+  const badges = doc.getElementById('month-badges');
   out[hash] = {
     tiles: tiles && !tiles.closest('[hidden]') ? tiles.textContent : null,
     titles: tiles ? [...tiles.querySelectorAll('[title]')].map(e => e.getAttribute('title')) : [],
     cov: cov && !cov.closest('[hidden]') ? cov.textContent : null,
+    badges: badges && !badges.closest('[hidden]') ? badges.textContent : null,
   };
 }
 out.errors = errors;

@@ -135,6 +135,10 @@ complete payloads of three builds were compared before and after, and no figure 
   file name, the column names and the title. A `<` in a site description used to break the page.
 - **Toggling the theme on a variable page threw**, and toggling it from a span panel left the grid's tiles in the old
   colours.
+- **Badges withheld for too little coverage are listed on the span.** The note matched only reasons that mentioned
+  measurement or missing data, so a badge withheld because a variable covered too little of the span, or had no normal,
+  was never shown. Each withheld badge now carries the kind of reason, and the note, "Badges not evaluated", lists all of
+  them except those whose variable is not in the build.
 - **Axis labels no longer run into each other.** A y axis states its ticks with only the decimals they need, so a
   carbon total reads 1500 rather than 1500.00, and its unit stands beside the widest tick, with the margin widened where
   there is no room. X-axis labels at either end are anchored at their tick, and on a narrow chart the labels thin out

@@ -48,6 +48,16 @@ def test_badges_needing_an_absent_variable_are_withheld_with_a_reason(ta_atlas):
     assert not (earned & prec_badges)
 
 
+def test_every_withheld_badge_says_what_kind_of_reason_it_is(ta_atlas, full_atlas):
+    """The page lists the withheld badges whose reason describes the span and leaves out those
+    whose variable the build does not carry, so each reason is labelled with its kind."""
+    for atlas in (ta_atlas, full_atlas):
+        for row in atlas.payload["months"]:
+            for s in row["sup"]:
+                assert s["c"] in {"absent", "data", "coverage", "normal", "spread"}, s
+                assert (s["c"] == "absent") == ("not included in this build" in s["why"]), s
+
+
 def test_day_tests_of_absent_variables_are_dropped(ta_atlas, full_atlas):
     ta_flags = {f["key"] for f in ta_atlas.payload["flags"]}
     full_flags = {f["key"] for f in full_atlas.payload["flags"]}
