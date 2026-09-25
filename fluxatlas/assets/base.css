@@ -447,6 +447,24 @@ td.num-cold { color: var(--pole-cold); }
 .footer .wordmark { font-weight: 400; color: var(--text-secondary); }
 .footer .wordmark b { font-weight: 700; }
 
+/* The file's hash is written out whole and shown cut to its first characters, so what is selected
+   and copied is always the full fingerprint. Hovering or focusing it opens it out in place. */
+.footer code.hash {
+  display: inline-block; max-width: 12ch; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; vertical-align: bottom; cursor: text;
+}
+.footer code.hash:hover, .footer code.hash:focus {
+  max-width: none; white-space: normal; overflow-wrap: anywhere; outline: none;
+  color: var(--text-secondary);
+}
+
+.footer .prov { max-width: 1760px; margin: 8px auto 0; font-size: 12.5px; color: var(--text-muted); }
+.footer .prov[hidden] { display: none; }
+.footer .prov summary { cursor: pointer; color: var(--text-secondary); width: max-content; }
+.footer .prov summary:hover { color: var(--text-primary); }
+.footer .prov p { margin: 8px 0 6px; max-width: 90ch; }
+.footer .prov .tablewrap { max-width: 720px; }
+
 /* ---------------------------------------------------------------------------------------------
    Print and forced colours
    --------------------------------------------------------------------------------------------- */

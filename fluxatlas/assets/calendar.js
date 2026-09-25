@@ -191,6 +191,16 @@
     return +s === 0 ? Math.abs(+s).toFixed(d) : (v > 0 ? '+' : '') + s;
   };
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+  /* Text that is the caller's rather than ours, made safe to concatenate into markup. The site's
+     name and description, the input's file name and every column name arrive from whoever built
+     the page, and a `<` in any of them used to reach `innerHTML` as markup: a description reading
+     "Plot <b>north</b>" came out in bold, and one with an unclosed tag took the rest of the footer
+     with it. Everything the registry supplies is ours and is left alone; everything the caller
+     supplies goes through this, including the attribute values it lands in. */
+  const esc = s => String(s === null || s === undefined ? '' : s)
+    .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
+      "'": '&#39;' }[c]));
   const ord = n => {
     if (!isNum(n)) return '–';
     const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
@@ -1622,7 +1632,7 @@
       + '<span class="tile-label">' + label + '</span>'
       + '<span class="tile-value">' + value + (unit ? '<span class="unit">' + unit + '</span>' : '')
       + '</span><span class="tile-sub">' + sub + '</span>'
-      + (src ? '<span class="tile-src" title="read from this column">' + src + '</span>' : '')
+      + (src ? '<span class="tile-src" title="read from this column">' + esc(src) + '</span>' : '')
       + '</div>';
   }
 
@@ -1641,6 +1651,90 @@
     return Object.keys(by)
       .filter(y => by[y].length === 12 && by[y].every(isNum))
       .map(y => ({ y: +y, v: by[y].reduce((a, b) => a + b, 0) }));
+  }
+
+  /* ------------------------------------------------------------------------------------------
+     Provenance
+     ------------------------------------------------------------------------------------------
+     A page is a statement about one file, and it outlives the folder that file sat in. So it says
+     which file - by name, by size and by its SHA-256, which is what tells two files of the same
+     name apart - and, for each variable, the column it was read from, the flag that split measured
+     from modelled, and the factor that brought it onto the page's unit.
+
+     Every field is optional. A page built before the build shipped any of this renders exactly as
+     it did, and every string in it is the caller's, so all of it is escaped.
+     ------------------------------------------------------------------------------------------ */
+
+  /** The provenance block, or null where the page was built without one. */
+  function provenance() {
+    const P = M.provenance;
+    return P && typeof P === 'object' ? P : null;
+  }
+
+  function fmtBytes(n) {
+    if (!isNum(n) || n < 0) return null;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return nf(n / 1024, 0) + ' kB';
+    return nf(n / (1024 * 1024), n < 10 * 1024 * 1024 ? 1 : 0) + ' MB';
+  }
+
+  /* A factor is printed at the precision it carries rather than at a fixed number of decimals:
+     1e-6 x 1800 s x 12.011 is 0.0216198, and two decimals would print it as 0.02. */
+  const fmtFactor = f => (f === null || f === undefined || f === '' || !isNum(+f) ? '–'
+    : +f === 1 ? '1 (as given)' : String(Number((+f).toPrecision(6))));
+
+  /* The size and the hash, after the file name in the footer. The hash is written out in full and
+     cut to its first characters by the stylesheet, so hovering or focusing it shows all of it and
+     selecting it copies all of it: a shortened hash that could only be copied short would be a
+     fingerprint nobody could check. */
+  function fileFingerprint(P) {
+    const bits = [];
+    const size = fmtBytes(P.bytes);
+    if (size) bits.push(size);
+    if (P.sha256) {
+      bits.push('SHA-256 <code class="hash" tabindex="0" title="SHA-256 ' + esc(P.sha256) + '">'
+        + esc(P.sha256) + '</code>');
+    }
+    return bits.length ? ' (' + bits.join(', ') + ')' : '';
+  }
+
+  /** The per-variable account of what was read, as a disclosure under the footer's first line. */
+  function renderProvenance(P) {
+    const host = document.getElementById('footer-prov');
+    if (!host) return;
+    const cols = P && P.columns && typeof P.columns === 'object' ? P.columns : null;
+    if (!P || !cols || !Object.keys(cols).length) {
+      host.hidden = true;
+      host.innerHTML = '';
+      return;
+    }
+    // In the page's own order where the variable is on it, then anything else the build recorded.
+    const keys = DATA.variables.map(v => v.key).filter(k => cols[k])
+      .concat(Object.keys(cols).filter(k => !VARS[k]));
+    const rows = keys.map(k => {
+      const c = cols[k] || {};
+      return [esc(VARS[k] ? VARS[k].short : k),
+        '<code>' + esc(c.column) + '</code>',
+        c.qc ? '<code>' + esc(c.qc) + '</code>' : '<span class="muted">none</span>',
+        esc(fmtFactor(c.factor))];
+    });
+    const facts = [];
+    if (isNum(P.first_year) && isNum(P.last_year)) {
+      facts.push('years ' + esc(P.first_year) + '–' + esc(P.last_year));
+    }
+    if (P.seasons !== undefined && P.seasons !== null) {
+      facts.push('seasons <code>' + esc(P.seasons) + '</code>');
+    }
+    if (typeof P.hourly === 'boolean') {
+      facts.push(P.hourly ? 'hourly arrays included' : 'built without the hourly arrays');
+    }
+    host.hidden = false;
+    host.innerHTML = '<details><summary>What was read from the file</summary>'
+      + '<p>Each variable’s column, the flag that separated measured from gap-filled records, '
+      + 'and the factor that converted the column onto the unit this page states.'
+      + (facts.length ? ' Built with ' + facts.join(', ') + '.' : '') + '</p>'
+      + tableHTML(['Variable', 'Column', 'Quality flag', 'Factor'], rows)
+      + '</details>';
   }
 
   function renderHero() {
@@ -1725,11 +1819,16 @@
       : '';
     document.getElementById('tiles').innerHTML = tiles.join('') + heroFluxes;
 
+    const P = provenance();
+    const file = P && P.file ? P.file : M.source;
     document.getElementById('footer-text').innerHTML =
-      M.site + ' — ' + M.site_long + '. Built ' + M.generated
-      + (M.source ? ' from <code>' + M.source + '</code>' : '') + '. Normals use the months at '
+      // The description is optional, and without one the line read "XX-Syn — . Built".
+      esc(M.site) + (M.site_long ? ' — ' + esc(M.site_long) : '') + '. Built ' + esc(M.generated)
+      + (file ? ' from <code>' + esc(file) + '</code>' : '')
+      + (P ? fileFingerprint(P) : '') + '. Normals use the months at '
       + 'least ' + M.cov_normal_text + ' measured, and need at least ' + M.min_normal_years
       + ' such years; daily normals pool a ±' + M.clim_window + ' day window across all years.';
+    renderProvenance(P);
 
     /* Who made the page and what made it, on its own line. This file travels away from whatever
        produced it, and by the time someone opens it from a share or a memory stick there may be
@@ -1757,7 +1856,7 @@
         + '<span class="vk">' + v.key + '</span>'
         + '<span class="vt">' + v.title + '</span>'
         + '<span class="vu">' + v.units + ' · ' + (v.agg === 'sum' ? 'summed' : 'averaged')
-        + ' · <code>' + v.column + '</code></span>'
+        + ' · <code>' + esc(v.column) + '</code></span>'
         + '<span class="vtr">' + line + '</span></a>';
     }).join('');
     document.getElementById('var-lede-index').textContent =
@@ -1798,7 +1897,7 @@
         + 'page used. Values are as the file gave them: this page aggregates and compares, and '
         + 'corrects nothing.' });
     body.innerHTML = tableHTML(['Variable', 'Column', 'Period'],
-      DATA.variables.map(v => [v.short, '<code>' + v.column + '</code>',
+      DATA.variables.map(v => [v.short, '<code>' + esc(v.column) + '</code>',
         v.first_year + '–' + v.last_year]));
 
     /* The composite counts departures on several axes at once, so how far those axes duplicate
@@ -3219,8 +3318,8 @@
         v: nf(ex.yearHigh[key].v, d) + unit + ' in ' + ex.yearHigh.y });
       rows.push({ k: 'Lowest year', v: nf(ex.yearLow[key].v, d) + unit + ' in ' + ex.yearLow.y });
     }
-    rows.push({ k: 'Read from', v: '<code>' + v.column + '</code>'
-      + (v.product ? ' (' + v.product + ')' : '') });
+    rows.push({ k: 'Read from', v: '<code>' + esc(v.column) + '</code>'
+      + (v.product ? ' (' + esc(v.product) + ')' : '') });
     if (v.unc_note) rows.push({ k: 'Uncertainty covers', v: v.unc_note });
     rows.push({ k: 'Coverage warning below', v: nf(v.cov.warn, 0) + ' % measured, which '
       + (v.thin ? v.thin + ' month' + (v.thin === 1 ? ' is' : 's are') : 'no month is') });
@@ -3734,7 +3833,7 @@
       + '<h2 class="section">What the record covers</h2><div class="grid" id="var-cov"></div>';
 
     document.getElementById('var-lede').innerHTML = v.about
-      + ' Read from <code>' + v.column + '</code>, ' + v.first_year + '–' + v.last_year + '.';
+      + ' Read from <code>' + esc(v.column) + '</code>, ' + v.first_year + '–' + v.last_year + '.';
 
     cardEl(document.getElementById('var-summary'), {
       title: 'This variable over ' + M.first_year + '–' + M.last_year, width: 'w-12',
@@ -4261,7 +4360,7 @@
     const crumbs = document.getElementById('crumbs');
     /* The site rides with the span here, since the topbar itself now carries the product name and
        the hero scrolls out of sight. */
-    const site = '<span class="site">' + M.site + '</span><span class="sep">·</span>';
+    const site = '<span class="site">' + esc(M.site) + '</span><span class="sep">·</span>';
     if (which === 'grid') {
       crumbs.innerHTML = site + '<b>' + M.first_year + '–' + M.last_year + '</b>';
     } else if (which === 'var') {
