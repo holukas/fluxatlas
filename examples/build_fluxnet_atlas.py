@@ -85,18 +85,25 @@ def main():
     print(RULE)
     print(f"1. What {args.input.name} can supply")
     print(RULE)
-    for key, spec in fa.available(args.input).items():
+    found = fa.available(args.input)
+    wcol = max(len(s["column"]) for s in found.values())
+    wqc = max(len(s["qc"] or "-") for s in found.values())
+    for key, spec in found.items():
         factor = "" if spec["factor"] == 1.0 else f"  (x{spec['factor']:g})"
-        print(f"  {key:<7} {spec['column']:<20} {spec['qc'] or '-':<20} "
-              f"{spec['units']}{factor}")
-    print(f"\n  the command line prints the same: fluxatlas {args.input.name} --list")
+        mark = "" if fa.variables.default(key) else "  *"
+        print(f"  {key:<7} {spec['column']:<{wcol}}  {spec['qc'] or '-':<{wqc}}  "
+              f"{spec['units']}{factor}{mark}")
+    print("\n  * built only when named with --vars")
+    print(f"  the command line prints the same: fluxatlas {args.input.name} --list")
 
     # -- 2. The default build --------------------------------------------------------------------
-    # This is the whole of it. One path, and every variable the registry finds in the file, each
-    # with its unit conversion, its quality flag and its aggregation taken from the registry.
+    # This is the whole of it. One path, and every unmarked variable the registry finds in the
+    # file, each with its unit conversion, its quality flag and its aggregation taken from the
+    # registry. The marked ones - the ancillary meteorology and the energy-balance terms - are
+    # built when named, which is what `--vars` below is for.
     print()
     print(RULE)
-    print("2. The default build: everything the file supplies, nothing configured")
+    print("2. The default build: the file's core variables, nothing configured")
     print(RULE)
     print(f"  fa.Atlas({args.input.name!r})")
     print(f"  fluxatlas {args.input.name} -o atlas.html")
@@ -109,7 +116,8 @@ def main():
     options = dict(
         variables=(selection, "--vars TA,NEE,GPP",
                    "a chosen selection is a page that answers a question; the default surveys "
-                   "the file"),
+                   "the file's core variables. Name NETRAD and G beside H and LE for the "
+                   "energy-balance closure"),
         site_long=(args.site_long or None, "--site-long 'Oensingen, cropland'",
                    "a longer description of the site, for the page header"),
         seasons=(args.seasons if args.seasons != "DJF" else None, "--seasons DJFMAM",
@@ -143,6 +151,10 @@ def main():
     print()
     print(f"{'metrics offered:':<24} {len(atlas.metrics):>3}")
     print(f"{'badge types earned:':<24} {sum(1 for n in atlas.badges.values() if n):>3}")
+    # The same figures as a table, and the record of what produced them - both read from the
+    # payload the page was built from, so neither can disagree with it.
+    print(f"{'atlas.table() rows:':<24} {len(atlas.table()):>3}  (one per month)")
+    print(f"{'input SHA-256:':<24} {atlas.provenance['sha256'][:16]}...")
 
     if args.open_browser:
         webbrowser.open(path.resolve().as_uri())

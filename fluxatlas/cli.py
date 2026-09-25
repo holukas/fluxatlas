@@ -97,14 +97,20 @@ def show(path):
         say(f"\nknown variables: {', '.join(_variables.known())}")
         return 0
     say(f"{Path(path).name}")
-    say(f"  {'variable':<9} {'column':<22} {'quality flag':<22} unit")
+    # Sized to what the file supplies rather than fixed: a computed net radiation names its formula
+    # where a column would be, twice as long as any column name, and a fixed width let it push the
+    # rest of its row out of line.
+    wcol = max([len("column")] + [len(s["column"]) for s in found.values()])
+    wqc = max([len("quality flag")] + [len(s["qc"] or "-") for s in found.values()])
+    say(f"  {'variable':<9} {'column':<{wcol}}  {'quality flag':<{wqc}}  unit")
     asked = []
     for key, spec in found.items():
         factor = "" if spec["factor"] == 1.0 else f"  (x{spec['factor']:g})"
         mark = "" if _variables.default(key) else "  *"
         if mark:
             asked.append(key)
-        say(f"  {key:<9} {spec['column']:<22} {spec['qc'] or '-':<22} {spec['units']}{factor}{mark}")
+        say(f"  {key:<9} {spec['column']:<{wcol}}  {spec['qc'] or '-':<{wqc}}  "
+            f"{spec['units']}{factor}{mark}")
     if asked:
         say()
         say("  * built only when named with --vars, which then names the whole selection. The")

@@ -20,23 +20,38 @@ fluxatlas EUF_CH-Oe2_FLUXNET_FLUXMET_HH_2004-2024_v1.3_r1.csv --list
 ```
 
 ```text
-  variable  column                 quality flag           unit
-  TA        TA_F                   TA_F_QC                °C
-  PREC      P_F                    P_F_QC                 mm
-  SW_IN     SW_IN_F                SW_IN_F_QC             W m⁻²
-  VPD       VPD_F                  VPD_F_QC               kPa  (x0.1)
-  RH        RH                     -                      %
-  SWC       SWC_F_MDS_1            SWC_F_MDS_1_QC         %
-  NEE       NEE_VUT_REF            NEE_VUT_REF_QC         g C m⁻²  (x0.0216198)
-  GPP       GPP_NT_VUT_REF         NEE_VUT_REF_QC         g C m⁻²  (x0.0216198)
-  RECO      RECO_NT_VUT_REF        NEE_VUT_REF_QC         g C m⁻²  (x0.0216198)
-  LE        LE_F_MDS               LE_F_MDS_QC            W m⁻²
-  H         H_F_MDS                H_F_MDS_QC             W m⁻²
+  variable  column                                         quality flag             unit
+  TA        TA_F                                           TA_F_QC                  °C
+  PREC      P_F                                            P_F_QC                   mm
+  SW_IN     SW_IN_F                                        SW_IN_F_QC               W m⁻²
+  VPD       VPD_F                                          VPD_F_QC                 kPa  (x0.1)
+  RH        RH                                             -                        %
+  SWC       SWC_F_MDS_1                                    SWC_F_MDS_1_QC           %
+  TS        TS_F_MDS_1                                     TS_F_MDS_1_QC            °C  *
+  WS        WS_F                                           WS_F_QC                  m s⁻¹  *
+  PA        PA_F                                           PA_F_QC                  kPa  *
+  LW_IN     LW_IN_F                                        LW_IN_F_QC               W m⁻²  *
+  PPFD_IN   PPFD_IN                                        -                        µmol m⁻² s⁻¹  *
+  USTAR     USTAR                                          -                        m s⁻¹  *
+  NEE       NEE_VUT_REF                                    NEE_VUT_REF_QC           g C m⁻²  (x0.0216198)
+  GPP       GPP_NT_VUT_REF                                 NEE_VUT_REF_QC           g C m⁻²  (x0.0216198)
+  RECO      RECO_NT_VUT_REF                                NEE_VUT_REF_QC           g C m⁻²  (x0.0216198)
+  LE        LE_F_MDS                                       LE_F_MDS_QC              W m⁻²
+  H         H_F_MDS                                        H_F_MDS_QC               W m⁻²
+  NETRAD    computed: SW_IN_F − SW_OUT + LW_IN_F − LW_OUT  SW_IN_F_QC & LW_IN_F_QC  W m⁻²  *
+  G         G_F_MDS                                        G_F_MDS_QC               W m⁻²  *
+
+  * built only when named with --vars, which then names the whole selection. The
+    energy-balance closure needs H, LE, NETRAD and G in the same build.
 ```
 
 This reads the header and nothing else, so it answers in well under a second even on a
 552 MB file. It is worth running first: it tells you which of a FULLSET's many variants
 of the same flux the registry would pick, before you spend a minute reading the record.
+
+The variables marked `*` are there to be named, not built by default. `NETRAD` shows
+where the file carries no net radiation of its own but carries its four components,
+and names the formula it would be computed with.
 
 ### 2. Build the atlas
 
@@ -46,8 +61,8 @@ fluxatlas EUF_CH-Oe2_FLUXNET_FLUXMET_HH_2004-2024_v1.3_r1.csv -o CH-Oe2_atlas.ht
 
 That is the whole of it. A FLUXNET file needs no mapping, no column names and no units,
 because the registry already knows the convention its columns are named to. Every
-variable in the table above goes on the page, each converted onto its canonical unit,
-each with its quality flag beside it.
+unmarked variable in the table above goes on the page, each converted onto its canonical
+unit, each with its quality flag beside it.
 
 The output is one self-contained HTML file. It carries its own scripts and styles, so it
 opens from a memory stick with no server and no network.
@@ -56,14 +71,31 @@ opens from a memory stick with no server and no network.
 
 Everything past that point is optional, and each of these has a default that works.
 
-**Choose what the page is about.** The default is a survey of the whole file, which is
-right for an unfamiliar record. A chosen selection gives a page that answers a question,
+**Choose what the page is about.** The default is a survey of the file's core variables,
+the unmarked ones in the table above, which is right for an unfamiliar record. A chosen selection gives a page that answers a question,
 and it is a smaller page rather than a broken one — metrics whose variables are absent
 are not offered, and badges whose inputs are missing are withheld with the reason.
 
 ```bash
 fluxatlas record.csv -o carbon.html --vars NEE,GPP,RECO
 ```
+
+**Close the energy balance.** Name the four terms, and the page adds the closure ratio
+(H + LE) / (NETRAD − G) and the evaporative fraction LE / (H + LE) to its Energy group.
+
+```bash
+fluxatlas record.csv -o energy.html --vars TA,PREC,NEE,GPP,RECO,LE,H,NETRAD,G
+```
+
+Two different things decide what appears. A **variable** has to come from the file:
+`NETRAD` is read from a `NETRAD` column where there is one, and otherwise computed from
+`SW_IN`, `SW_OUT`, `LW_IN` and `LW_OUT` - you name `NETRAD`, not its components. A file
+that has neither does not list it, and naming it anyway stops the build with an error
+saying what was looked for. A **metric** built on several variables appears only when
+all of them are in the build: the evaporative fraction with `H` and `LE`, the closure
+ratio with all four. Leave one out and the metric is simply not offered, with no error,
+as with everything else on the page. Both ratios are withheld in months whose denominator
+is too small to mean anything, which in a mid-latitude record is most of the winter.
 
 **Cut the file size.** The hourly arrays behind the day panel's diurnal charts are most
 of the output. The eleven-variable CH-Oe2 page above is 5.9 MB with them and 2.3 MB
@@ -124,6 +156,16 @@ atlas = fa.Atlas("record.csv", ["NEE", "GPP", "RECO"], site_long="Oensingen, cro
                  first_year=2010, hourly=False)
 atlas.write("carbon.html")
 atlas.write("//share/published/CH-Oe2_carbon.html")   # nothing is recomputed
+```
+
+The figures behind the tiles are available as a table, read from the same payload the page
+is built from, so the two cannot disagree. The page also records exactly which file and
+columns produced it, and the same record is on the object.
+
+```python
+months = atlas.table()                          # one row per month; or "season", "year"
+atlas.table("year").to_csv("CH-Oe2_years.csv")
+atlas.provenance["sha256"]                      # the digest of the input file
 ```
 
 ## Running the scripts

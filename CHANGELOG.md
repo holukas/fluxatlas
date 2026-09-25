@@ -43,6 +43,7 @@ the complete payload of three builds before and after.
 - **The build's coverage warning** no longer says gap-filled values were used for a variable that has no flag and so was never gap-filled.
 - **The trend falls back to SciPy's `kendalltau` if the private function it relies on fails in any way**, not only if it cannot be imported.
 - **The page states the coverage rule it applies.** Five sentences still said a badge or a normal needs its month *measured* to a threshold, which stopped being the rule when the gates moved to availability; they now say *covered*, and that the measured share is stated rather than gated on.
+- **`--list` sizes its columns to what the file supplies.** A computed net radiation names its formula where a column would be, and at a fixed width it pushed the rest of its row out of line.
 - **`doy365` says where 29 February goes**, which is 28 February's slot and not 1 March's.
 
 ### Changed
@@ -50,6 +51,7 @@ the complete payload of three builds before and after.
 - **A build that names no variables takes the same eleven as before;** the eight added here are built only when named. Taking every variable a FULLSET file supplies put the sparse badge on 216 of 252 CH-Oe2 months against 103, `PA`, which is mostly reanalysis there, accounting for 159 of them.
 - **The "In cloud" badge is now "Near-saturated air"**, which is what a daily mean relative humidity of 95 % establishes at any site.
 - **The build time is stated with its UTC offset.**
+- **The examples say what the default build takes and show what is new.** `examples/README.md` opens with the current `--list` output and its marks, adds the energy-balance build with what decides whether net radiation and each ratio appear, and shows `Atlas.table()` and `Atlas.provenance`; `build_fluxnet_atlas.py` marks the variables built only when named and prints the table's size and the input's digest.
 
 ### Performance
 
