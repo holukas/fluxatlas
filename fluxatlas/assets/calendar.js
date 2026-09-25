@@ -4660,7 +4660,192 @@
 
   /* ---- Threshold days and the longest spell, year by year. ----------------------------------
      Fills #var-thresholds from the year rows' counts and spells. */
-  function renderVarThresholds() {}
+
+  /* The runs drawn beside a test other than its own. A dry spell is not a day test: it is the
+     longest run of days that failed the wet-day test, which the build counts because a drought is
+     the run a precipitation record is read for. It sits with the test it is the absence of. */
+  const RUNS_BESIDE = { wet: [{ key: 'dry', label: 'longest run without one', short: 'dry run' }] };
+
+  /**
+   * One day test's count in one year, or null where the year cannot be counted.
+   *
+   * A year is counted where enough of it carries the variable at all: the availability gate every
+   * other statistic on the page reads. A year the instrument was absent for would otherwise enter
+   * the line as a year with no frost, which is a statement about the weather it cannot support.
+   */
+  function yearCount(row, f) {
+    const rec = row[f.var];
+    if (!rec || !isNum(rec.avail) || rec.avail < cov(f.var).normal) return null;
+    return isNum(row.c[f.key]) ? row.c[f.key] : null;
+  }
+
+  /** The runs a test is drawn with: its own longest spell, where the build defines one, and any
+      run that belongs beside it. */
+  function runsOf(f) {
+    const has = k => YEAR_ROWS.some(row => row.sp && isNum(row.sp[k]));
+    return (has(f.key) ? [{ key: f.key, label: 'longest unbroken run', short: 'run' }] : [])
+      .concat((RUNS_BESIDE[f.key] || []).filter(run => has(run.key)));
+  }
+
+  const daysWord = n => n + (n === 1 ? ' day' : ' days');
+
+  /** Years in running text: one, two or three by name, and more than that by how many. */
+  function yearsNamed(list) {
+    if (list.length > 3) return 'each of ' + list.length + ' years';
+    return list.length === 1 ? String(list[0])
+      : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+  }
+
+  /**
+   * What the count and the run of one test say together, as a sentence.
+   *
+   * The two are drawn side by side because they do not move together: a year can reach the highest
+   * count of the record without ever holding the threshold for a week, and the sentence names both
+   * years so a reader does not have to find that on the chart.
+   */
+  function thresholdSentence(counts, runs) {
+    const years = YEAR_ROWS.map(row => row.y);
+    const at = (values, want) => years.filter((y, i) => isNum(values[i]) && values[i] === want);
+    const present = counts.filter(isNum);
+    const most = Math.max.apply(null, present);
+    const mostYears = at(counts, most);
+    if (!runs) {
+      const fewest = Math.min.apply(null, present);
+      if (fewest === most) return 'Every counted year had ' + daysWord(most) + '.';
+      const fewYears = at(counts, fewest);
+      return 'The most, ' + daysWord(most) + ', came in ' + yearsNamed(mostYears) + '; '
+        + (fewest === 0 ? fewYears.length + (fewYears.length === 1 ? ' year' : ' years')
+          + ' had none.' : 'the fewest, ' + fewest + ', in ' + yearsNamed(fewYears) + '.');
+    }
+    const longest = Math.max.apply(null, runs.filter(isNum));
+    const longYears = at(runs, longest);
+    const one = mostYears.length === 1 && longYears.length === 1;
+    if (one && mostYears[0] === longYears[0]) {
+      return mostYears[0] + ' had both the most, ' + daysWord(most) + ', and the longest run, '
+        + daysWord(longest) + '.';
+    }
+    const i = years.indexOf(mostYears[0]);
+    const j = years.indexOf(longYears[0]);
+    return 'The most, ' + daysWord(most) + ', came in ' + yearsNamed(mostYears)
+      + (mostYears.length === 1 && isNum(runs[i]) ? ', whose longest run was '
+        + daysWord(runs[i]) : '')
+      + '; the longest run, ' + daysWord(longest) + ', in ' + yearsNamed(longYears)
+      + (longYears.length === 1 && isNum(counts[j]) ? ', which had ' + counts[j] + ' in all' : '')
+      + '.';
+  }
+
+  /** One test's count and runs across the years, on one axis of days. */
+  function drawThreshold(f, counts, runs) {
+    return function (host) {
+      const years = YEAR_ROWS.map(row => row.y);
+      const lines = [{ values: counts, label: 'days in the year' }].concat(runs);
+      const fr = frame(host, { aspect: 0.5,
+        ariaLabel: cap(f.label) + ' and the longest run of them, in every year of the record' });
+      const top = extent(lines.map(l => l.values))[1];
+      const sx = linear(years[0] - 0.5, years[years.length - 1] + 0.5, fr.m.left,
+        fr.m.left + fr.iw);
+      const sy = linear(0, Math.max(1, top) * 1.08, fr.m.top + fr.ih, fr.m.top);
+      const every = Math.max(1, Math.ceil(years.length / Math.max(2, Math.floor(fr.iw / 54))));
+      drawAxes(fr, sx, sy, { yLabel: 'days', yTickCount: 4,
+        yTicks: niceTicks(0, Math.max(1, top), 4).filter(t => t === Math.round(t)),
+        xTicks: years.filter((y, i) => i % every === 0 || i === years.length - 1)
+          .map(y => ({ v: y, label: String(y) })) });
+      lines.forEach((line, k) => {
+        const color = fr.p.series[k % fr.p.series.length];
+        el('path', { d: pathFrom(years, line.values, sx, sy), fill: 'none', stroke: color,
+          'stroke-width': k ? 1.8 : 2.2, 'stroke-dasharray': k ? '5 3' : null,
+          'stroke-linejoin': 'round' }, fr.svg);
+        years.forEach((y, i) => {
+          if (!isNum(line.values[i])) return;
+          el('circle', { cx: sx(y), cy: sy(line.values[i]), r: k ? 2.4 : 3, fill: color }, fr.svg);
+        });
+      });
+      hover(fr, sx, years, y => {
+        const i = years.indexOf(y);
+        const rows = lines.map((line, k) => ({ k: cap(line.label),
+          v: isNum(line.values[i]) ? daysWord(line.values[i]) : 'not counted',
+          color: fr.p.series[k % fr.p.series.length] }));
+        const rec = YEAR_ROWS[i][f.var];
+        if (!isNum(counts[i])) {
+          rows.push({ k: 'Available', v: (rec && isNum(rec.avail) ? nf(rec.avail, 0) + ' %'
+            : 'none') + ' of the year' });
+        }
+        return tipRows(String(y), rows);
+      }, y => { location.hash = y + '-' + M.year_slug; });
+    };
+  }
+
+  /** The counts and runs as numbers, a row per year and a column per test drawn. */
+  function thresholdTable(drawn) {
+    const head = drawn.map(d => '<th scope="col">' + cap(d.f.short)
+      + (d.runs.length ? ' <span class="muted">days · ' + d.runs.map(r => r.short).join(' · ')
+        + '</span>' : '') + '</th>').join('');
+    const body = YEAR_ROWS.map((row, i) => '<tr><th scope="row"><a href="#' + row.y + '-'
+      + M.year_slug + '">' + row.y + '</a></th>' + drawn.map(d => '<td>'
+      + (isNum(d.counts[i]) ? d.counts[i] : '—')
+      + d.runs.map(r => ' <span class="muted">· ' + (isNum(r.values[i]) ? r.values[i] : '—')
+        + '</span>').join('') + '</td>').join('') + '</tr>').join('');
+    return '<div class="tablewrap"><table class="datatable"><thead><tr><th scope="col">Year</th>'
+      + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderVarThresholds(key) {
+    const host = document.getElementById('var-thresholds');
+    if (!host) return;
+    const tests = FLAGS.filter(f => f.var === key);
+    if (!tests.length) return;
+
+    const drawn = [];
+    const never = [];
+    tests.forEach(f => {
+      const counts = YEAR_ROWS.map(row => yearCount(row, f));
+      if (!counts.some(isNum)) return;
+      const runs = runsOf(f).map(run => ({ key: run.key, label: run.label, short: run.short,
+        values: YEAR_ROWS.map((row, i) => (isNum(counts[i]) && row.sp && isNum(row.sp[run.key])
+          ? row.sp[run.key] : null)) }));
+      if (!counts.some(c => isNum(c) && c > 0)) { never.push(f.short); return; }
+      drawn.push({ f: f, counts: counts, runs: runs });
+    });
+    if (!drawn.length && !never.length) return;
+
+    host.innerHTML = '<h2 class="section">Threshold days, year by year</h2>'
+      + '<div class="grid" id="var-thresholds-grid"></div>';
+    const grid = document.getElementById('var-thresholds-grid');
+    const gate = nf(cov(key).normal, 0);
+    drawn.forEach(d => {
+      chartCard(grid, {
+        title: cap(d.f.label), width: 'w-4',
+        sub: 'The days of each year that passed this test'
+          + (d.runs.length ? ', and beside them the longest run of consecutive days, counted '
+            + 'within the calendar year, so a run that crosses 1 January is split there' : '')
+          + '. A year less than ' + gate + ' % available is not counted.',
+        legend: [{ color: 'var(--series-1)', label: 'days in the year', line: true }]
+          .concat(d.runs.map((r, k) => ({ color: 'var(--series-' + (k + 2) + ')',
+            label: r.label, line: true }))),
+        foot: thresholdSentence(d.counts,
+          (d.runs.find(r => r.key === d.f.key) || { values: null }).values),
+        draw: drawThreshold(d.f, d.counts, d.runs)
+      });
+    });
+    if (drawn.length) {
+      cardEl(grid, {
+        title: 'The same counts as numbers', width: 'w-12',
+        sub: 'Days in the year that passed each test'
+          + (drawn.some(d => d.runs.length) ? ', followed by the longest run where one is defined'
+            : '') + '. A dash is a year less than ' + gate + ' % available. Selecting a year '
+          + 'opens it.',
+        foot: drawn.some(d => d.runs.length)
+          ? 'A count and a run answer different questions: the count is how often the threshold '
+            + 'was reached, the run how long it was held. A year can reach a high count in '
+            + 'scattered days and never hold the threshold for a week.' : ''
+      }).innerHTML = thresholdTable(drawn);
+    }
+    if (never.length) {
+      grid.insertAdjacentHTML('beforeend', '<p class="card-sub w-12" style="max-width:none">'
+        + 'Not drawn, because no counted year of the record had one: ' + never.join(', ')
+        + '.</p>');
+    }
+  }
 
   /* ---- The days and half-hours at either end. -------------------------------------------------
      Fills #var-extremes from DAYS and DATA.extreme_halfhours. */
