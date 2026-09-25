@@ -2585,9 +2585,100 @@ def epoch_split(metric, agg, span_rows, n_cols):
 # daily frame, and returns None where the build carries nothing it could say.
 # ----------------------------------------------------------------------------------------------
 
+# The 10th and 90th percentiles of the year-by-year means, which is the band the variable page draws
+# around each calendar month's mean day. The same pair the daily normals are drawn with.
+DIURNAL_BAND = (10, 90)
+
+# How finely a surface is stored. Each variable is scaled by the power of ten that puts the range of
+# its surface at no fewer than this many steps, so a departure of a few per cent of the diurnal
+# range is still resolved, and every value is a short integer rather than a float repr.
+DIURNAL_STEPS = 300
+
+
+def _diurnal_scale(values):
+    """The power of ten a surface is multiplied by before it is stored as integers."""
+    finite = values[np.isfinite(values)]
+    spread = float(finite.max() - finite.min()) if finite.size else 0.0
+    if spread <= 0:
+        return 1
+    k = int(np.ceil(np.log10(DIURNAL_STEPS / spread)))
+    return 10 ** min(max(k, 0), 6)
+
+
+def _diurnal_ints(values, scale):
+    """A float array as scaled integers, with `None` wherever there is no value."""
+    scaled = np.round(np.asarray(values, dtype=float) * scale)
+    return [int(x) if np.isfinite(x) else None for x in scaled.tolist()]
+
+
 def diurnal_layer(loaded, dates, day):
-    """The month-by-hour surface of every variable, per year."""
-    return None
+    """The month-by-hour surface of every variable, per year.
+
+    For each variable and each year, the mean of its half-hourly series by calendar month and hour
+    of day: twelve rows of twenty-four, which is what shows whether a warm month was warm by night
+    or by day. An hour is the two half-hours that start in it, in the file's own timestamps, which
+    FLUXNET states in local standard time. Beside the years it carries the record's surface - the
+    mean of the year-by-year means - and the 10th to 90th percentile of those years.
+
+    A variable that aggregates by summing is stated as its **mean hourly total**, the mean of its
+    half-hours times two: millimetres per hour, grams of carbon per square metre per hour. That is
+    the quantity whose twenty-four values add up to the mean daily total of the month, so the
+    surface and the monthly figures on the rest of the page describe one record. It is a mean over
+    every day of the month, dry or not, and never the intensity of the hours in which it rained.
+
+    The gates are the page's own. A year's cell is published where the product covers at least
+    `coverage(key).normal` of its half-hours - availability, as every statistical gate on the page
+    reads it - and the record's cell where at least `MIN_NORMAL_YEARS` years qualify. A variable
+    with no record cell at all is left out, so the page offers no surface it could not draw.
+
+    Independent of the hourly arrays: those are every hour of the record and optional, this is a
+    few thousand numbers per variable and always built.
+    """
+    first_year, last_year = int(dates[0].year), int(dates[-1].year)
+    n_years = last_year - first_year + 1
+    grid = pd.date_range(f"{first_year}-01-01", f"{last_year}-12-31 23:30", freq="30min")
+    cell = ((np.asarray(grid.year) - first_year) * 12 + np.asarray(grid.month) - 1) * 24 \
+        + np.asarray(grid.hour)
+    n_cells = n_years * 12 * 24
+    possible = np.bincount(cell, minlength=n_cells)
+    out = {}
+    for key, d in loaded.items():
+        v = d["v"]
+        x = d["series"].reindex(grid).to_numpy(dtype=float)
+        ok = np.isfinite(x)
+        n = np.bincount(cell[ok], minlength=n_cells)
+        total = np.bincount(cell[ok], weights=x[ok], minlength=n_cells)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = total / n
+            avail = n / possible * 100
+        mean[~(avail >= varreg.coverage(key).normal)] = np.nan
+        if v.agg == "sum":
+            mean = mean * 2
+        years = mean.reshape(n_years, 12 * 24)
+        qualifying = np.isfinite(years).sum(axis=0)
+        enough = qualifying >= MIN_NORMAL_YEARS
+        if not enough.any():
+            continue
+        # Only the cells with enough years are reduced, which is also what keeps numpy from warning
+        # about the all-missing columns of a short or patchy record.
+        record, lo, hi = (np.full(12 * 24, np.nan) for _ in range(3))
+        record[enough] = np.nanmean(years[:, enough], axis=0)
+        lo[enough], hi[enough] = np.nanpercentile(years[:, enough], DIURNAL_BAND, axis=0)
+        scale = _diurnal_scale(years)
+        # How far a year's cell typically lies from the record's, so the departure surfaces of the
+        # span panels share one colour scale across every span of the record rather than each
+        # stretching its own few departures to the full ramp.
+        departure = np.abs(years - record)
+        spread = float(np.nanpercentile(departure, 95)) if np.isfinite(departure).any() else None
+        out[key] = dict(scale=scale, total=v.agg == "sum",
+                        units=f"{v.units} per hour" if v.agg == "sum" else v.units,
+                        hourly=bool(v.hourly), spread=r(spread, 6),
+                        n=[int(k) for k in qualifying.reshape(12, 24).min(axis=1)],
+                        mean=_diurnal_ints(record, scale), lo=_diurnal_ints(lo, scale),
+                        hi=_diurnal_ints(hi, scale), values=_diurnal_ints(years.ravel(), scale))
+    if not out:
+        return None
+    return dict(first_year=first_year, n_years=n_years, band=list(DIURNAL_BAND), vars=out)
 
 
 def season_timing_layer(loaded, dates, day):
