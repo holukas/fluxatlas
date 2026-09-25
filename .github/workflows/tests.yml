@@ -67,7 +67,7 @@ jobs:
           import glob, zipfile
           wheel = sorted(glob.glob("dist/*.whl"))[-1]
           names = zipfile.ZipFile(wheel).namelist()
-          wanted = ["template.html", "base.css", "calendar.css", "calendar.js", "logo.svg"]
+          wanted = ["template.html", "base.css", "calendar.css", "designs.css", "calendar.js", "logo.svg"]
           missing = [n for n in wanted if f"fluxatlas/assets/{n}" not in names]
           if missing:
               raise SystemExit(f"{wheel} is missing {', '.join(missing)}")

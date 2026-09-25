@@ -47,8 +47,9 @@ def test_the_citation_file_states_the_version_being_shipped():
 
 
 def test_every_asset_the_page_needs_is_installed():
-    """The five files `render` inlines, read from wherever the package actually is."""
-    for name in ("template.html", "base.css", "calendar.css", "calendar.js", "logo.svg"):
+    """The six files `render` inlines, read from wherever the package actually is."""
+    for name in ("template.html", "base.css", "calendar.css", "designs.css", "calendar.js",
+                 "logo.svg"):
         path = build.ASSETS / name
         assert path.exists(), f"{name} is missing from the installed package"
         assert path.stat().st_size > 0, f"{name} is installed but empty"

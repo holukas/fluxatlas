@@ -10,6 +10,7 @@
   the record.
 - The page states how each span was gap-filled and which file and columns produced it.
 - Builds are more than twice as fast.
+- Three alternative page designs, switched in the top bar.
 
 ### New features
 
@@ -61,6 +62,10 @@
   page, because its roughly 184,000 cells are too many for SVG. The net exchange is drawn on a red-yellow-blue scale
   centred on zero, blue for uptake and red for release.
 - **`--list` marks the variables a build takes only when named.**
+- **Three designs beside the page's own, chosen in the top bar.** *Journal* sets the page as a printed paper,
+  *Observatory* as an instrument console and *Swiss* in the International Typographic Style; *Classic* is the page as
+  before. Each has a light and a dark form, the choice is remembered in the browser, and no font is downloaded. A
+  design changes colour and type only, so every figure and every ramp's meaning is the same in all four.
 
 ### Changed
 

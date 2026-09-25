@@ -1,0 +1,471 @@
+/* ==============================================================================================
+   Designs
+   ----------------------------------------------------------------------------------------------
+   Three alternatives to the page's own look, chosen from the switch in the top bar: Journal (a
+   printed paper), Observatory (an instrument console) and Swiss (the International Typographic
+   Style). Classic is the page with no `data-design` attribute and is defined by base.css and
+   calendar.css alone.
+
+   A design is a token set for light and for dark, plus the typography and the few structural
+   rules that make it itself. The renderer reads every colour it draws from a token at draw time,
+   so a design is switched by an attribute on <html> and a repaint, and no chart knows which design
+   is in force. Colour tokens stay six-digit hex: the grid and the canvas parse them into ramps.
+
+   Specificity: a design's light set is `:root[data-design=x]` (0,2,0). It outranks the base dark
+   set `:root[data-theme=dark]` by coming later, so each design restates every token it sets in its
+   own dark set, at (0,3,0) for the toggle and inside the media query for `auto`. A token set in
+   the light block and missing from the dark one would show its light value in dark mode;
+   `tests/test_designs.py` holds the three blocks of each design to the same tokens.
+
+   The page has to work from a memory stick, so no font is fetched: each design names the fonts a
+   reader's system is likely to carry and falls back to the platform's own.
+   ============================================================================================== */
+
+/* ------------------------------------------------------------------------------------------------
+   The switch
+   ------------------------------------------------------------------------------------------------ */
+
+.design-switch {
+  flex: none; display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--border); background: var(--surface-raised); color: var(--text-secondary);
+  border-radius: 999px; padding: 3px 4px 3px 12px; font-size: 13px;
+}
+.design-switch select {
+  font: inherit; font-size: 13px; color: var(--text-primary); background: transparent;
+  border: 0; padding: 3px 6px; border-radius: 999px; cursor: pointer;
+}
+.design-switch select:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
+@media (max-width: 999px) { .design-switch { margin-left: auto; } .theme-toggle { margin-left: 0; } }
+@media (max-width: 560px) { .design-switch > span { display: none; } }
+
+/* ================================================================================================
+   1. Journal - the page as a printed paper
+   ================================================================================================ */
+
+:root[data-design="journal"] {
+  color-scheme: light;
+  --page: #f5f2ea; --surface: #fbf9f4; --surface-raised: #ffffff;
+  --text-primary: #1a1814; --text-secondary: #4d4940; --text-muted: #8b8577;
+  --grid: #e6e1d5; --axis: #b9b2a2;
+  --border: rgba(26, 24, 20, .14); --shadow: none; --wash: rgba(26, 24, 20, .045);
+  --rule: #1a1814;
+  --series-1: #1d4f91; --series-2: #c2410c; --series-3: #2f7d5b; --series-4: #b7860b;
+  --pole-cold: #2c5aa0; --pole-warm: #b4352b; --neutral-mid: #efeae0;
+  --seq-1: #e3e9f2; --seq-2: #c3d1e5; --seq-3: #97afd0; --seq-4: #6a8cb8;
+  --seq-5: #44699c; --seq-6: #2b4c7c; --seq-7: #173257;
+  --cold-1: #6f93c4; --cold-2: #2c4f82;
+  --warm-1: #e0a071; --warm-2: #c2622f; --warm-3: #7f3312;
+  --band-outer: #e9e4d9; --band-inner: #cfc6b4;
+  --tone-warn: #9a5a00;
+  --radius: 2px; --cell-radius: 2px; --gap: 22px;
+  --font: "Charter", "Bitstream Charter", "Iowan Old Style", "Sitka Text", "Palatino Linotype",
+          "Book Antiqua", Georgia, serif;
+  --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+:root[data-design="journal"][data-theme="dark"] {
+  color-scheme: dark;
+  --page: #14120f; --surface: #1b1915; --surface-raised: #221f1a;
+  --text-primary: #f1ebdf; --text-secondary: #c9c0ae; --text-muted: #8f877a;
+  --grid: #2d2a24; --axis: #4a453c;
+  --border: rgba(241, 235, 223, .16); --wash: rgba(241, 235, 223, .05); --rule: #f1ebdf;
+  --series-1: #7aa3dc; --series-2: #e07a4f; --series-3: #5fb38a; --series-4: #d8a93a;
+  --pole-cold: #6f9be0; --pole-warm: #e0675a; --neutral-mid: #2a2620;
+  --seq-1: #13233d; --seq-2: #1c3560; --seq-3: #2b4d85; --seq-4: #4468a8;
+  --seq-5: #6f90c4; --seq-6: #a3bbdc; --seq-7: #d3def0;
+  --cold-1: #a3bbdc; --cold-2: #4468a8;
+  --warm-1: #f0b890; --warm-2: #e07a4f; --warm-3: #b04a24;
+  --band-outer: #2c2923; --band-inner: #4a443a; --tone-warn: #e0a84a;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-design="journal"]:where([data-theme="auto"]) {
+    color-scheme: dark;
+    --page: #14120f; --surface: #1b1915; --surface-raised: #221f1a;
+    --text-primary: #f1ebdf; --text-secondary: #c9c0ae; --text-muted: #8f877a;
+    --grid: #2d2a24; --axis: #4a453c;
+    --border: rgba(241, 235, 223, .16); --wash: rgba(241, 235, 223, .05); --rule: #f1ebdf;
+    --series-1: #7aa3dc; --series-2: #e07a4f; --series-3: #5fb38a; --series-4: #d8a93a;
+    --pole-cold: #6f9be0; --pole-warm: #e0675a; --neutral-mid: #2a2620;
+    --seq-1: #13233d; --seq-2: #1c3560; --seq-3: #2b4d85; --seq-4: #4468a8;
+    --seq-5: #6f90c4; --seq-6: #a3bbdc; --seq-7: #d3def0;
+    --cold-1: #a3bbdc; --cold-2: #4468a8;
+    --warm-1: #f0b890; --warm-2: #e07a4f; --warm-3: #b04a24;
+    --band-outer: #2c2923; --band-inner: #4a443a; --tone-warn: #e0a84a;
+  }
+}
+
+[data-design="journal"] body { font-size: 15.5px; line-height: 1.6; }
+/* Figures are set in the sans a journal sets its figures in; the prose around them is serif. */
+[data-design="journal"] svg text,
+[data-design="journal"] .tile-label, [data-design="journal"] .eyebrow,
+[data-design="journal"] .calhead, [data-design="journal"] .calyear,
+[data-design="journal"] .calsummary, [data-design="journal"] .calfootcell,
+[data-design="journal"] .calfoot-label, [data-design="journal"] .cell,
+[data-design="journal"] .control > label, [data-design="journal"] .control > .control-label,
+[data-design="journal"] .switch, [data-design="journal"] select, [data-design="journal"] .btn,
+[data-design="journal"] .chips li, [data-design="journal"] .tooltip, [data-design="journal"] table,
+[data-design="journal"] .crumbs, [data-design="journal"] .legend-item,
+[data-design="journal"] .daycell, [data-design="journal"] .design-switch,
+[data-design="journal"] .theme-toggle { font-family: var(--font-ui); }
+
+[data-design="journal"] .topbar {
+  background: color-mix(in srgb, var(--page) 94%, transparent);
+  border-bottom: 1px solid var(--rule);
+}
+[data-design="journal"] .brand-text { font-family: var(--font); font-size: 19px; }
+[data-design="journal"] .brand-text b { font-weight: 700; font-style: italic; }
+
+[data-design="journal"] main { counter-reset: sec fig; }
+[data-design="journal"] h1 {
+  font-weight: 400; letter-spacing: -.01em; font-size: clamp(34px, 4.2vw, 58px); line-height: 1.04;
+}
+[data-design="journal"] .eyebrow { letter-spacing: .16em; color: var(--series-2); }
+[data-design="journal"] .lede { font-size: 18px; line-height: 1.55; color: var(--text-secondary);
+                                font-style: italic; max-width: 70ch; }
+[data-design="journal"] .monthtitle { font-weight: 400; letter-spacing: -.01em; }
+
+/* Sections are numbered as a paper's are, and ruled in the ink rather than in a grey. */
+[data-design="journal"] h2.section {
+  counter-increment: sec;
+  font-family: var(--font); font-size: 23px; font-weight: 400; letter-spacing: 0;
+  text-transform: none; color: var(--text-primary);
+  margin: 58px 0 18px; padding: 0 0 9px; border-bottom: 1px solid var(--rule);
+}
+[data-design="journal"] h2.section::before {
+  content: counter(sec, upper-roman) ".\2002"; color: var(--text-muted);
+}
+
+/* A card is a figure: no box, a rule above, and a numbered caption. */
+[data-design="journal"] .card {
+  counter-increment: fig;
+  background: transparent; border: 0; border-top: 1px solid var(--rule); border-radius: 0;
+  box-shadow: none; padding: 12px 0 4px;
+}
+[data-design="journal"] .card-title { font-size: 17px; font-weight: 600; letter-spacing: 0; }
+[data-design="journal"] .card-title::before {
+  content: "Fig.\00a0" counter(fig) "\2003"; font-family: var(--font-ui); font-size: 12px;
+  font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--series-2);
+  vertical-align: 1px;
+}
+[data-design="journal"] .card-sub { font-size: 13.5px; font-style: italic; max-width: 80ch; }
+[data-design="journal"] .card-foot { font-size: 12.5px; }
+
+[data-design="journal"] .tile {
+  background: transparent; border: 0; border-top: 1px solid var(--rule); border-radius: 0;
+  box-shadow: none; padding: 12px 2px 6px;
+}
+[data-design="journal"] .tile-value { font-family: var(--font); font-weight: 400;
+                                      font-size: clamp(30px, 2.8vw, 40px); }
+[data-design="journal"] .tile-flux { border-left: 0; border-top-color: var(--series-3); }
+
+[data-design="journal"] .controls {
+  background: transparent; border: 0; border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; padding: 14px 0;
+}
+[data-design="journal"] .switch, [data-design="journal"] .btn,
+[data-design="journal"] .theme-toggle, [data-design="journal"] .design-switch,
+[data-design="journal"] select.picker, [data-design="journal"] .chips li { border-radius: 3px; }
+[data-design="journal"] .calgrid { gap: 3px; }
+[data-design="journal"] .cell-value { font-weight: 600; letter-spacing: -.01em; }
+[data-design="journal"] .badgegroup {
+  background: transparent; border: 0; border-top: 1px solid var(--rule); border-radius: 0;
+  box-shadow: none; padding: 12px 0 6px;
+}
+[data-design="journal"] .badgelist li { box-shadow: none; border-radius: 3px; background: transparent; }
+[data-design="journal"] .varcard { border-radius: 0; border: 0; border-top: 1px solid var(--rule);
+                                   background: transparent; }
+[data-design="journal"] .varcard .vt { font-size: 17px; font-weight: 400; }
+[data-design="journal"] .tooltip { border-radius: 2px; border-color: var(--rule); }
+[data-design="journal"] .tablewrap { border-radius: 0; border-left: 0; border-right: 0; }
+[data-design="journal"] .footer { border-top: 1px solid var(--rule); }
+
+/* ================================================================================================
+   2. Observatory - an instrument console
+   ================================================================================================ */
+
+:root[data-design="observatory"] {
+  color-scheme: light;
+  --page: #eef2f7; --surface: #f8fafc; --surface-raised: #ffffff;
+  --text-primary: #0b1220; --text-secondary: #45546a; --text-muted: #7d8ba0;
+  --grid: #dde4ee; --axis: #b8c3d4;
+  --border: rgba(11, 18, 32, .10); --wash: rgba(11, 18, 32, .04);
+  --shadow: 0 1px 0 rgba(255, 255, 255, .8) inset, 0 10px 30px -18px rgba(11, 18, 32, .35);
+  --glow: rgba(2, 132, 199, .10); --glow-2: rgba(5, 150, 105, .06);
+  --dots: rgba(11, 18, 32, .05);
+  --series-1: #0284c7; --series-2: #ea580c; --series-3: #059669; --series-4: #ca8a04;
+  --pole-cold: #2563eb; --pole-warm: #e11d48; --neutral-mid: #e8edf4;
+  --seq-1: #dbeafe; --seq-2: #bfdbfe; --seq-3: #93c5fd; --seq-4: #60a5fa;
+  --seq-5: #3b82f6; --seq-6: #1d4ed8; --seq-7: #1e3a8a;
+  --cold-1: #60a5fa; --cold-2: #1d4ed8;
+  --warm-1: #fdba74; --warm-2: #f97316; --warm-3: #9a3412;
+  --band-outer: #e2e8f0; --band-inner: #c3cfdf;
+  --tone-warn: #b45309;
+  --radius: 12px; --cell-radius: 6px; --gap: 16px;
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-num: "JetBrains Mono", "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+:root[data-design="observatory"][data-theme="dark"] {
+  color-scheme: dark;
+  --page: #06080c; --surface: #0c1118; --surface-raised: #111822;
+  --text-primary: #e7edf5; --text-secondary: #9aabbf; --text-muted: #5f7085;
+  --grid: #16202c; --axis: #26334a;
+  --border: rgba(120, 170, 255, .14); --wash: rgba(120, 170, 255, .06);
+  --shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 24px 48px -28px rgba(0, 0, 0, .95);
+  --glow: rgba(76, 194, 255, .11); --glow-2: rgba(62, 224, 161, .06);
+  --dots: rgba(160, 200, 255, .045);
+  --series-1: #4cc2ff; --series-2: #ff8a3d; --series-3: #3ee0a1; --series-4: #ffd23f;
+  --pole-cold: #3d8bff; --pole-warm: #ff4d6d; --neutral-mid: #161f2b;
+  --seq-1: #0e2338; --seq-2: #123a5c; --seq-3: #175483; --seq-4: #1d70aa;
+  --seq-5: #2f93d1; --seq-6: #62b8ee; --seq-7: #b3e1ff;
+  --cold-1: #62b8ee; --cold-2: #1d70aa;
+  --warm-1: #ffb38a; --warm-2: #ff7a45; --warm-3: #d9480f;
+  --band-outer: #122030; --band-inner: #1f3550; --tone-warn: #ffb020;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-design="observatory"]:where([data-theme="auto"]) {
+    color-scheme: dark;
+    --page: #06080c; --surface: #0c1118; --surface-raised: #111822;
+    --text-primary: #e7edf5; --text-secondary: #9aabbf; --text-muted: #5f7085;
+    --grid: #16202c; --axis: #26334a;
+    --border: rgba(120, 170, 255, .14); --wash: rgba(120, 170, 255, .06);
+    --shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 24px 48px -28px rgba(0, 0, 0, .95);
+    --glow: rgba(76, 194, 255, .11); --glow-2: rgba(62, 224, 161, .06);
+    --dots: rgba(160, 200, 255, .045);
+    --series-1: #4cc2ff; --series-2: #ff8a3d; --series-3: #3ee0a1; --series-4: #ffd23f;
+    --pole-cold: #3d8bff; --pole-warm: #ff4d6d; --neutral-mid: #161f2b;
+    --seq-1: #0e2338; --seq-2: #123a5c; --seq-3: #175483; --seq-4: #1d70aa;
+    --seq-5: #2f93d1; --seq-6: #62b8ee; --seq-7: #b3e1ff;
+    --cold-1: #62b8ee; --cold-2: #1d70aa;
+    --warm-1: #ffb38a; --warm-2: #ff7a45; --warm-3: #d9480f;
+    --band-outer: #122030; --band-inner: #1f3550; --tone-warn: #ffb020;
+  }
+}
+
+[data-design="observatory"] body {
+  background:
+    radial-gradient(1100px 560px at 12% -8%, var(--glow), transparent 62%),
+    radial-gradient(900px 520px at 92% -4%, var(--glow-2), transparent 60%),
+    radial-gradient(var(--dots) 1px, transparent 1.2px) 0 0 / 22px 22px,
+    var(--page);
+  background-attachment: fixed;
+  font-size: 14.5px;
+}
+/* Every figure on the page is set in the mono, so columns of numbers align like a readout. */
+[data-design="observatory"] .cell-value, [data-design="observatory"] .cell-sub,
+[data-design="observatory"] .tile-value, [data-design="observatory"] .calsummary .v,
+[data-design="observatory"] .calfootcell .v, [data-design="observatory"] .calfootcell .t,
+[data-design="observatory"] .calyear, [data-design="observatory"] .kv:not(.stood):not(.wide) dd,
+[data-design="observatory"] svg .ax-text,
+[data-design="observatory"] .scalebar-text, [data-design="observatory"] .tooltip .v,
+[data-design="observatory"] .daycell .dval, [data-design="observatory"] .ranklist,
+[data-design="observatory"] .varcard .vtr, [data-design="observatory"] .tile-src {
+  font-family: var(--font-num); letter-spacing: -.02em;
+}
+[data-design="observatory"] .topbar {
+  background: color-mix(in srgb, var(--page) 72%, transparent);
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, transparent, var(--series-1), var(--series-3), transparent) 1;
+}
+[data-design="observatory"] .brand-text { letter-spacing: .02em; }
+[data-design="observatory"] .brand-text b { color: var(--series-1); font-weight: 700; }
+
+[data-design="observatory"] h1 {
+  font-weight: 300; letter-spacing: -.035em; font-size: clamp(36px, 4.6vw, 66px); line-height: 1;
+  background: linear-gradient(100deg, var(--text-primary) 30%, var(--series-1) 70%, var(--series-3));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+[data-design="observatory"] .monthtitle { font-weight: 300; letter-spacing: -.03em; }
+[data-design="observatory"] .eyebrow { color: var(--series-1); letter-spacing: .22em; font-size: 11.5px; }
+[data-design="observatory"] .eyebrow::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--series-3); box-shadow: 0 0 10px var(--series-3); margin-right: 10px;
+  vertical-align: 1px;
+}
+[data-design="observatory"] .lede { color: var(--text-secondary); }
+
+[data-design="observatory"] h2.section {
+  font-size: 11.5px; letter-spacing: .24em; color: var(--text-secondary);
+  border-bottom: 0; padding-bottom: 0; display: flex; align-items: center; gap: 14px;
+}
+[data-design="observatory"] h2.section::before {
+  content: ""; width: 9px; height: 9px; flex: none; border: 1.5px solid var(--series-1);
+  border-radius: 2px; box-shadow: 0 0 12px var(--series-1);
+}
+[data-design="observatory"] h2.section::after {
+  content: ""; flex: 1; height: 1px;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+[data-design="observatory"] .card, [data-design="observatory"] .tile,
+[data-design="observatory"] .controls, [data-design="observatory"] .badgegroup,
+[data-design="observatory"] .badgelist li {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, transparent),
+              color-mix(in srgb, var(--surface) 70%, transparent));
+  backdrop-filter: blur(6px);
+}
+[data-design="observatory"] .card-title {
+  font-size: 12px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600;
+  color: var(--text-primary);
+}
+[data-design="observatory"] .tile { position: relative; overflow: hidden; }
+[data-design="observatory"] .tile::before {
+  content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--series-1), transparent); opacity: .7;
+}
+[data-design="observatory"] .tile-value { font-weight: 500; letter-spacing: -.04em; }
+[data-design="observatory"] .tile-flux { border-left: 1px solid var(--border); }
+[data-design="observatory"] .tile-flux::before {
+  background: linear-gradient(90deg, transparent, var(--series-3), transparent);
+}
+
+[data-design="observatory"] .calgrid { gap: 4px; }
+[data-design="observatory"] .cell:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px var(--series-1), 0 0 22px -2px var(--series-1);
+}
+[data-design="observatory"] .calhead { background: transparent; backdrop-filter: blur(8px); }
+[data-design="observatory"] .calyear, [data-design="observatory"] .calfoot-label { background: transparent; }
+[data-design="observatory"] .calsummary { border: 1px solid var(--border); }
+[data-design="observatory"] .varcard { border-radius: 10px; }
+[data-design="observatory"] .varcard:hover { border-color: var(--series-1);
+  box-shadow: 0 0 0 1px var(--series-1), 0 0 20px -6px var(--series-1); }
+[data-design="observatory"] .tooltip {
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  backdrop-filter: blur(10px); border-color: color-mix(in srgb, var(--series-1) 40%, transparent);
+}
+[data-design="observatory"] .footer { border-top: 1px solid var(--border); }
+
+/* ================================================================================================
+   3. Swiss - the International Typographic Style
+   ================================================================================================ */
+
+:root[data-design="swiss"] {
+  color-scheme: light;
+  --page: #ffffff; --surface: #ffffff; --surface-raised: #ffffff;
+  --text-primary: #0a0a0a; --text-secondary: #3a3a3a; --text-muted: #767676;
+  --grid: #e8e8e8; --axis: #0a0a0a;
+  --border: #d9d9d9; --shadow: none; --wash: #f2f2f2; --rule: #0a0a0a; --signal: #e4002b;
+  --series-1: #0047bb; --series-2: #e4002b; --series-3: #00875a; --series-4: #f5a800;
+  --pole-cold: #0047bb; --pole-warm: #e4002b; --neutral-mid: #f1f1f1;
+  --seq-1: #e6edf8; --seq-2: #c2d3ee; --seq-3: #8eaee0; --seq-4: #5a88cf;
+  --seq-5: #2c63bb; --seq-6: #0047bb; --seq-7: #002a70;
+  --cold-1: #5a88cf; --cold-2: #0047bb;
+  --warm-1: #ff8c66; --warm-2: #e4002b; --warm-3: #8a0019;
+  --band-outer: #eeeeee; --band-inner: #cfcfcf;
+  --tone-warn: #b85c00;
+  --radius: 0px; --cell-radius: 0px; --gap: 16px;
+  --font: "Helvetica Neue", Helvetica, "Neue Haas Grotesk Text", "Inter", "Arial Nova", Arial,
+          sans-serif;
+}
+:root[data-design="swiss"][data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0a0a0a; --surface: #0a0a0a; --surface-raised: #141414;
+  --text-primary: #ffffff; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
+  --grid: #222222; --axis: #ffffff;
+  --border: #333333; --wash: #161616; --rule: #ffffff; --signal: #ff3b4f;
+  --series-1: #4d8dff; --series-2: #ff3b4f; --series-3: #22c38e; --series-4: #ffc233;
+  --pole-cold: #4d8dff; --pole-warm: #ff3b4f; --neutral-mid: #1c1c1c;
+  --seq-1: #0a1a3a; --seq-2: #0f2d66; --seq-3: #1a4595; --seq-4: #2c63bb;
+  --seq-5: #5a88cf; --seq-6: #97b5e6; --seq-7: #d4e2fa;
+  --cold-1: #97b5e6; --cold-2: #2c63bb;
+  --warm-1: #ffb199; --warm-2: #ff3b4f; --warm-3: #b3001b;
+  --band-outer: #1c1c1c; --band-inner: #3a3a3a; --tone-warn: #ffb020;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-design="swiss"]:where([data-theme="auto"]) {
+    color-scheme: dark;
+    --page: #0a0a0a; --surface: #0a0a0a; --surface-raised: #141414;
+    --text-primary: #ffffff; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
+    --grid: #222222; --axis: #ffffff;
+    --border: #333333; --wash: #161616; --rule: #ffffff; --signal: #ff3b4f;
+    --series-1: #4d8dff; --series-2: #ff3b4f; --series-3: #22c38e; --series-4: #ffc233;
+    --pole-cold: #4d8dff; --pole-warm: #ff3b4f; --neutral-mid: #1c1c1c;
+    --seq-1: #0a1a3a; --seq-2: #0f2d66; --seq-3: #1a4595; --seq-4: #2c63bb;
+    --seq-5: #5a88cf; --seq-6: #97b5e6; --seq-7: #d4e2fa;
+    --cold-1: #97b5e6; --cold-2: #2c63bb;
+    --warm-1: #ffb199; --warm-2: #ff3b4f; --warm-3: #b3001b;
+    --band-outer: #1c1c1c; --band-inner: #3a3a3a; --tone-warn: #ffb020;
+  }
+}
+
+[data-design="swiss"] body { font-size: 15px; letter-spacing: -.005em; }
+[data-design="swiss"] .topbar { background: var(--page); backdrop-filter: none;
+                                border-bottom: 2px solid var(--rule); }
+[data-design="swiss"] .brand-text { font-size: 18px; letter-spacing: -.03em; }
+[data-design="swiss"] .brand-text b { font-weight: 800; }
+
+[data-design="swiss"] main { counter-reset: sec; }
+[data-design="swiss"] .hero { padding-top: clamp(34px, 5vw, 70px); }
+[data-design="swiss"] h1 {
+  font-weight: 800; letter-spacing: -.055em; line-height: .92;
+  font-size: clamp(44px, 7vw, 108px); margin-bottom: 18px;
+}
+[data-design="swiss"] .monthtitle { font-weight: 800; letter-spacing: -.045em;
+                                     font-size: clamp(30px, 4vw, 58px); }
+[data-design="swiss"] .eyebrow { color: var(--signal); letter-spacing: .02em; text-transform: none;
+                                 font-size: 15px; font-weight: 700; }
+[data-design="swiss"] .lede { font-size: 19px; line-height: 1.45; color: var(--text-primary);
+                              max-width: 60ch; font-weight: 400; }
+
+/* Sections are numbered in the signal colour and set large, on a heavy rule. */
+[data-design="swiss"] h2.section {
+  counter-increment: sec;
+  font-size: clamp(24px, 2.4vw, 34px); font-weight: 800; letter-spacing: -.035em;
+  text-transform: none; color: var(--text-primary); line-height: 1.05;
+  margin: 72px 0 20px; padding: 0 0 12px; border-bottom: 3px solid var(--rule);
+}
+[data-design="swiss"] h2.section::before {
+  content: counter(sec, decimal-leading-zero); color: var(--signal); margin-right: .45em;
+}
+
+[data-design="swiss"] .card, [data-design="swiss"] .badgegroup {
+  background: transparent; border: 0; border-top: 2px solid var(--rule); border-radius: 0;
+  box-shadow: none; padding: 12px 0 6px;
+}
+[data-design="swiss"] .card-title { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
+[data-design="swiss"] .card-sub { color: var(--text-secondary); }
+
+[data-design="swiss"] .tiles { gap: 0; border-top: 2px solid var(--rule); }
+[data-design="swiss"] .tile {
+  background: transparent; border: 0; border-right: 1px solid var(--border); border-radius: 0;
+  box-shadow: none; padding: 14px 16px 12px 0; margin-right: 16px;
+}
+[data-design="swiss"] .tile-label { color: var(--text-primary); letter-spacing: .02em; }
+[data-design="swiss"] .tile-value { font-weight: 800; letter-spacing: -.05em;
+                                    font-size: clamp(28px, 2.5vw, 40px); }
+[data-design="swiss"] .tile-value .unit { font-size: .45em; letter-spacing: 0; }
+[data-design="swiss"] .tile-flux { border-left: 0; }
+[data-design="swiss"] .tile-flux .tile-label { color: var(--series-3); }
+[data-design="swiss"] .tiles-break { border-top: 1px solid var(--border); padding-top: 10px; }
+
+[data-design="swiss"] .controls {
+  background: transparent; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0;
+  box-shadow: none; padding: 0 0 16px;
+}
+[data-design="swiss"] .control > label, [data-design="swiss"] .control > .control-label,
+[data-design="swiss"] .calhead, [data-design="swiss"] .tile-label {
+  color: var(--text-primary); font-weight: 700;
+}
+[data-design="swiss"] .switch, [data-design="swiss"] .btn, [data-design="swiss"] .theme-toggle,
+[data-design="swiss"] .design-switch, [data-design="swiss"] select.picker,
+[data-design="swiss"] .chips li, [data-design="swiss"] .viewtoggle,
+[data-design="swiss"] .viewtoggle button, [data-design="swiss"] .varcard,
+[data-design="swiss"] .badgelist li, [data-design="swiss"] .tablewrap,
+[data-design="swiss"] .tooltip, [data-design="swiss"] .chip, [data-design="swiss"] .calsummary {
+  border-radius: 0;
+}
+[data-design="swiss"] .switch, [data-design="swiss"] .btn, [data-design="swiss"] .theme-toggle,
+[data-design="swiss"] .design-switch, [data-design="swiss"] select.picker,
+[data-design="swiss"] .chips li { border-color: var(--rule); }
+[data-design="swiss"] .calgrid { gap: 2px; }
+[data-design="swiss"] .cell::before { opacity: 0; }
+[data-design="swiss"] .cell-value { font-weight: 800; letter-spacing: -.04em; }
+[data-design="swiss"] .cell:hover { transform: none; box-shadow: inset 0 0 0 2px var(--text-primary); }
+[data-design="swiss"] .calhead { border-bottom: 2px solid var(--rule); }
+[data-design="swiss"] .varcard { border: 0; border-top: 2px solid var(--rule); background: transparent; }
+[data-design="swiss"] .varcard .vt { font-weight: 800; letter-spacing: -.02em; }
+[data-design="swiss"] .varcard .vtr { color: var(--signal); }
+[data-design="swiss"] .badgelist li { box-shadow: none; border-color: var(--rule); }
+[data-design="swiss"] .tooltip { border: 2px solid var(--rule); box-shadow: 6px 6px 0 var(--wash); }
+[data-design="swiss"] a, [data-design="swiss"] .ranklist a { color: var(--text-primary);
+  text-decoration-color: var(--signal); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+[data-design="swiss"] .footer { border-top: 3px solid var(--rule); }

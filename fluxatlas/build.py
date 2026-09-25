@@ -3440,8 +3440,9 @@ def render(payload, out_path, title=None):
     from html import escape as html_escape
 
     template =(ASSETS / "template.html").read_text(encoding="utf-8")
-    css = ((ASSETS / "base.css").read_text(encoding="utf-8") + "\n"
-           + (ASSETS / "calendar.css").read_text(encoding="utf-8"))
+    # The designs come last: each overrides the tokens and type of the two sheets before it.
+    css = "\n".join((ASSETS / name).read_text(encoding="utf-8")
+                    for name in ("base.css", "calendar.css", "designs.css"))
     js = (ASSETS / "calendar.js").read_text(encoding="utf-8")
 
     # One mark, two uses: inlined into the topbar, where it takes the page's --neutral-mid, and

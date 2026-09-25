@@ -6494,6 +6494,46 @@
     });
   }
 
+  /* A theme or design change repaints every mark, including the charts of whichever view is not
+     on screen and the ones the view being rebuilt does not own - the coverage chart sits on the
+     grid view and is not touched by renderGrid. The grid is repainted whichever view is showing,
+     since its tiles carry their colours inline and Back returns to it; then the view on screen. A
+     variable page is not a span, and repainting it as one - which this did whenever the grid was
+     hidden - threw on the null span and left the page in the old colours. */
+  function repaintAll() {
+    renderGrid();
+    if (!document.getElementById('view-month').hidden && state.span) renderMonth();
+    if (!document.getElementById('view-var').hidden && state.variable) renderVariable();
+    redrawAll();
+    renderScaleBar();
+  }
+
+  /* The design is an attribute on <html>, resolved from the remembered choice before anything is
+     drawn, as the theme is. Classic is the absence of the attribute. A remembered name the menu
+     does not offer - a design since removed - falls back to Classic rather than to no styles. */
+  function setupDesign() {
+    const root = document.documentElement;
+    const select = document.getElementById('design-select');
+    if (!select) return;
+    const offered = [...select.options].map(o => o.value);
+    const apply = name => {
+      if (name === 'classic') root.removeAttribute('data-design');
+      else root.setAttribute('data-design', name);
+      select.value = name;
+    };
+    const stored = (() => {
+      try { return localStorage.getItem('fluxatlas-design'); } catch (e) { return null; }
+    })();
+    apply(offered.includes(stored) ? stored : 'classic');
+    select.addEventListener('change', () => {
+      apply(select.value);
+      try { localStorage.setItem('fluxatlas-design', select.value); } catch (e) { /* private */ }
+      // A design moves the type as well as the colours, so the bar's height can change with it.
+      measureTopbar();
+      repaintAll();
+    });
+  }
+
   function setupTheme() {
     const root = document.documentElement;
     const btn = document.getElementById('theme-toggle');
@@ -6509,19 +6549,9 @@
       label.textContent = isDark() ? 'Light mode' : 'Dark mode';
       btn.setAttribute('aria-label', 'Switch to ' + (isDark() ? 'light' : 'dark') + ' mode');
     }
-    /* A theme change repaints every mark, including the charts of whichever view is not on screen
-       and the ones the view being rebuilt does not own - the coverage chart sits on the grid view
-       and is not touched by renderGrid. */
-    /* The grid is repainted whichever view is showing, since its tiles carry their colours inline
-       and Back returns to it; then the view on screen. A variable page is not a span, and
-       repainting it as one - which this did whenever the grid was hidden - threw on the null span
-       and left the page in the old colours. */
     function repaint() {
       sync();
-      renderGrid();
-      if (!document.getElementById('view-month').hidden && state.span) renderMonth();
-      if (!document.getElementById('view-var').hidden && state.variable) renderVariable();
-      redrawAll();
+      repaintAll();
     }
     btn.addEventListener('click', () => {
       const next = isDark() ? 'light' : 'dark';
@@ -6543,6 +6573,7 @@
      at render time, so a grid drawn while the page is still on `auto` and then switched to the
      stored theme keeps the colours of the wrong token set until something happens to redraw it.
      Nothing in setupTheme paints; it only resolves which set is in force. */
+  setupDesign();
   setupTheme();
   measureTopbar();
   renderHero();
