@@ -819,6 +819,103 @@
   const metric = () => METRICS[state.metric];
 
   /* ------------------------------------------------------------------------------------------
+     The address
+     ------------------------------------------------------------------------------------------
+     The hash names the view - `#2016-05`, `#2016-JJA`, `#2016-YEAR`, `#2016-05-12`, `#var-TA` - and
+     after a `?` it carries the two choices that shape every view: the metric the grid is coloured
+     by and the scale it is drawn at, `#grid?metric=PREC_pctn&scale=season`. A choice at its default
+     is left out, so an address stays as short as what it says.
+
+     An address without the `?` keeps whatever the reader has already chosen. Every link inside the
+     page is written that way, so opening a month and coming back leaves the metric where it was,
+     and the router then writes the choices back into the address it arrived at. An address with
+     the `?` states them, so a shared link or a reload restores both.
+
+     The address is rewritten with `location.replace` on the fragment alone, never with
+     `history.replaceState`: a page opened from disk has an opaque origin, and a browser is entitled
+     to refuse a history state there. A fragment navigation is permitted on every origin. Choosing a
+     metric or a scale therefore replaces the current entry rather than adding one, so Back leaves
+     the view instead of stepping back through every colour it was shown in.
+     ------------------------------------------------------------------------------------------ */
+
+  const DEFAULT_METRIC = DATA.metrics[0].key;
+  const GRIDS = ['month', 'season', 'year', 'day'];
+
+  /** The hash as a route and its choices. `has` is whether the address stated any at all. */
+  function readAddress() {
+    const hash = location.hash.replace(/^#/, '');
+    const q = hash.indexOf('?');
+    const out = { route: q < 0 ? hash : hash.slice(0, q), params: {}, has: q >= 0 };
+    if (q >= 0) {
+      hash.slice(q + 1).split('&').forEach(pair => {
+        if (!pair) return;
+        const eq = pair.indexOf('=');
+        try {
+          out.params[decodeURIComponent(eq < 0 ? pair : pair.slice(0, eq))] =
+            decodeURIComponent(eq < 0 ? '' : pair.slice(eq + 1));
+        } catch (e) { /* a malformed escape states nothing */ }
+      });
+    }
+    return out;
+  }
+
+  /** Which span scale a route names, or null where it names none. */
+  function routeScale(route) {
+    const m = /^(\d{4})-(\d{2}|[A-Za-z]{2,6})(?:-(\d{2}))?$/.exec(route);
+    if (!m) return null;
+    return /^\d+$/.test(m[2]) ? 'month' : m[2] === M.year_slug ? 'year' : 'season';
+  }
+
+  const gridOffered = g => GRIDS.indexOf(g) >= 0 && (g !== 'season' || SEASON_DEFS.length > 0);
+
+  /**
+   * Take the metric and the scale from the address, where it states them.
+   *
+   * Returns whether either moved, which is whether the grid has to be drawn again. A value the page
+   * does not offer - a metric this selection dropped, a season scale on a page built without one -
+   * is ignored rather than obeyed, so an old link opens on the default instead of on nothing.
+   */
+  function applyAddress(addr) {
+    if (!addr.has) return false;
+    let moved = false;
+    const want = METRICS[addr.params.metric] ? addr.params.metric : DEFAULT_METRIC;
+    if (want !== state.metric) {
+      state.metric = want;
+      const pick = document.getElementById('metric-pick');
+      if (pick) pick.value = want;
+      moved = true;
+    }
+    const implied = routeScale(addr.route) || 'month';
+    const grid = gridOffered(addr.params.scale) ? addr.params.scale : implied;
+    if (grid !== state.grid) {
+      setGrid(grid);
+      moved = true;
+    }
+    return moved;
+  }
+
+  /** The address for a route with the choices in force, defaults left out. */
+  function addressFor(route) {
+    const parts = [];
+    if (state.metric !== DEFAULT_METRIC) parts.push('metric=' + encodeURIComponent(state.metric));
+    if (state.grid !== (routeScale(route) || 'month')) parts.push('scale=' + state.grid);
+    if (!parts.length) return route;
+    return (route || 'grid') + '?' + parts.join('&');
+  }
+
+  /* The address this page last wrote itself. Rewriting the fragment fires `hashchange` like any
+     other navigation, and the router answers the echo of its own write by doing nothing rather
+     than by drawing the view a second time. */
+  let echo = null;
+
+  function syncAddress() {
+    const want = addressFor(readAddress().route);
+    if (want === location.hash.replace(/^#/, '')) return;
+    echo = want;
+    location.replace('#' + want);
+  }
+
+  /* ------------------------------------------------------------------------------------------
      Level 1: the grid
      ------------------------------------------------------------------------------------------ */
 
@@ -855,6 +952,8 @@
         : '')
       + '<option value="year">Years (each year against the record)</option>'
       + '<option value="day">Days (every day of the record)</option></select></div>'
+      + '<div class="control" id="csv-control"><span class="control-label">Export</span>'
+      + '<button type="button" class="btn" id="csv-download">Download CSV</button></div>'
       + '<p class="control-note" id="metric-about"></p>';
     host.innerHTML = html;
 
@@ -863,7 +962,9 @@
     pick.addEventListener('change', () => {
       state.metric = pick.value;
       renderGrid();
+      syncAddress();
     });
+    document.getElementById('csv-download').addEventListener('click', downloadGrid);
     document.getElementById('strip-toggle').addEventListener('change', ev => {
       state.strips = ev.target.checked;
       renderGrid();
@@ -879,6 +980,7 @@
     scalePick.addEventListener('change', () => {
       setGrid(scalePick.value);
       renderGrid();
+      syncAddress();
     });
     document.getElementById('badge-toggle').addEventListener('change', ev => {
       state.allBadges = ev.target.checked;
@@ -908,6 +1010,92 @@
     if (detail) detail.hidden = which === 'day';
     const pick = document.getElementById('scale-pick');
     if (pick && pick.value !== which) pick.value = which;
+  }
+
+  /* ------------------------------------------------------------------------------------------
+     The grid as a table
+     ------------------------------------------------------------------------------------------
+     What the grid shows, as CSV: the active metric at the active scale, a row per year and a
+     column per span, and the year's figure from the margin beside them. The values are the ones
+     the tiles are coloured by, unrounded beyond what the page ships; the year's figure is the
+     margin's own, formed the same way from whatever spans carry a value. A span without a value
+     is an empty cell, never `NaN` or `null`, which a spreadsheet would read as text.
+
+     The file is written with a byte-order mark, since the units carry characters outside ASCII and
+     a spreadsheet opening a CSV without one guesses a legacy code page and mangles every unit. It
+     is built in the page and handed over as a Blob, so it works from disk with no server.
+     ------------------------------------------------------------------------------------------ */
+
+  const csvCell = s => (/[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
+
+  /** A number as a CSV cell, at no more decimals than asked for, and empty where there is none. */
+  const csvNum = (v, d) => (isNum(v) ? String(d === undefined ? v : Number(v.toFixed(d))) : '');
+
+  function gridTable() {
+    const met = metric();
+    const unit = met.units ? ' (' + met.units + ')' : '';
+    if (state.grid === 'day') {
+      /* One column per calendar date, 29 February included, so every year's row lines up under
+         the same header; the date is empty in a year that does not have it. A threshold day is
+         1 or 0, which is all the raster marks it as. */
+      const dates = [];
+      for (let k = 0; k < 366; k++) {
+        const t = new Date(Date.UTC(2000, 0, 1 + k));
+        dates.push([t.getUTCMonth() + 1, t.getUTCDate()]);
+      }
+      const flag = met.day.kind === 'flag';
+      const d = VARS[met.var] ? VARS[met.var].digits + 1 : met.digits + 1;
+      const head = ['year'].concat(dates.map(md => MONTH_ABBR[md[0] - 1] + ' ' + pad2(md[1])
+        + (flag ? '' : unit)));
+      const rows = YEARS.map(y => [String(y)].concat(dates.map(md => {
+        if (md[0] === 2 && md[1] === 29 && !isLeap(y)) return '';
+        const i = dayIndex(y, md[0], md[1]);
+        if (i < 0 || i >= DAYS.n) return '';
+        return csvNum(dayValue(met, i, y, md[0], md[1]), flag ? 0 : d);
+      })));
+      return [head].concat(rows);
+    }
+    const sc = scale();
+    const cols = sc.cols();
+    const atYear = state.scale === 'year';
+    // A season is headed by its name and its months, since a derived scheme's name alone may not
+    // say which months it holds.
+    const colHead = c => (state.scale === 'season' && c.label !== c.id
+      ? c.label + ' ' + c.id : c.label) + unit;
+    // At the year scale the one column is the year's figure, and the margin states no number.
+    const head = ['year'].concat(cols.map(colHead))
+      .concat(atYear ? [] : [(summarises(met) ? 'year total' : 'year mean') + unit]);
+    const rows = YEARS.map(y => {
+      const values = cols.map(c => {
+        const span = sc.at(y, c.id);
+        return span ? monthValue(met, span) : null;
+      });
+      const row = [String(y)].concat(values.map(v => csvNum(v)));
+      if (!atYear) row.push(csvNum(summarise(met, values.filter(isNum)), met.digits));
+      return row;
+    });
+    return [head].concat(rows);
+  }
+
+  /** The file name: the site, the metric and the scale, in characters any file system accepts. */
+  function gridFileName() {
+    const safe = s => String(s).replace(/[^A-Za-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '');
+    return [safe(M.site) || 'atlas', safe(state.metric), state.grid].join('_') + '.csv';
+  }
+
+  function downloadGrid() {
+    const text = gridTable().map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
+    const blob = new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = gridFileName();
+    a.hidden = true;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoked once the browser has had the chance to start the download, not before.
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
   function cellTooltip(mo) {
@@ -972,6 +1160,10 @@
     compactCharts();
     if (state.grid === 'day') renderRaster(); else renderTileGrid();
     document.getElementById('metric-about').textContent = metric().about;
+    /* A metric with no daily counterpart draws nothing at the raster, and a table of nothing is
+       not offered. Hidden rather than disabled, like the detail switches beside it. */
+    const csv = document.getElementById('csv-control');
+    if (csv) csv.hidden = state.grid === 'day' && metric().day.kind === 'none';
     renderScaleBar();
     renderGridNote();
     // The legend counts per scale, so it is redrawn with the grid rather than once at load.
@@ -4578,40 +4770,55 @@
      scheme (`JF`, `DJFMAM`) and a capitalised abbreviation for a scheme of single months (`Mar`).
      Matching only three upper-case letters, as this did, sent every one of those back to the grid. */
   function route() {
-    const hash = location.hash.replace('#', '');
+    // The echo of the page's own rewrite of the address: everything it names is already drawn.
+    if (echo !== null && location.hash.replace(/^#/, '') === echo) {
+      echo = null;
+      return;
+    }
+    echo = null;
+    const addr = readAddress();
+    const hash = addr.route;
+    // The choices first, so whichever view is drawn below is drawn once and in them. The grid
+    // is redrawn behind a span or a variable page as well, since that is where Back returns to.
+    let regrid = applyAddress(addr);
 
     /* One variable across the whole record is a page rather than a span, so it is addressed by
        name: #var-TA. It carries no year, which is what distinguishes it from every other route. */
     const asVar = /^var-([A-Za-z0-9_.]+)$/.exec(hash);
     if (asVar && VARS[asVar[1]]) {
+      if (regrid) renderGrid();
       state.variable = asVar[1];
       state.y = state.m = state.d = state.span = null;
       showView('var');
       tip.hide();
       renderVariable();
       window.scrollTo({ top: 0 });
+      syncAddress();
       return;
     }
 
     const m = /^(\d{4})-(\d{2}|[A-Za-z]{2,6})(?:-(\d{2}))?$/.exec(hash);
-    const wanted = !m ? null
-      : /^\d+$/.test(m[2]) ? 'month' : m[2] === M.year_slug ? 'year' : 'season';
+    const wanted = routeScale(hash);
     const span = m ? SCALES[wanted].at(+m[1], /^\d+$/.test(m[2]) ? +m[2] : m[2]) : null;
     if (!span) {
+      if (regrid) renderGrid();
       state.y = state.m = state.d = state.span = null;
       showView('grid');
       tip.hide();
       window.scrollTo({ top: 0 });
+      syncAddress();
       return;
     }
-    const same = state.span === span;
+    // A redrawn grid, or a metric that moved, is a different panel even for the same span.
+    const same = state.span === span && !regrid;
     if (state.scale !== wanted) {
       state.scale = wanted;
       // A reader who opened this day out of the raster gets the raster back when they leave the
       // month, so the grid only follows the span scale where it was already showing spans.
       if (state.grid !== 'day') setGrid(wanted);
-      renderGrid();
+      regrid = true;
     }
+    if (regrid) renderGrid();
     state.y = +m[1];
     state.m = span.m || null;
     state.span = span;
@@ -4629,6 +4836,7 @@
       renderMonth();
       window.scrollTo({ top: 0 });
     }
+    syncAddress();
   }
 
   function setupNav() {
@@ -4730,6 +4938,16 @@
   setupTheme();
   measureTopbar();
   renderHero();
+  /* A metric and a scale stated in the address are in force before anything is drawn, so a
+     reloaded or shared link draws its grid once, in the choices it names. */
+  (function () {
+    const addr = readAddress();
+    if (!addr.has) return;
+    if (METRICS[addr.params.metric]) state.metric = addr.params.metric;
+    const implied = routeScale(addr.route) || 'month';
+    state.grid = gridOffered(addr.params.scale) ? addr.params.scale : implied;
+    state.scale = state.grid !== 'day' ? state.grid : (routeScale(addr.route) || state.scale);
+  })();
   buildControls();
   // The grid's classes, its label and the picker are set from one place, so the opening state
   // cannot differ from the state any later switch produces.
