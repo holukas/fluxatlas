@@ -179,25 +179,28 @@ EXTRA_INDICES = {
 # cannot set a record, so a day that was not substantially measured is not allowed to win one.
 DERIVED_FLAGS = [
     dict(key="freezethaw", var="TA",
-         label="freeze-thaw days (minimum below 0 {units}, maximum above it)",
+         label="freeze-thaw days (min < 0 {units}, max > 0 {units})",
          fn=lambda day, meas, nrm: (day["TA"]["min"] < 0) & (day["TA"]["max"] > 0)),
     dict(key="coldprec", var="PREC",
-         label="precipitation days that stayed below 1 °C",
+         label="cold precipitation days (≥ 1 {units}, max < 1 °C)",
          fn=lambda day, meas, nrm: (day["PREC"]["sum"] >= 1.0) & (day["TA"]["max"] < 1.0)),
     dict(key="saturated", var="RH",
-         label="days with a mean relative humidity of 95 {units} or more",
+         label="near-saturated days (mean ≥ 95 {units})",
          fn=lambda day, meas, nrm: day["RH"]["mean"] >= 95.0),
     dict(key="clear", var="SW_IN",
-         label="days brighter than the 90th percentile for the date",
+         label="clear days (mean above the 90th percentile for the calendar date)",
          fn=lambda day, meas, nrm: day["SW_IN"]["mean"] > nrm("SW_IN", "mean", "p90")),
     dict(key="overcast", var="SW_IN",
-         label="days duller than the 10th percentile for the date",
+         label="overcast days (mean below the 10th percentile for the calendar date)",
          fn=lambda day, meas, nrm: day["SW_IN"]["mean"] < nrm("SW_IN", "mean", "p10")),
-    dict(key="recwarm", var="TA", label="warmest occurrence of that calendar date in the record",
+    dict(key="recwarm", var="TA",
+         label="record warm days (highest daily maximum for the calendar date)",
          fn=lambda day, meas, nrm: date_record(day["TA"]["max"], meas["TA"], "max")),
-    dict(key="reccold", var="TA", label="coldest occurrence of that calendar date in the record",
+    dict(key="reccold", var="TA",
+         label="record cold days (lowest daily minimum for the calendar date)",
          fn=lambda day, meas, nrm: date_record(day["TA"]["min"], meas["TA"], "min")),
-    dict(key="recwet", var="PREC", label="wettest occurrence of that calendar date in the record",
+    dict(key="recwet", var="PREC",
+         label="record wet days (highest daily total for the calendar date)",
          fn=lambda day, meas, nrm: date_record(day["PREC"]["sum"], meas["PREC"], "max")),
 ]
 
@@ -211,7 +214,7 @@ RECORD_DAY_COVERAGE = 90.0  # % of a day measured before it is allowed to set a 
 FLAG_SHORT = {
     "frost": "frost", "ice": "ice", "summer": "summer", "hot": "hot",
     "tropical": "tropical night", "wet": "wet", "heavy": "heavy rain", "verywet": "very wet",
-    "freezethaw": "freeze-thaw", "coldprec": "precipitation below 1 °C",
+    "freezethaw": "freeze-thaw", "coldprec": "cold precipitation",
     "saturated": "near-saturated",
     "clear": "clear", "overcast": "overcast", "recwarm": "warmest for its date",
     "reccold": "coldest for its date", "recwet": "wettest for its date",
@@ -290,52 +293,53 @@ BADGES = [
     # 252 tiles distinguishes none of them.
     dict(key="sparse", label="Sparsely measured", group="Data quality", icon="alert",
          tone="warn", priority=0, needs=(), needs_normal=False,
-         about="At least one variable in this build is measured over less than the share its own "
-               "statistics require - {sparse:.0f} % for meteorology, {flux_sparse:.0f} % for the "
-               "turbulent fluxes - so those statistics rest on filled or missing records.",
+         about="At least one variable in this build has a measured share below its warning "
+               "threshold: {sparse:.0f} % for meteorology, {flux_sparse:.0f} % for the turbulent "
+               "fluxes. Its statistics are still computed. The unmeasured part of the span is "
+               "gap-filled or missing.",
          rule=lambda s: (
-             "Only " + ", ".join(f"{s[k + '_meas']:.0f} % of {k}" for k in s["keys"]
-                                 if s[k + "_meas"] is not None
-                                 and s[k + "_meas"] < varreg.coverage(k).warn)
-             + " is measured in this month; its statistics rest on filled or missing records.")
+             "Measured share: " + ", ".join(f"{s[k + '_meas']:.0f} % of {k}" for k in s["keys"]
+                                            if s[k + "_meas"] is not None
+                                            and s[k + "_meas"] < varreg.coverage(k).warn)
+             + ". The remainder is gap-filled or missing.")
          if any(s[k + "_meas"] is not None and s[k + "_meas"] < varreg.coverage(k).warn
                 for k in s["keys"]) else None),
 
     dict(key="record_warm", label="Warmest on record", group="Temperature", icon="award",
          tone="warm", priority=1, needs=("TA",),
-         about="The warmest occurrence of this calendar month in the record.",
-         rule=lambda s: (f"Warmest {s['month_name']} in the record: {s['TA']:.1f} {s['u_TA']} "
-                         f"mean, {s['TA_anom']:+.1f} {s['u_TA']} against the normal of "
-                         f"{s['TA_n']} years") if s["TA_rank"] == 1 else None),
+         about="Highest mean air temperature of this calendar month in the record.",
+         rule=lambda s: (f"Warmest {s['month_name']} in the record: mean {s['TA']:.1f} "
+                         f"{s['u_TA']}, {s['TA_anom']:+.1f} {s['u_TA']} relative to the "
+                         f"{s['TA_n']}-year normal") if s["TA_rank"] == 1 else None),
 
     dict(key="record_cold", label="Coldest on record", group="Temperature", icon="award",
          tone="cold", priority=1, needs=("TA",),
-         about="The coldest occurrence of this calendar month in the record.",
-         rule=lambda s: (f"Coldest {s['month_name']} in the record: {s['TA']:.1f} {s['u_TA']} "
-                         f"mean, {s['TA_anom']:+.1f} {s['u_TA']} against the normal of "
-                         f"{s['TA_n']} years") if s["TA_rank_far"] == 1 else None),
+         about="Lowest mean air temperature of this calendar month in the record.",
+         rule=lambda s: (f"Coldest {s['month_name']} in the record: mean {s['TA']:.1f} "
+                         f"{s['u_TA']}, {s['TA_anom']:+.1f} {s['u_TA']} relative to the "
+                         f"{s['TA_n']}-year normal") if s["TA_rank_far"] == 1 else None),
 
     dict(key="warm", label="Warmer than normal", group="Temperature", icon="arrow-up",
          tone="warm", priority=4, needs=("TA",),
-         about="The monthly mean is at least one standard deviation above the calendar-month "
+         about="Mean air temperature at least one standard deviation above the calendar-month "
                "normal.",
-         rule=lambda s: (f"{s['TA_anom']:+.1f} {s['u_TA']} against the {s['month_name']} normal "
-                         f"of {s['TA_norm']:.1f} {s['u_TA']} ({s['TA_z']:+.1f} standard "
+         rule=lambda s: (f"{s['TA_anom']:+.1f} {s['u_TA']} relative to the {s['month_name']} "
+                         f"normal of {s['TA_norm']:.1f} {s['u_TA']} ({s['TA_z']:+.1f} standard "
                          f"deviations), rank {s['TA_rank']} of {s['TA_n']}")
          if s["TA_z"] >= 1 else None),
 
     dict(key="cold", label="Colder than normal", group="Temperature", icon="arrow-down",
          tone="cold", priority=4, needs=("TA",),
-         about="The monthly mean is at least one standard deviation below the calendar-month "
+         about="Mean air temperature at least one standard deviation below the calendar-month "
                "normal.",
-         rule=lambda s: (f"{s['TA_anom']:+.1f} {s['u_TA']} against the {s['month_name']} normal "
-                         f"of {s['TA_norm']:.1f} {s['u_TA']} ({s['TA_z']:+.1f} standard "
+         rule=lambda s: (f"{s['TA_anom']:+.1f} {s['u_TA']} relative to the {s['month_name']} "
+                         f"normal of {s['TA_norm']:.1f} {s['u_TA']} ({s['TA_z']:+.1f} standard "
                          f"deviations), rank {s['TA_rank']} of {s['TA_n']}")
          if s["TA_z"] <= -1 else None),
 
     dict(key="heat", label="Hot days", group="Temperature", icon="flame", tone="warm",
          priority=3, needs=("TA",), needs_normal=False,
-         about="At least one day reached 30 °C.",
+         about="At least one day with a maximum of 30 °C or more.",
          rule=lambda s: (f"{s['n_hot']} hot day{'s' if s['n_hot'] > 1 else ''} "
                          f"(daily maximum ≥ 30 {s['u_TA']}), warmest "
                          f"{s['TA_daymax']:.1f} {s['u_TA']}") if s["n_hot"] >= 1 else None),
@@ -343,59 +347,59 @@ BADGES = [
     dict(key="heat_spell", label="Heat spell", group="Temperature", icon="flames", tone="warm",
          priority=2, needs=("TA",), needs_normal=False,
          about="Three or more consecutive hot days.",
-         rule=lambda s: (f"{s['spell_hot']} consecutive hot days, the longest run of this month")
+         rule=lambda s: (f"{s['spell_hot']} consecutive hot days, the longest run in the month")
          if s["spell_hot"] >= 3 else None),
 
     dict(key="tropical", label="Tropical nights", group="Temperature", icon="moon", tone="warm",
          priority=3, needs=("TA",), needs_normal=False,
-         about="At least one night stayed above 20 °C.",
+         about="At least one day with a minimum of 20 °C or more.",
          rule=lambda s: (f"{s['n_tropical']} night{'s' if s['n_tropical'] > 1 else ''} with a "
                          f"daily minimum ≥ 20 {s['u_TA']}") if s["n_tropical"] >= 1 else None),
 
     dict(key="frost", label="Frost days", group="Temperature", icon="snowflake", tone="cold",
          priority=3, needs=("TA",), needs_normal=False,
-         about="Five or more days with a daily minimum below freezing.",
+         about="Five or more days with a minimum below 0 °C.",
          rule=lambda s: (f"{s['n_frost']} frost days (daily minimum < 0 {s['u_TA']}), coldest "
                          f"{s['TA_daymin']:.1f} {s['u_TA']}") if s["n_frost"] >= 5 else None),
 
     dict(key="ice", label="Ice days", group="Temperature", icon="icicles", tone="cold",
          priority=3, needs=("TA",), needs_normal=False,
-         about="At least one day stayed below freezing all day.",
+         about="At least one day with a maximum below 0 °C.",
          rule=lambda s: (f"{s['n_ice']} ice day{'s' if s['n_ice'] > 1 else ''} (daily maximum "
                          f"< 0 {s['u_TA']})") if s["n_ice"] >= 1 else None),
 
     dict(key="record_wet", label="Wettest on record", group="Precipitation", icon="award",
          tone="wet", priority=1, needs=("PREC",),
-         about="The wettest occurrence of this calendar month in the record.",
-         rule=lambda s: (f"Wettest {s['month_name']} in the record: {s['PREC']:.0f} "
+         about="Highest precipitation total of this calendar month in the record.",
+         rule=lambda s: (f"Wettest {s['month_name']} in the record: total {s['PREC']:.0f} "
                          f"{s['u_PREC']}, {s['PREC_pctn']:.0f} % of the normal of "
                          f"{s['PREC_norm']:.0f} {s['u_PREC']}") if s["PREC_rank"] == 1 else None),
 
     dict(key="record_dry", label="Driest on record", group="Precipitation", icon="award",
          tone="dry", priority=1, needs=("PREC",),
-         about="The driest occurrence of this calendar month in the record.",
-         rule=lambda s: (f"Driest {s['month_name']} in the record: {s['PREC']:.0f} "
+         about="Lowest precipitation total of this calendar month in the record.",
+         rule=lambda s: (f"Driest {s['month_name']} in the record: total {s['PREC']:.0f} "
                          f"{s['u_PREC']}, {s['PREC_pctn']:.0f} % of the normal of "
                          f"{s['PREC_norm']:.0f} {s['u_PREC']}")
          if s["PREC_rank_far"] == 1 else None),
 
     dict(key="wet", label="Wet month", group="Precipitation", icon="droplets", tone="wet",
          priority=4, needs=("PREC",),
-         about="The monthly total is at least 150 % of the calendar-month normal.",
+         about="Precipitation total at least 150 % of the calendar-month normal.",
          rule=lambda s: (f"{s['PREC']:.0f} {s['u_PREC']}, {s['PREC_pctn']:.0f} % of the "
                          f"{s['month_name']} normal, on {s['n_wet']} wet days")
          if s["PREC_pctn"] >= 150 else None),
 
     dict(key="dry", label="Dry month", group="Precipitation", icon="droplet-off", tone="dry",
          priority=4, needs=("PREC",),
-         about="The monthly total is at most 50 % of the calendar-month normal.",
+         about="Precipitation total at most 50 % of the calendar-month normal.",
          rule=lambda s: (f"{s['PREC']:.0f} {s['u_PREC']}, {s['PREC_pctn']:.0f} % of the "
                          f"{s['month_name']} normal, on {s['n_wet']} wet days")
          if s["PREC_pctn"] <= 50 else None),
 
     dict(key="dry_spell", label="Dry spell", group="Precipitation", icon="calendar-dry",
          tone="dry", priority=2, needs=("PREC",), needs_normal=False,
-         about="Fourteen or more consecutive days below 1 mm.",
+         about="Fourteen or more consecutive days with less than 1 mm.",
          rule=lambda s: (f"{s['spell_dry']} consecutive days below 1 {s['u_PREC']}")
          if s["spell_dry"] >= 14 else None),
 
@@ -403,7 +407,7 @@ BADGES = [
     # above 10 mm occur in nearly half of all months, and a badge that common marks nothing.
     dict(key="heavy_rain", label="Heavy rain day", group="Precipitation", icon="cloud-rain",
          tone="wet", priority=3, needs=("PREC",), needs_normal=False,
-         about="At least one day reached 30 mm.",
+         about="At least one day with 30 mm or more.",
          rule=lambda s: (f"{s['n_verywet']} day{'s' if s['n_verywet'] > 1 else ''} above 30 "
                          f"{s['u_PREC']}, the wettest {s['PREC_daysum']:.0f} {s['u_PREC']}; "
                          f"{s['n_heavy']} days above 10 {s['u_PREC']}")
@@ -411,19 +415,19 @@ BADGES = [
 
     dict(key="sunny", label="Sunnier than normal", group="Radiation", icon="sun", tone="sun",
          priority=4, needs=("SW_IN",),
-         about="Mean incoming shortwave radiation is at least one standard deviation above the "
+         about="Mean incoming shortwave radiation at least one standard deviation above the "
                "calendar-month normal.",
-         rule=lambda s: (f"{s['SW_IN']:.0f} {s['u_SW_IN']} mean, {s['SW_IN_anom']:+.0f} "
-                         f"{s['u_SW_IN']} against the {s['month_name']} normal "
+         rule=lambda s: (f"Mean {s['SW_IN']:.0f} {s['u_SW_IN']}, {s['SW_IN_anom']:+.0f} "
+                         f"{s['u_SW_IN']} relative to the {s['month_name']} normal "
                          f"({s['SW_IN_z']:+.1f} standard deviations)")
          if s["SW_IN_z"] >= 1 else None),
 
     dict(key="dull", label="Duller than normal", group="Radiation", icon="cloud", tone="dull",
          priority=4, needs=("SW_IN",),
-         about="Mean incoming shortwave radiation is at least one standard deviation below the "
+         about="Mean incoming shortwave radiation at least one standard deviation below the "
                "calendar-month normal.",
-         rule=lambda s: (f"{s['SW_IN']:.0f} {s['u_SW_IN']} mean, {s['SW_IN_anom']:+.0f} "
-                         f"{s['u_SW_IN']} against the {s['month_name']} normal "
+         rule=lambda s: (f"Mean {s['SW_IN']:.0f} {s['u_SW_IN']}, {s['SW_IN_anom']:+.0f} "
+                         f"{s['u_SW_IN']} relative to the {s['month_name']} normal "
                          f"({s['SW_IN_z']:+.1f} standard deviations)")
          if s["SW_IN_z"] <= -1 else None),
 
@@ -433,40 +437,40 @@ BADGES = [
     # own group rather than filed under radiation.
     dict(key="vpd_record", label="Driest air on record", group="Evaporative demand", icon="award",
          tone="dry", priority=1, needs=("VPD",),
-         about="The highest mean vapour pressure deficit of this calendar month in the record.",
-         rule=lambda s: (f"The driest air of any {s['month_name']} in the record: "
-                         f"{s['VPD']:.2f} {s['u_VPD']} mean, {s['VPD_anom']:+.2f} against the "
-                         f"normal of {s['VPD_n']} years") if s["VPD_rank"] == 1 else None),
+         about="Highest mean vapour pressure deficit of this calendar month in the record.",
+         rule=lambda s: (f"Highest vapour pressure deficit of any {s['month_name']} in the "
+                         f"record: mean {s['VPD']:.2f} {s['u_VPD']}, {s['VPD_anom']:+.2f} relative "
+                         f"to the {s['VPD_n']}-year normal") if s["VPD_rank"] == 1 else None),
 
     dict(key="vpd_high", label="High evaporative demand", group="Evaporative demand", icon="gauge",
          tone="dry", priority=4, needs=("VPD",),
-         about="Mean vapour pressure deficit is at least one standard deviation above the "
+         about="Mean vapour pressure deficit at least one standard deviation above the "
                "calendar-month normal.",
-         rule=lambda s: (f"{s['VPD']:.2f} {s['u_VPD']} mean, {s['VPD_anom']:+.2f} "
-                         f"{s['u_VPD']} against the {s['month_name']} normal "
+         rule=lambda s: (f"Mean {s['VPD']:.2f} {s['u_VPD']}, {s['VPD_anom']:+.2f} "
+                         f"{s['u_VPD']} relative to the {s['month_name']} normal "
                          f"({s['VPD_z']:+.1f} standard deviations)")
          if s["VPD_z"] >= 1 else None),
 
     dict(key="vpd_low", label="Low evaporative demand", group="Evaporative demand",
          icon="gauge-low", tone="wet", priority=4, needs=("VPD",),
-         about="Mean vapour pressure deficit is at least one standard deviation below the "
+         about="Mean vapour pressure deficit at least one standard deviation below the "
                "calendar-month normal.",
-         rule=lambda s: (f"{s['VPD']:.2f} {s['u_VPD']} mean, {s['VPD_anom']:+.2f} "
-                         f"{s['u_VPD']} against the {s['month_name']} normal "
+         rule=lambda s: (f"Mean {s['VPD']:.2f} {s['u_VPD']}, {s['VPD_anom']:+.2f} "
+                         f"{s['u_VPD']} relative to the {s['month_name']} normal "
                          f"({s['VPD_z']:+.1f} standard deviations)")
          if s["VPD_z"] <= -1 else None),
 
     dict(key="vpd_stress", label="Evaporative stress days", group="Evaporative demand",
          icon="evaporation", tone="dry", priority=3, needs=("VPD",), needs_normal=False,
-         about="Five or more days whose maximum vapour pressure deficit reached 2 kPa, a level "
-               "at which stomatal closure is widely reported, though the response differs "
-               "between species and ecosystems.",
+         about="Five or more days with a maximum vapour pressure deficit of 2 kPa or more, a "
+               "level at which stomatal closure is widely reported. The response differs between "
+               "species and ecosystems.",
          rule=lambda s: (
              f"{s['n_vpdstress']} days reached 2 {s['u_VPD']}"
              + (f", {s['n_vpdsevere']} of them 3 {s['u_VPD']}" if s["n_vpdsevere"] else "")
              + (f", {s['spell_vpdstress']} of them consecutively"
                 if s["spell_vpdstress"] >= 3 else "")
-             + f"; the driest air of the month reached {s['VPD_daymax']:.2f} {s['u_VPD']}")
+             + f"; highest daily maximum {s['VPD_daymax']:.2f} {s['u_VPD']}")
          if s["n_vpdstress"] >= 5 else None),
 
     # The compound the flux record cares about most: the air demanding water at the moment the
@@ -475,30 +479,30 @@ BADGES = [
     # earlier - so both compounds exist and a month can carry either or both.
     dict(key="vpd_soil", label="Dry air over dry soil", group="Compound", icon="droplet-low",
          tone="dry", priority=1, needs=("VPD", "SWC"), supersedes=("vpd_high", "soil_dry"),
-         about="Evaporative demand at least one standard deviation above its calendar-month "
-               "normal while soil water is at least one below: the air pulling hardest when "
-               "the soil has least to give.",
+         about="Mean vapour pressure deficit at least one standard deviation above the "
+               "calendar-month normal, and mean soil water content at least one standard "
+               "deviation below it.",
          rule=lambda s: (
-             f"Evaporative demand {s['VPD_z']:+.1f} standard deviations from the "
-             f"{s['month_name']} normal while soil water stood {s['SWC_z']:+.1f}, "
-             f"{s['SWC_anom']:+.1f} {s['u_SWC']} below normal")
+             f"Vapour pressure deficit {s['VPD_z']:+.1f} and soil water content "
+             f"{s['SWC_z']:+.1f} standard deviations from the {s['month_name']} normal; soil "
+             f"water {s['SWC_anom']:+.1f} {s['u_SWC']} relative to normal")
          if (s["VPD_z"] >= 1 and s["SWC_z"] <= -1) else None),
 
     dict(key="soil_dry", label="Dry soil", group="Soil", icon="soil", tone="dry", priority=3,
          needs=("SWC",),
-         about="Mean soil water content is at least one standard deviation below the "
+         about="Mean soil water content at least one standard deviation below the "
                "calendar-month normal.",
-         rule=lambda s: (f"{s['SWC']:.1f} {s['u_SWC']} "
-                         f"{s['SWC_anom']:+.1f} {s['u_SWC']} against the "
+         rule=lambda s: (f"Mean {s['SWC']:.1f} {s['u_SWC']}, "
+                         f"{s['SWC_anom']:+.1f} {s['u_SWC']} relative to the "
                          f"{s['month_name']} normal ({s['SWC_z']:+.1f} standard deviations)")
          if s["SWC_z"] <= -1 else None),
 
     dict(key="soil_wet", label="Wet soil", group="Soil", icon="soil", tone="wet", priority=3,
          needs=("SWC",),
-         about="Mean soil water content is at least one standard deviation above the "
+         about="Mean soil water content at least one standard deviation above the "
                "calendar-month normal.",
-         rule=lambda s: (f"{s['SWC']:.1f} {s['u_SWC']} "
-                         f"{s['SWC_anom']:+.1f} {s['u_SWC']} against the "
+         rule=lambda s: (f"Mean {s['SWC']:.1f} {s['u_SWC']}, "
+                         f"{s['SWC_anom']:+.1f} {s['u_SWC']} relative to the "
                          f"{s['month_name']} normal ({s['SWC_z']:+.1f} standard deviations)")
          if s["SWC_z"] >= 1 else None),
 
@@ -510,32 +514,32 @@ BADGES = [
     # registry states the direction rather than leaving it implied.
     dict(key="record_sink", label="Best carbon balance on record", group="Carbon", icon="award",
          tone="grow", priority=1, needs=("NEE",),
-         about="The most carbon this site has gained in this calendar month, or where the month is "
-               "a source in every year of the record, the least it has lost.",
+         about="Largest net uptake of this calendar month in the record or, where the month is a "
+               "net source in every year, the smallest net release.",
          rule=lambda s: (
-             f"The best carbon balance of any {s['month_name']} in the record: "
+             f"Best carbon balance of any {s['month_name']} in the record: "
              + carbon_phrase(s["NEE"], s["u_NEE"], varreg.make("NEE").sign)
              + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
              + ("more uptake" if s["NEE_norm"] <= 0 else "less release")
-             + f" than the normal of {s['NEE_n']} years")
+             + f" than the {s['NEE_n']}-year normal")
          if s["NEE_rank"] == 1 else None),
 
     dict(key="record_source", label="Worst carbon balance on record", group="Carbon",
          icon="award", tone="warm", priority=1, needs=("NEE",),
-         about="The most carbon this site has lost in this calendar month, or where the month is a "
-               "sink in every year of the record, the least it has gained.",
+         about="Largest net release of this calendar month in the record or, where the month is a "
+               "net sink in every year, the smallest net uptake.",
          rule=lambda s: (
-             f"The worst carbon balance of any {s['month_name']} in the record: "
+             f"Worst carbon balance of any {s['month_name']} in the record: "
              + carbon_phrase(s["NEE"], s["u_NEE"], varreg.make("NEE").sign)
              + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
              + ("more release" if s["NEE_norm"] > 0 else "less uptake")
-             + f" than the normal of {s['NEE_n']} years")
+             + f" than the {s['NEE_n']}-year normal")
          if s["NEE_rank_far"] == 1 else None),
 
     dict(key="sink_strong", label="Shifted toward uptake", group="Carbon", icon="arrow-down",
          tone="grow", priority=4, needs=("NEE",),
-         about="The net exchange is at least one standard deviation below the calendar-month "
-               "normal: more carbon taken up than usual, or less released.",
+         about="Net ecosystem exchange at least one standard deviation below the calendar-month "
+               "normal: more uptake or less release than normal.",
          rule=lambda s: (carbon_phrase(s["NEE"], s["u_NEE"], varreg.make("NEE").sign)
                          + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
                          f"{'more uptake' if s['NEE_norm'] <= 0 else 'less release'} than the "
@@ -545,8 +549,8 @@ BADGES = [
 
     dict(key="sink_weak", label="Shifted toward release", group="Carbon", icon="arrow-up",
          tone="warm", priority=4, needs=("NEE",),
-         about="The net exchange is at least one standard deviation above the calendar-month "
-               "normal: less carbon taken up than usual, or more released.",
+         about="Net ecosystem exchange at least one standard deviation above the calendar-month "
+               "normal: less uptake or more release than normal.",
          rule=lambda s: (carbon_phrase(s["NEE"], s["u_NEE"], varreg.make("NEE").sign)
                          + f", {abs(s['NEE_anom']):.0f} {s['u_NEE']} "
                          f"{'less uptake' if s['NEE_norm'] <= 0 else 'more release'} than the "
@@ -556,18 +560,18 @@ BADGES = [
 
     dict(key="gpp_high", label="More productive than normal", group="Carbon", icon="sprout",
          tone="grow", priority=3, needs=("GPP",),
-         about="Gross primary productivity is at least one standard deviation above the "
+         about="Gross primary productivity at least one standard deviation above the "
                "calendar-month normal.",
-         rule=lambda s: (f"{s['GPP']:.0f} {s['u_GPP']} fixed, {s['GPP_anom']:+.0f} "
-                         f"{s['u_GPP']} against the {s['month_name']} normal "
+         rule=lambda s: (f"{s['GPP']:.0f} {s['u_GPP']}, {s['GPP_anom']:+.0f} "
+                         f"{s['u_GPP']} relative to the {s['month_name']} normal "
                          f"({s['GPP_z']:+.1f} standard deviations)") if s["GPP_z"] >= 1 else None),
 
     dict(key="gpp_low", label="Less productive than normal", group="Carbon", icon="leaf-fall",
          tone="dull", priority=3, needs=("GPP",),
-         about="Gross primary productivity is at least one standard deviation below the "
+         about="Gross primary productivity at least one standard deviation below the "
                "calendar-month normal.",
-         rule=lambda s: (f"{s['GPP']:.0f} {s['u_GPP']} fixed, {s['GPP_anom']:+.0f} "
-                         f"{s['u_GPP']} against the {s['month_name']} normal "
+         rule=lambda s: (f"{s['GPP']:.0f} {s['u_GPP']}, {s['GPP_anom']:+.0f} "
+                         f"{s['u_GPP']} relative to the {s['month_name']} normal "
                          f"({s['GPP_z']:+.1f} standard deviations)") if s["GPP_z"] <= -1 else None),
 
     # -- Two things at once -------------------------------------------------------------------
@@ -581,13 +585,13 @@ BADGES = [
     # in the first place.
     dict(key="hot_dry", label="Hot and dry together", group="Compound", icon="drought",
          tone="dry", priority=1, needs=("TA", "PREC"), supersedes=("warm", "dry"),
-         about="The monthly mean is at least one standard deviation above the calendar-month "
-               "normal and the total at most half of it. Either alone is ordinary weather; "
-               "together, in a growing season, they are the conditions of drought stress.",
+         about="Mean air temperature at least one standard deviation above the calendar-month "
+               "normal and precipitation at most 50 % of normal. In a growing season the "
+               "combination indicates conditions for drought stress.",
          rule=lambda s: (
-             f"{s['TA_anom']:+.1f} {s['u_TA']} against the {s['month_name']} normal, and only "
-             f"{s['PREC_pctn']:.0f} % of its precipitation ({s['PREC']:.0f} {s['u_PREC']} against "
-             f"{s['PREC_norm']:.0f})"
+             f"{s['TA_anom']:+.1f} {s['u_TA']} relative to the {s['month_name']} normal, and "
+             f"{s['PREC_pctn']:.0f} % of normal precipitation ({s['PREC']:.0f} {s['u_PREC']} "
+             f"against {s['PREC_norm']:.0f})"
              + (f", with soil water {s['SWC_z']:+.1f} standard deviations from normal"
                 if s.get("SWC_z") is not None else "")
              + (f" and evaporative demand {s['VPD_z']:+.1f}"
@@ -599,8 +603,8 @@ BADGES = [
     # own says nothing, and the departure from the usual date is the whole content.
     dict(key="gs_start", label="Growing season begins", group="Season", icon="sprout",
          tone="grow", priority=2, needs=("TA",), needs_normal=False,
-         about="The month in which the growing season began: the first run of six consecutive "
-               "days above 5 °C in the calendar year.",
+         about="Start of the growing season: the first run of six consecutive days with a mean "
+               "above 5 °C in the calendar year.",
          rule=lambda s: (
              f"The growing season began on {s['ev_gs_start']['date']}, "
              + (f"{abs(s['ev_gs_start']['delta'])} days "
@@ -611,9 +615,9 @@ BADGES = [
 
     dict(key="gs_end", label="Growing season ends", group="Season", icon="leaf-fall",
          tone="grow", priority=2, needs=("TA",), needs_normal=False,
-         about="The month in which the growing season ended: the first run of six consecutive "
-               "days below 5 °C after 1 July. The season is taken within the calendar year, so "
-               "the dates describe a northern-hemisphere year.",
+         about="End of the growing season: the first run of six consecutive days with a mean "
+               "below 5 °C after 1 July. The season is taken within the calendar year, which "
+               "assumes a northern-hemisphere site.",
          rule=lambda s: (
              f"The growing season ended on {s['ev_gs_end']['date']}, "
              + (f"{abs(s['ev_gs_end']['delta'])} days "
@@ -622,10 +626,10 @@ BADGES = [
 
     dict(key="last_frost", label="Last frost of spring", group="Season", icon="snowflake",
          tone="cold", priority=2, needs=("TA",), needs_normal=False,
-         about="The month holding the last frost of January to June, which is the last spring "
-               "frost in the northern hemisphere.",
+         about="Last frost day of January to June, the last spring frost at a "
+               "northern-hemisphere site.",
          rule=lambda s: (
-             f"The last frost of the first half of the year fell on "
+             f"Last frost of January to June on "
              f"{s['ev_last_frost']['date']}"
              + (f", {abs(s['ev_last_frost']['delta'])} days "
                 f"{'earlier' if s['ev_last_frost']['delta'] < 0 else 'later'} than usual"
@@ -634,10 +638,10 @@ BADGES = [
 
     dict(key="first_frost", label="First frost of autumn", group="Season", icon="snowflake",
          tone="cold", priority=2, needs=("TA",), needs_normal=False,
-         about="The month holding the first frost of July to December, which is the first "
-               "autumn frost in the northern hemisphere.",
+         about="First frost day of July to December, the first autumn frost at a "
+               "northern-hemisphere site.",
          rule=lambda s: (
-             f"The first frost of the second half of the year fell on "
+             f"First frost of July to December on "
              f"{s['ev_first_frost']['date']}"
              + (f", {abs(s['ev_first_frost']['delta'])} days "
                 f"{'earlier' if s['ev_first_frost']['delta'] < 0 else 'later'} than usual"
@@ -647,12 +651,12 @@ BADGES = [
     # -- Days that stood out against their own date -------------------------------------------
     dict(key="record_days", label="Many record days", group="Records", icon="star", tone="warm",
          priority=1, needs=("TA",), needs_normal=False,
-         about="Eight or more days were the warmest, coldest or wettest occurrence of their own "
-               "calendar date. In a record of n years each day has about a one-in-n chance of "
-               "each kind of record, so the number expected by chance falls as the record "
-               "lengthens. A largely gap-filled day cannot set one.",
+         about="Eight or more days that set a warm, cold or wet record for their calendar date. "
+               "In a record of n years each day has about a 1 in n chance of each kind of record, "
+               "so the number expected by chance falls as the record lengthens. A day less than "
+               "90 % measured cannot set a record.",
          rule=lambda s: (
-             f"{s['x']['nrec']} days set a record for their own calendar date: "
+             f"{s['x']['nrec']} days set a record for their calendar date: "
              + ", ".join(p for p in (
                  f"{s['n_recwarm']} warmest" if s["n_recwarm"] else None,
                  f"{s['n_reccold']} coldest" if s["n_reccold"] else None,
@@ -662,35 +666,39 @@ BADGES = [
     # -- Weather that a threshold on one variable cannot describe ------------------------------
     dict(key="wet_spell", label="Wet spell", group="Precipitation", icon="droplets", tone="wet",
          priority=2, needs=("PREC",), needs_normal=False,
-         about="Seven or more consecutive days reaching 1 mm.",
-         rule=lambda s: (f"{s['spell_wet']} consecutive days reaching 1 {s['u_PREC']}")
+         about="Seven or more consecutive days with at least 1 mm.",
+         rule=lambda s: (f"{s['spell_wet']} consecutive days with at least 1 {s['u_PREC']}")
          if s["spell_wet"] >= 7 else None),
 
     dict(key="coldprec", label="Precipitation below freezing", group="Precipitation",
          icon="snow-cloud", tone="cold", priority=3, needs=("PREC", "TA"), needs_normal=False,
-         about="Three or more days with at least 1 mm on which the temperature stayed below 1 °C. "
-               "The gauge does not report phase, so this dates the possibility of snow, not "
-               "snow itself. It is also where the gauge catches least.",
-         rule=lambda s: (f"{s['n_coldprec']} days with at least 1 {s['u_PREC']} on which the "
-                         f"maximum stayed below 1 {s['u_TA']}") if s["n_coldprec"] >= 3 else None),
+         about="Three or more days with at least 1 mm of precipitation and a maximum air "
+               "temperature below 1 °C. The gauge does not report phase, so these are days on "
+               "which snow was possible, not confirmed. Gauge undercatch is largest under these "
+               "conditions.",
+         rule=lambda s: (f"{s['n_coldprec']} days with at least 1 {s['u_PREC']} and a maximum "
+                         f"below 1 {s['u_TA']}") if s["n_coldprec"] >= 3 else None),
 
     dict(key="freezethaw", label="Freeze-thaw", group="Temperature", icon="thermo-swing",
          tone="cold", priority=3, needs=("TA",), needs_normal=False,
-         about="Ten or more days that dropped below 0 °C and rose above it again.",
-         rule=lambda s: (f"{s['n_freezethaw']} days crossed freezing in both directions")
+         about="Ten or more days with a minimum below 0 °C and a maximum above 0 °C.",
+         rule=lambda s: (f"{s['n_freezethaw']} days with a minimum below and a maximum above "
+                         f"0 {s['u_TA']}")
          if s["n_freezethaw"] >= 10 else None),
 
     dict(key="clear", label="Clear spell", group="Radiation", icon="sun", tone="sun", priority=3,
          needs=("SW_IN",), needs_normal=False,
-         about="Eight or more days brighter than the 90th percentile for their date. Counted "
-               "against the date, not a fixed threshold, so a bright January counts.",
-         rule=lambda s: (f"{s['n_clear']} days in the brightest tenth for their date")
+         about="Eight or more days with mean incoming shortwave radiation above the 90th "
+               "percentile for their calendar date. The threshold follows the date, so bright "
+               "winter days count.",
+         rule=lambda s: (f"{s['n_clear']} days above the 90th percentile for their date")
          if s["n_clear"] >= 8 else None),
 
     dict(key="overcast", label="Overcast spell", group="Radiation", icon="cloud", tone="dull",
          priority=3, needs=("SW_IN",), needs_normal=False,
-         about="Eight or more days duller than the 10th percentile for their date.",
-         rule=lambda s: (f"{s['n_overcast']} days in the dullest tenth for their date")
+         about="Eight or more days with mean incoming shortwave radiation below the 10th "
+               "percentile for their calendar date.",
+         rule=lambda s: (f"{s['n_overcast']} days below the 10th percentile for their date")
          if s["n_overcast"] >= 8 else None),
 
     # -- What only a whole year can say --------------------------------------------------------
@@ -699,34 +707,33 @@ BADGES = [
     # below a year, so each is marked `only` and appears at that scale alone.
     dict(key="net_sink", label="Net carbon sink", group="Carbon", icon="sprout", tone="grow",
          priority=1, needs=("NEE",), needs_normal=False, only=("year",),
-         about="Over the whole year the site took up more carbon than it released. This is a "
-               "statement no month can make: over a year a site's months are commonly sinks and "
-               "sources by turns, whichever months those are, so the sign of the annual balance "
-               "belongs to the year.",
+         about="Negative annual net ecosystem exchange: over the year the site took up more "
+               "carbon than it released. Defined for years only, because months within a year "
+               "are commonly sinks and sources in turn.",
          rule=lambda s: (
-             f"Net uptake of {abs(s['NEE']):.0f} {s['u_NEE']} over the year"
+             f"Net uptake of {abs(s['NEE']):.0f}"
              + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
-             + (f", {ordinal(s['NEE_rank'])} largest uptake of {s['NEE_n']} years"
-                if s["NEE_rank"] and s["NEE_n"] else ""))
+             + f" {s['u_NEE']} over the year"
+             + (f", {ordinal(s['NEE_rank']) + ' ' if s['NEE_rank'] > 1 else ''}largest uptake "
+                f"of {s['NEE_n']} years" if s["NEE_rank"] and s["NEE_n"] else ""))
          if s["NEE"] is not None and s["NEE"] < 0 else None),
 
     dict(key="net_source", label="Net carbon source", group="Carbon", icon="leaf-fall",
          tone="warm", priority=1, needs=("NEE",), needs_normal=False, only=("year",),
-         about="Over the whole year the site released more carbon than it took up: the losses "
-               "of the year, from respiration and from any harvest, disturbance or drought, "
-               "outweighed its uptake. Like the net sink, it is visible at no shorter scale.",
+         about="Positive annual net ecosystem exchange: over the year the site released more "
+               "carbon than it took up. Defined for years only.",
          rule=lambda s: (
-             f"Net release of {s['NEE']:.0f} {s['u_NEE']} over the year"
+             f"Net release of {s['NEE']:.0f}"
              + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
-             + (f", {ordinal(s['NEE_rank_far'])} largest release of {s['NEE_n']} years"
-                if s["NEE_rank_far"] and s["NEE_n"] else ""))
+             + f" {s['u_NEE']} over the year"
+             + (f", {ordinal(s['NEE_rank_far']) + ' ' if s['NEE_rank_far'] > 1 else ''}largest "
+                f"release of {s['NEE_n']} years" if s["NEE_rank_far"] and s["NEE_n"] else ""))
          if s["NEE"] is not None and s["NEE"] > 0 else None),
 
     dict(key="long_season", label="Long growing season", group="Season", icon="sprout",
          tone="grow", priority=2, needs=("TA",), needs_normal=False, only=("year",),
-         about="The growing season ran at least ten days longer than the record median. The dates "
-               "it began and ended are stated on their own months; only the year carries how long "
-               "it lasted.",
+         about="Growing season at least ten days longer than the record median. Its start and end "
+               "dates are marked on their months.",
          rule=lambda s: (
              f"The growing season ran {s['ev_gslen']['days']} days, "
              f"{s['ev_gslen']['delta']} more than the usual {s['ev_gslen']['normal']:.0f}")
@@ -735,7 +742,7 @@ BADGES = [
 
     dict(key="short_season", label="Short growing season", group="Season", icon="leaf-fall",
          tone="cold", priority=2, needs=("TA",), needs_normal=False, only=("year",),
-         about="The growing season ran at least ten days shorter than the record median.",
+         about="Growing season at least ten days shorter than the record median.",
          rule=lambda s: (
              f"The growing season ran {s['ev_gslen']['days']} days, "
              f"{abs(s['ev_gslen']['delta'])} fewer than the usual "
@@ -745,10 +752,9 @@ BADGES = [
 
     dict(key="late_frost", label="Late spring frost", group="Season", icon="snowflake",
          tone="cold", priority=3, needs=("TA",), needs_normal=False, only=("year",),
-         about="The last frost of January to June fell at least a fortnight later than its "
-               "median date in the record, so the risk to new growth ran later into the year than "
-               "usual. The dates are taken on the calendar year, as for a northern-hemisphere "
-               "site.",
+         about="Last frost of January to June at least 14 days later than its median date in the "
+               "record. Dates are taken within the calendar year, which assumes a "
+               "northern-hemisphere site.",
          rule=lambda s: (
              f"The last frost of spring fell on {s['ev_last_frost']['date']}, "
              f"{s['ev_last_frost']['delta']} days later than usual"
@@ -759,9 +765,9 @@ BADGES = [
 
     dict(key="early_frost", label="Early autumn frost", group="Season", icon="icicles",
          tone="cold", priority=3, needs=("TA",), needs_normal=False, only=("year",),
-         about="The first frost of July to December fell at least a fortnight earlier than its "
-               "median date in the record, cutting the frost-free period short at the other end. "
-               "The dates are taken on the calendar year, as for a northern-hemisphere site.",
+         about="First frost of July to December at least 14 days earlier than its median date in "
+               "the record. Dates are taken within the calendar year, which assumes a "
+               "northern-hemisphere site.",
          rule=lambda s: (
              f"The first frost of autumn fell on {s['ev_first_frost']['date']}, "
              f"{abs(s['ev_first_frost']['delta'])} days earlier than usual"
@@ -775,24 +781,21 @@ BADGES = [
     # worth opening.
     dict(key="swings", label="A year of extremes", group="Records", icon="thermo-swing",
          tone="warn", priority=2, needs=(), needs_normal=False, only=("year",),
-         about="In four or more of the year's months, some variable stood at least two standard "
-               "deviations from its own normal for that calendar month, measured against how far "
-               "that variable varies between the record's other Januaries, Februaries and so on. "
-               "An annual figure can average out to nothing while the months inside it swing at "
-               "both ends, and this is the mark that tells the two apart.",
+         about="Four or more months of the year in which at least one variable of the composite "
+               "was two or more standard deviations from its calendar-month normal. An annual "
+               "mean near normal can hide large monthly departures in both directions.",
          rule=lambda s: (
-             f"In {s['x']['nx']} months of this year, a variable stood at least "
-             f"{EXTREME_MONTH_Z:g} standard deviations from its own normal for that calendar "
-             f"month, taken against its spread across the other years"
-             + (f". The furthest was {s['worst_month']['name']}: "
+             f"In {s['x']['nx']} months of this year, at least one variable was "
+             f"{EXTREME_MONTH_Z:g} or more standard deviations from its calendar-month normal"
+             + (f". Largest departure in {s['worst_month']['name']}: "
                 f"{varreg.make(s['worst_month']['key']).short.lower()} "
-                f"{s['worst_month']['z']:+.1f}"
+                f"{s['worst_month']['z']:+.1f} standard deviations"
                 if s["worst_month"] else ""))
          if s["x"]["nx"] >= EXTREME_MONTHS else None),
 
     dict(key="saturated", label="Near-saturated air", group="Radiation", icon="fog", tone="dull",
          priority=3, needs=("RH",), needs_normal=False,
-         about="Twelve or more days whose mean relative humidity reached 95 %: air at or near "
+         about="Twelve or more days with a mean relative humidity of 95 % or more: air at or near "
                "saturation for the whole day, as in fog, low cloud or prolonged rain.",
          rule=lambda s: (f"{s['n_saturated']} days with a mean relative humidity of 95 "
                          f"{s['u_RH']} or more") if s["n_saturated"] >= 12 else None),
@@ -840,24 +843,24 @@ METRICS = [
     dict(key="TA_anom", var="TA", field="anom", scale="div", center=0.0,
          poles=("--pole-cold", "--pole-warm"), digits=1,
          group="Temperature", label="Air temperature anomaly", short="TA anomaly",
-         about="Monthly mean temperature minus the normal of that calendar month.",
+         about="Monthly mean air temperature minus the calendar-month normal.",
          day=dict(kind="anom", stat="mean")),
     dict(key="TA", var="TA", field="value", scale="div", center=None,
          poles=("--pole-cold", "--pole-warm"), digits=1,
          group="Temperature", label="Air temperature, monthly mean", short="TA",
-         about="Monthly mean temperature. Colour diverges about the record mean, so the seasons "
-               "separate, not the years.",
+         about="Monthly mean air temperature. The colour scale diverges about the record mean, "
+               "so it separates the seasons rather than the years.",
          day=dict(kind="value", stat="mean")),
     dict(key="PREC_pctn", var="PREC", field="pctn", scale="div", center=100.0,
          poles=("--series-4", "--series-1"), digits=0, unit="%",
          group="Precipitation", label="Precipitation, % of normal", short="PREC % of normal",
-         about="Monthly total as a percentage of the normal of that calendar month.",
+         about="Monthly precipitation total as a percentage of the calendar-month normal.",
          day=dict(kind="value", stat="sum")),
     dict(key="PREC", var="PREC", field="value", scale="seq",
          stops=("--seq-1", "--seq-2", "--seq-3", "--seq-4", "--seq-5", "--seq-6", "--seq-7"),
          digits=0, group="Precipitation", label="Precipitation, monthly total", short="PREC total",
-         about="Monthly precipitation total. A month with gaps under-reports, so the measured "
-               "share is worth reading beside it.",
+         about="Monthly precipitation total. A month with gaps under-reports; read it with the "
+               "measured share.",
          day=dict(kind="value", stat="sum")),
     dict(key="SW_IN", var="SW_IN", field="value", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0,
@@ -867,7 +870,7 @@ METRICS = [
     dict(key="VPD", var="VPD", field="value", scale="seq",
          stops=("--neutral-mid", "--series-2"), digits=2,
          group="Radiation and humidity", label="Vapour pressure deficit, monthly mean", short="VPD",
-         about="Monthly mean vapour pressure deficit, the atmosphere's evaporative demand.",
+         about="Monthly mean vapour pressure deficit, the evaporative demand of the atmosphere.",
          day=dict(kind="value", stat="mean")),
     # The absolute mean is dominated by the seasons - every July is dry air and every January is
     # not - so the departure is the one that answers "which months were unusually dry", and for a
@@ -876,15 +879,15 @@ METRICS = [
          poles=("--series-1", "--series-4"), digits=2,
          group="Radiation and humidity", label="Vapour pressure deficit anomaly",
          short="VPD anomaly",
-         about="Monthly mean evaporative demand minus the normal of that calendar month. Amber is "
-               "drier air than usual, blue damper: the same poles the precipitation anomaly "
-               "uses, so dry reads as dry across the page.",
+         about="Monthly mean vapour pressure deficit minus the calendar-month normal. Amber is "
+               "drier air than normal and blue damper air, the same colours as on the "
+               "precipitation scale.",
          day=dict(kind="anom", stat="mean")),
     dict(key="n_vpdstress", var="VPD", field="count", count="vpdstress", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0, unit="days",
          group="Radiation and humidity", label="Evaporative stress days per month",
          short="Stress days",
-         about="Days whose maximum vapour pressure deficit reached 2 kPa, a level at which "
+         about="Days with a maximum vapour pressure deficit of 2 kPa or more, a level at which "
                "stomatal closure is widely reported.",
          day=dict(kind="flag", flag="vpdstress")),
     dict(key="RH", var="RH", field="value", scale="seq",
@@ -900,20 +903,20 @@ METRICS = [
     dict(key="TS", var="TS", field="value", scale="div", center=None,
          poles=("--pole-cold", "--pole-warm"), digits=1,
          group="Soil", label="Soil temperature, monthly mean", short="TS",
-         about="Monthly mean temperature of the shallowest reported soil layer. Colour diverges "
-               "about the record mean, as it does for air temperature.",
+         about="Monthly mean temperature of the shallowest reported soil layer. The colour scale "
+               "diverges about the record mean, as for air temperature.",
          day=dict(kind="value", stat="mean")),
     dict(key="LW_IN", var="LW_IN", field="value", scale="seq",
          stops=("--neutral-mid", "--series-2"), digits=0,
          group="Radiation and humidity", label="Incoming longwave, monthly mean", short="LW_IN",
-         about="Monthly mean incoming longwave radiation, which rises with the temperature and "
-               "humidity of the air and with cloud cover.",
+         about="Monthly mean incoming longwave radiation. It increases with air temperature, "
+               "humidity and cloud cover.",
          day=dict(kind="value", stat="mean")),
     dict(key="PPFD_IN", var="PPFD_IN", field="value", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0,
          group="Radiation and humidity", label="Incoming PPFD, monthly mean", short="PPFD_IN",
-         about="Monthly mean photosynthetic photon flux density, the light available to "
-               "photosynthesis.",
+         about="Monthly mean incoming photosynthetic photon flux density, the light available "
+               "for photosynthesis.",
          day=dict(kind="value", stat="mean")),
     # Station pressure is set by the site's elevation and moves by about one per cent of itself,
     # so the level says nothing and the departures are the content: a month of persistent high
@@ -922,8 +925,9 @@ METRICS = [
     dict(key="PA", var="PA", field="value", scale="div", center=None,
          poles=("--series-1", "--series-4"), digits=2,
          group="Wind and turbulence", label="Atmospheric pressure, monthly mean", short="PA",
-         about="Monthly mean atmospheric pressure at the station. Colour diverges about the "
-               "record mean, so months of persistent high pressure separate from unsettled ones.",
+         about="Monthly mean atmospheric pressure at the station. The colour scale diverges about "
+               "the record mean, which separates months of persistent high pressure from unsettled "
+               "ones.",
          day=dict(kind="value", stat="mean")),
     dict(key="WS", var="WS", field="value", scale="seq",
          stops=("--neutral-mid", "--cold-1", "--cold-2"), digits=1,
@@ -933,9 +937,9 @@ METRICS = [
     dict(key="USTAR", var="USTAR", field="value", scale="seq",
          stops=("--neutral-mid", "--series-3"), digits=2,
          group="Wind and turbulence", label="Friction velocity, monthly mean", short="u*",
-         about="Monthly mean friction velocity, the turbulence the eddy covariance fluxes depend "
-               "on. A month of weak turbulence is one in which more of the night-time fluxes were "
-               "rejected by the u* filter and replaced by gap-filling.",
+         about="Monthly mean friction velocity, a measure of the turbulence on which the eddy "
+               "covariance fluxes depend. In a month of weak turbulence the u* filter rejects more "
+               "night-time fluxes, and more of them are gap-filled.",
          day=dict(kind="value", stat="mean")),
 
     # The carbon metrics. Green is uptake and red is release everywhere they appear, so the sign
@@ -945,41 +949,41 @@ METRICS = [
     dict(key="NEE", var="NEE", field="value", scale="div", center=0.0,
          poles=("--series-3", "--pole-warm"), digits=0,
          group="Carbon", label="Net ecosystem exchange, monthly total", short="NEE",
-         about="Monthly net exchange of CO₂. Green months are a net sink, red months a net "
-               "source. A month with gaps under-reports the total in either direction, so the "
-               "measured share is worth reading beside it.",
+         about="Monthly net ecosystem exchange of CO₂. Green is a net sink, red a net source. A "
+               "month with gaps under-reports the total in either direction; read it with the "
+               "measured share.",
          day=dict(kind="value", stat="sum")),
     dict(key="NEE_anom", var="NEE", field="anom", scale="div", center=0.0,
          poles=("--series-3", "--pole-warm"), digits=0,
          group="Carbon", label="Net ecosystem exchange anomaly", short="NEE anomaly",
-         about="Monthly net exchange minus the normal of that calendar month. Green is more "
-               "carbon taken up than usual, red less - which for a month that is a sink either "
-               "way is the more informative statement of the two.",
+         about="Monthly net ecosystem exchange minus the calendar-month normal. Green is more "
+               "uptake or less release than normal, red less uptake or more release.",
          day=dict(kind="anom", stat="sum")),
     dict(key="n_sink", var="NEE", field="count", count="sink", scale="seq",
          stops=("--neutral-mid", "--series-3"), digits=0, unit="days",
          group="Carbon", label="Sink days per month", short="Sink days",
-         about="Days closing with a negative total, where uptake over the twenty-four hours "
-               "exceeded release. The shoulders of the growing season are where this count "
-               "separates years that a monthly total does not.",
+         about="Days with a negative daily total of net ecosystem exchange: uptake over the "
+               "24 hours exceeded release. At the start and end of the growing season this count "
+               "separates years that the monthly total does not.",
          day=dict(kind="flag", flag="sink")),
     dict(key="GPP", var="GPP", field="value", scale="seq",
          stops=("--neutral-mid", "--series-3"), digits=0,
          group="Carbon", label="Gross primary productivity, monthly total", short="GPP",
-         about="Monthly carbon fixed by photosynthesis, partitioned out of the net flux.",
+         about="Monthly gross primary productivity, the carbon fixed by photosynthesis, "
+               "partitioned from the net flux.",
          day=dict(kind="value", stat="sum")),
     dict(key="GPP_anom", var="GPP", field="anom", scale="div", center=0.0,
          poles=("--series-2", "--series-3"), digits=0,
          group="Carbon", label="Gross primary productivity anomaly", short="GPP anomaly",
-         about="Monthly productivity minus the normal of that calendar month. The seasonal cycle "
-               "dominates the absolute figure at any site with a winter, so the departure is what "
+         about="Monthly gross primary productivity minus the calendar-month normal. At any site "
+               "with a winter the seasonal cycle dominates the absolute value; the anomaly "
                "identifies a poor growing season.",
          day=dict(kind="anom", stat="sum")),
     dict(key="RECO", var="RECO", field="value", scale="seq",
          stops=("--neutral-mid", "--series-2"), digits=0,
          group="Carbon", label="Ecosystem respiration, monthly total", short="RECO",
-         about="Monthly carbon returned by plant and soil respiration, partitioned out of the net "
-               "flux.",
+         about="Monthly ecosystem respiration, the carbon released by plant and soil "
+               "respiration, partitioned from the net flux.",
          day=dict(kind="value", stat="sum")),
 
     # The energy fluxes share a group because the question either one answers is how the available
@@ -993,19 +997,19 @@ METRICS = [
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0,
          group="Energy", label="Sensible heat flux, monthly mean", short="H",
          about="Monthly mean sensible heat flux, the energy leaving the surface as warm air. Read "
-               "against the latent flux it states how the available energy was partitioned.",
+               "with the latent heat flux, it shows how the available energy was partitioned.",
          day=dict(kind="value", stat="mean")),
     dict(key="NETRAD", var="NETRAD", field="value", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0,
          group="Energy", label="Net radiation, monthly mean", short="NETRAD",
-         about="Monthly mean net radiation, the energy available at the surface before the soil "
-               "and the turbulent fluxes divide it.",
+         about="Monthly mean net radiation, the energy available at the surface to the soil heat "
+               "flux and the turbulent fluxes.",
          day=dict(kind="value", stat="mean")),
     dict(key="G", var="G", field="value", scale="div", center=0.0,
          poles=("--pole-cold", "--pole-warm"), digits=1,
          group="Energy", label="Soil heat flux, monthly mean", short="G",
-         about="Monthly mean soil heat flux. Red months warmed the soil, blue months drew heat "
-               "out of it; over a whole year the two nearly cancel.",
+         about="Monthly mean soil heat flux. Red months warmed the soil and blue months cooled "
+               "it; over a year the two nearly cancel.",
          day=dict(kind="value", stat="mean")),
     # The two ratios of the energy balance. Each is formed from the span's own means rather than
     # half-hour by half-hour, and each explodes where its denominator nears zero, so a span whose
@@ -1015,74 +1019,69 @@ METRICS = [
          poles=("--series-4", "--series-1"), digits=0, unit="%", agg="mean",
          group="Energy", label="Energy balance closure", short="Closure",
          about="The turbulent fluxes as a share of the available energy, (H + LE) / (NETRAD − G), "
-               "from the span's own means. 100 % is a closed energy balance; eddy covariance "
-               "sites commonly close to between 70 and 90 %, a shortfall common to the method "
-               "rather than particular to one record. Formed only where each of the four terms "
-               "covers at least the share of the span its normal requires, and withheld where "
-               f"the available energy is below {CLOSURE_MIN_ENERGY:.0f} W m⁻², as it is in the "
-               "winter months of a mid-latitude site: there the denominator nears zero and the "
-               "ratio no longer describes the balance.",
+               "from the span means. 100 % is a closed energy balance; eddy covariance sites "
+               "commonly close to between 70 and 90 %. Computed only where each of the four terms "
+               "covers at least the share of the span its normal requires. Withheld where the "
+               f"available energy is below {CLOSURE_MIN_ENERGY:.0f} W m⁻², as in the winter "
+               "months of a mid-latitude site, where the denominator approaches zero.",
          day=dict(kind="none")),
     dict(key="ef", var="LE", field="extra", extra="ef", scale="seq",
          stops=("--neutral-mid", "--series-1"), digits=0, unit="%", agg="mean",
          group="Energy", label="Evaporative fraction", short="EF",
-         about="The latent heat flux as a share of the two turbulent fluxes together, "
-               "LE / (H + LE), from the span's own means: how much of the energy the surface "
-               "gave to the air went into evaporation rather than into heating it. It tends to "
-               "fall as the soil dries. Formed only where both fluxes cover at least the share "
-               "of the span their normals require, and withheld where H + LE is below "
-               f"{EF_MIN_ENERGY:.0f} W m⁻², where a negative sensible flux can cancel most of the "
-               "latent one and the ratio leaves the range in which it has a meaning.",
+         about="The latent heat flux as a share of the turbulent fluxes, LE / (H + LE), from the "
+               "span means: the fraction of the turbulent energy that went into evaporation. It "
+               "tends to fall as the soil dries. Computed only where both fluxes cover at least "
+               "the share of the span their normals require. Withheld where H + LE is below "
+               f"{EF_MIN_ENERGY:.0f} W m⁻², where a negative sensible heat flux can cancel most of "
+               "the latent heat flux and the ratio loses its meaning.",
          day=dict(kind="none")),
 
     # The two composite metrics answer the questions the per-variable ones cannot: how far from
     # normal a month was at all, and in how many independent ways at once.
     dict(key="zmax", var="TA", field="extra", extra="zmax", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=1, unit="sd",
-         group="Across the variables", label="How unusual the month was", short="Unusualness",
-         about="The furthest any one variable stood from its own normal for this calendar month, "
-               "counted in standard deviations of that variable across the record and in either "
-               "direction. One dimensionless scale, so a strange February and a strange July are "
-               "comparable.",
+         group="Composite", label="Largest standardized anomaly", short="Max anomaly",
+         about="The largest absolute departure from the calendar-month normal among the {n_axes} "
+               "variables of the composite ({axes}), in standard deviations of each variable "
+               "across the record. The scale is dimensionless, so an unusual February and an "
+               "unusual July are comparable.",
          day=dict(kind="none")),
     dict(key="nsd", var="TA", field="extra", extra="nsd", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0, unit="variables",
-         group="Across the variables",
-         label="How many things were unusual at once", short="Unusual variables",
-         about="How many of the {n_axes} variables this build compares this way ({axes}) stood "
-               "at least one standard deviation from their own normal for this calendar month. "
-               "They do not move independently; the correlation between them is measured and "
-               "shown beside the grid.",
+         group="Composite",
+         label="Variables at least 1 sd from normal", short="Variables ≥ 1 sd",
+         about="Number of the {n_axes} variables of the composite ({axes}) that were at least one "
+               "standard deviation from their calendar-month normal. The variables are not "
+               "independent; their correlations are measured and shown beside the grid.",
          day=dict(kind="none")),
     dict(key="dtr", var="TA", field="extra", extra="dtr", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=1,
          group="Temperature", label="Diurnal temperature range", short="Day-night range",
-         about="Mean of the daily maximum minus the daily minimum. It separates clear dry months "
-               "from cloudy ones as sharply as radiation does, from the temperature record "
-               "alone.",
+         about="Monthly mean of the daily maximum minus the daily minimum air temperature. It "
+               "separates clear, dry months from cloudy ones as sharply as radiation does.",
          day=dict(kind="range", stats=("min", "max"))),
     dict(key="gdd", var="TA", field="extra", extra="gdd", scale="seq", agg="sum",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0, unit="K d",
          group="Temperature", label="Growing degree days above 5 °C", short="Degree days",
-         about="Sum over the month of the daily mean above 5 °C, the base the growing season is "
-               "taken above.",
+         about="Sum over the month of the daily mean air temperature above 5 °C, the base of the "
+               "growing season.",
          day=dict(kind="none")),
     dict(key="spell_dry", var="PREC", field="spell", spell="dry", scale="seq",
          stops=("--neutral-mid", "--series-4"), digits=0, unit="days",
          group="Precipitation", label="Longest dry spell", short="Dry spell",
-         about="The longest run of consecutive days below 1 mm within the month. A month can "
-               "reach its normal total and still hold a fortnight without rain.",
+         about="Longest run of consecutive days with less than 1 mm within the month. A month can "
+               "reach its normal total and still contain two weeks without rain.",
          day=dict(kind="none")),
     dict(key="n_wet", var="PREC", field="count", count="wet", scale="seq",
          stops=("--neutral-mid", "--seq-4", "--seq-6"), digits=0, unit="days",
          group="Precipitation", label="Wet days per month", short="Wet days",
-         about="Days reaching 1 mm.",
+         about="Days with at least 1 mm.",
          day=dict(kind="flag", flag="wet")),
     dict(key="n_clear", var="SW_IN", field="count", count="clear", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0, unit="days",
          group="Radiation and humidity", label="Clear days per month", short="Clear days",
-         about="Days brighter than the 90th percentile for their own date, so a bright January "
-               "day counts as one.",
+         about="Days with mean incoming shortwave radiation above the 90th percentile for their "
+               "calendar date, so a bright January day can count.",
          day=dict(kind="flag", flag="clear")),
     dict(key="n_hot", var="TA", field="count", count="hot", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0, unit="days",
@@ -1097,8 +1096,8 @@ METRICS = [
     dict(key="meas", var="TA", field="meas", scale="seq",
          stops=("--seq-7", "--seq-4", "--seq-1"), digits=0, unit="%",
          group="Data quality", label="Measured share, air temperature", short="Coverage",
-         about="Percentage of the month's half-hours that are measured, not gap-filled or "
-               "missing. Dark is complete.",
+         about="Percentage of the month's half-hours that were measured, not gap-filled or "
+               "missing. Dark is fully measured.",
          day=dict(kind="meas")),
 ]
 
@@ -1383,9 +1382,9 @@ def season_note(scheme):
     if [s["key"] for s in scheme] == ["DJF", "MAM", "JJA", "SON"]:
         return f"The four meteorological seasons: {names}."
     n = len(scheme[0]["months"])
-    return (f"{len(scheme)} season{'s' if len(scheme) > 1 else ''} of {n} months, derived from "
-            f"the first one this atlas was built with: {names}. This is not the usual four-season "
-            f"division; every figure on this scale is taken over the months named.")
+    return (f"{len(scheme)} season{'s' if len(scheme) > 1 else ''} of {n} months: {names}, "
+            f"derived from the first season given at build time. This is not the usual four-season "
+            f"division; each figure at this scale covers the months in the season's name.")
 
 # The badges that mean the same thing over three months as over one. Everything defined on a
 # z-score, a percentage of normal or a rank is scale-free and travels; everything defined on a
@@ -1831,12 +1830,12 @@ def year_standout(st, peers, keys, loaded):
             noun = v.sign["low"] if normal <= 0 else v.sign["high"]
             more = anomaly < 0 if normal <= 0 else anomaly > 0
             z = st[f"{key}_z"]
-            detail += (f", about the same {noun} as the record"
+            detail += (f", about the same {noun} as the record mean"
                        if z is not None and abs(z) < 0.25 else
                        f", {abs(anomaly):.{v.digits}f} {'more' if more else 'less'} {noun} than "
-                       f"the record")
+                       f"the record mean")
         elif anomaly is not None:
-            detail += f", {anomaly:+.{v.digits}f} against the record"
+            detail += f", {anomaly:+.{v.digits}f} relative to the record mean"
         out.append(dict(k=v.short, v=f"{capital(note)}. {detail}", tone="rank",
                         s=strength + 3.0 / place))
 
@@ -1846,9 +1845,10 @@ def year_standout(st, peers, keys, loaded):
         v = loaded["NEE"]["v"]
         total = st["NEE"]
         line = (f"The site was a net {'sink' if total < 0 else 'source'} of "
-                f"{abs(total):.0f} {v.units}")
+                f"{abs(total):.0f}")
         if st["NEE_unc"] is not None:
             line += f" ± {st['NEE_unc']:.0f}"
+        line += f" {v.units}"
         if st["NEE_rank"] is not None:
             _, where = placing(st["NEE_rank"], st["NEE_rank_far"], st["NEE_n"],
                                *end_words("NEE"))
@@ -1862,12 +1862,12 @@ def year_standout(st, peers, keys, loaded):
         # card's own shorthand and means nothing away from it; what a reader needs is which
         # variable moved furthest and how much else moved with it.
         out.append(dict(
-            k="Most unusual month",
-            v=(f"{worst['name']}: {title.lower()} stood {worst['z']:+.1f} standard deviations "
-               f"from its {worst['name']} normal"
-               + (f", and {worst['n']} of the {worst['nz']} variables that could be judged stood "
-                  f"at least 1 from theirs" if worst["n"] > 1 else
-                  ", the only variable that far from normal that month")
+            k="Most anomalous month",
+            v=(f"{worst['name']}: {title.lower()} {worst['z']:+.1f} standard deviations from its "
+               f"{worst['name']} normal"
+               + (f"; {worst['n']} of the {worst['nz']} variables judged were at least 1 "
+                  f"standard deviation from their normal" if worst["n"] > 1 else
+                  "; no other variable was at least 1 standard deviation from its normal")
                + "."),
             tone="rank", s=abs(worst["z"])))
 
@@ -1890,10 +1890,10 @@ def year_standout(st, peers, keys, loaded):
         line = f"{found['days']} {unit}"
         if found["delta"]:
             line += (f", {abs(found['delta'])} days "
-                     f"{'longer' if found['delta'] > 0 else 'shorter'} than usual "
+                     f"{'longer' if found['delta'] > 0 else 'shorter'} than the record median "
                      f"({found['normal']:.0f})")
         elif found["delta"] == 0:
-            line += ", the usual length"
+            line += ", the record median"
         if place and place <= 3:
             line += f". {capital(where)}"
         out.append(dict(k=label, v=line + ".", tone="season",
@@ -1901,10 +1901,10 @@ def year_standout(st, peers, keys, loaded):
 
     if st["x"]["nx"]:
         n_extreme = st["x"]["nx"]
-        out.append(dict(k="Months that stood out", v=(
-            f"In {n_extreme} month{'s' if n_extreme > 1 else ''} of this year, a variable stood at "
-            f"least {EXTREME_MONTH_Z:g} standard deviations from its own normal for that calendar "
-            f"month."), tone="rank", s=0.8 * n_extreme))
+        out.append(dict(k="Extreme months", v=(
+            f"In {n_extreme} month{'s' if n_extreme > 1 else ''} of this year, at least one "
+            f"variable was {EXTREME_MONTH_Z:g} or more standard deviations from its "
+            f"calendar-month normal."), tone="rank", s=0.8 * n_extreme))
 
     nrec = [p["x"]["nrec"] for p in peers]
     rank, n = place_among(st["x"]["nrec"], nrec)
@@ -1912,8 +1912,8 @@ def year_standout(st, peers, keys, loaded):
     place, where = placing(rank, far, n, "most", "fewest")
     if st["x"]["nrec"] and place and place <= 3:
         out.append(dict(k="Record days", v=(
-            f"{st['x']['nrec']} days were the warmest, coldest or wettest occurrence of their own "
-            f"calendar date, the {where}."), tone="rank", s=3.0 / place))
+            f"{st['x']['nrec']} days set a warm, cold or wet record for their calendar date, the "
+            f"{where}."), tone="rank", s=3.0 / place))
 
     out.sort(key=lambda item: -item["s"])
     return [dict(k=item["k"], v=item["v"], tone=item["tone"]) for item in out]
@@ -2345,8 +2345,8 @@ def evaluate_badges(s, keys, scale="month"):
     without a badge, so the KeyError is re-raised naming the badge rather than swallowed.
     """
     noun = {"month": "month", "season": "season", "year": "year"}[scale]
-    peers = "this calendar month" if scale == "month" else \
-        "this season in other years" if scale == "season" else "the record's years"
+    peers = "for this calendar month" if scale == "month" else \
+        "for this season" if scale == "season" else "at the year scale"
     earned, suppressed = [], []
     for badge in BADGES:
         if not badge_at_scale(badge, scale):
@@ -2358,16 +2358,16 @@ def evaluate_badges(s, keys, scale="month"):
             elif s[need] is None:
                 blocked = f"no {need} data in this {noun}"
             elif s[f"{need}_avail"] is None or s[f"{need}_avail"] < varreg.coverage(need).badge:
-                blocked = (f"the record covers only {s[f'{need}_avail']:.0f} % of this span for "
-                           f"{need}, below the {varreg.coverage(need).badge:.0f} % a badge needs")
+                blocked = (f"{need} covers {s[f'{need}_avail']:.0f} % of this {noun}, below the "
+                           f"{varreg.coverage(need).badge:.0f} % required for a badge")
             elif badge.get("needs_normal", True) and s[f"{need}_norm"] is None:
-                blocked = f"{need} has no normal across {peers}"
+                blocked = f"{need} has no normal {peers}"
             elif badge.get("needs_normal", True) and not s[f"{need}_sd"]:
                 # A normal can exist and still have no spread - a sensor stuck at one reading, or a
                 # variable that is zero throughout the same month of every year. Every badge phrased
                 # as a departure divides by that spread, so there is nothing for them to say.
-                blocked = (f"{need} does not vary across the same span in other years, so a "
-                           f"departure from its normal is undefined")
+                blocked = (f"{need} has zero spread {peers}, so a departure from normal is "
+                           f"undefined")
             if blocked:
                 break
         if blocked:

@@ -163,7 +163,7 @@ QC_CONSOLIDATED = QcConvention(
 QC_UNSTATED = QcConvention(
     "unstated",
     (FillLevel(None, "otherwise flagged"),),
-    "no convention this package knows: 0 is read as measured and any other value as not")
+    "no documented convention: 0 is read as measured and any other value as not measured")
 
 FILL_OTHER = "without a documented flag"
 
@@ -218,19 +218,19 @@ VARIABLES = {
         digits=1,
         hourly=True,
         scale=10,
-        about="Air temperature. The variable most of the calendar's structure is built on: the "
-              "growing season, the frost boundaries and the degree-day sum are all taken from it.",
+        about="Air temperature. The growing season, the frost dates and the growing degree-day "
+              "sum are derived from it.",
         index_groups=[
             dict(title="Cold indices", ramp="cold",
-                 sub="Frost days have a daily minimum below 0 {units}; ice days a daily maximum "
-                     "below it.",
+                 sub="Frost day: daily minimum below 0 {units}. Ice day: daily maximum below "
+                     "0 {units}.",
                  items=[dict(key="frost", label="frost days (min < 0 {units})", stat="min",
                              op="lt", value=0.0),
                         dict(key="ice", label="ice days (max < 0 {units})", stat="max",
                              op="lt", value=0.0)]),
             dict(title="Warm indices", ramp="warm",
-                 sub="Summer days reach 25 {units}, hot days 30 {units}, and a tropical night "
-                     "stays above 20 {units}.",
+                 sub="Summer day: daily maximum at or above 25 {units}. Hot day: daily maximum at "
+                     "or above 30 {units}. Tropical night: daily minimum at or above 20 {units}.",
                  items=[dict(key="summer", label="summer days (max ≥ 25 {units})",
                              stat="max", op="ge", value=25.0),
                         dict(key="hot", label="hot days (max ≥ 30 {units})", stat="max",
@@ -257,12 +257,13 @@ VARIABLES = {
         digits=1,
         hourly=True,
         scale=10,
-        about="Precipitation as a per-record total. This variable sums rather than averages: a "
-              "monthly figure is a total, and a record with no measurement contributes nothing to "
-              "it rather than being treated as zero.",
+        about="Precipitation. Monthly, seasonal and annual figures are totals, not means. A "
+              "missing half-hour adds nothing to a total, so a span with gaps under-reports; a "
+              "period with no records at all has no total rather than a total of zero.",
         index_groups=[
             dict(title="Wet-day counts", ramp="cold",
-                 sub="Days reaching 1 {units} and 10 {units} of total precipitation.",
+                 sub="Days with a precipitation total of at least 1 {units} and at least "
+                     "10 {units}.",
                  items=[dict(key="wet", label="wet days (≥ 1 {units})", stat="sum",
                              op="ge", value=1.0),
                         dict(key="heavy", label="heavy days (≥ 10 {units})", stat="sum",
@@ -287,9 +288,9 @@ VARIABLES = {
         digits=0,
         hourly=True,
         scale=1,
-        about="Incoming shortwave radiation. The clear and overcast day tests are taken against "
-              "the percentiles for the date rather than a fixed threshold, so a bright winter day "
-              "counts as one.",
+        about="Incoming shortwave radiation. Clear and overcast days are defined by the "
+              "percentiles for the calendar date, not by a fixed threshold, so a bright winter day "
+              "can count as clear.",
         extremes=dict(high="brightest", low="dullest", low_halfhour=False, low_day=True),
     ),
 
@@ -309,9 +310,9 @@ VARIABLES = {
         digits=2,
         hourly=False,
         scale=100,
-        about="Vapour pressure deficit, the atmosphere's evaporative demand. Physically the "
-              "combination of temperature and humidity that closes stomata, which is why it is an "
-              "axis of the composite and relative humidity is not.",
+        about="Vapour pressure deficit, the evaporative demand of the atmosphere. It combines "
+              "temperature and humidity in the form that controls stomatal conductance, and is "
+              "therefore a variable of the composite, where relative humidity is not.",
         extremes=dict(high="driest air", low="dampest air", low_halfhour=False),
     ),
 
@@ -328,10 +329,10 @@ VARIABLES = {
         digits=0,
         hourly=False,
         scale=1,
-        about="Relative humidity. Kept for the saturation test - a daily mean of 95 % or more is "
-              "air at or near saturation, as in fog, low cloud or prolonged rain - rather than as "
-              "an axis of the composite, where vapour pressure deficit carries the same "
-              "information in a physically meaningful form.",
+        about="Relative humidity. It is used for the near-saturation day test: a daily mean of "
+              "95 % or more indicates air at or near saturation, as in fog, low cloud or "
+              "prolonged rain. It is not a variable of the composite, because vapour pressure "
+              "deficit carries the same information in a physically meaningful form.",
         extremes=dict(high="dampest", low="driest"),
     ),
 
@@ -348,9 +349,9 @@ VARIABLES = {
         digits=1,
         hourly=False,
         scale=10,
-        about="Volumetric soil water content of the shallowest reported layer. The limb of a "
-              "drought that the atmosphere's demand acts on, and the slowest of the axes to "
-              "recover.",
+        about="Volumetric soil water content of the shallowest reported layer. In a drought it "
+              "is the water supply on which atmospheric demand acts, and it is the slowest "
+              "variable of the composite to recover.",
         extremes=dict(high="wettest soil", low="driest soil"),
     ),
 
@@ -379,8 +380,8 @@ VARIABLES = {
         hourly=False,
         scale=10,
         about="Soil temperature of the shallowest reported layer. It follows air temperature "
-              "with a damped and delayed cycle, and it is the temperature the soil respiration "
-              "that makes up much of ecosystem respiration responds to.",
+              "with a damped, delayed cycle and controls soil respiration, a large part of "
+              "ecosystem respiration.",
         extremes=dict(high="warmest soil", low="coldest soil"),
     ),
 
@@ -401,8 +402,8 @@ VARIABLES = {
         digits=1,
         hourly=False,
         scale=10,
-        about="Horizontal wind speed. Read beside the friction velocity, it separates a calm "
-              "month from one whose turbulence was weak for the wind it had.",
+        about="Horizontal wind speed. Read with friction velocity, it distinguishes a calm "
+              "month from one with weak turbulence for its wind speed.",
         # Calm half-hours are common and their minimum is the instrument's floor, not a
         # statistic of the record.
         extremes=dict(high="windiest", low="calmest", low_halfhour=False),
@@ -427,9 +428,9 @@ VARIABLES = {
         digits=2,
         hourly=False,
         scale=100,
-        about="Atmospheric pressure at the station. Its level is set by the site's elevation and "
-              "its departures by the passage of pressure systems; it is needed to convert "
-              "between the concentration and the mixing ratio of a gas.",
+        about="Atmospheric pressure at the station. Its level is set by the site elevation and "
+              "its departures by passing pressure systems. It is needed to convert between the "
+              "concentration and the mixing ratio of a gas.",
         extremes=dict(high="highest pressure", low="lowest pressure"),
     ),
 
@@ -451,9 +452,9 @@ VARIABLES = {
         digits=0,
         hourly=False,
         scale=1,
-        about="Incoming longwave radiation, emitted by the atmosphere and by cloud. It rises "
-              "with the temperature and humidity of the air above the site and with cloud "
-              "cover, so an overcast night keeps it high while a clear one lets it fall.",
+        about="Incoming longwave radiation, emitted by the atmosphere and by clouds. It "
+              "increases with air temperature, humidity and cloud cover, so it stays high on "
+              "overcast nights and falls on clear ones.",
         extremes=dict(high="most incoming longwave", low="least incoming longwave"),
     ),
 
@@ -473,9 +474,9 @@ VARIABLES = {
         digits=0,
         hourly=False,
         scale=1,
-        about="Incoming photosynthetically active radiation as a photon flux: the part of the "
-              "solar spectrum, 400 to 700 nm, that photosynthesis uses. It tracks incoming "
-              "shortwave closely, and is measured by a separate quantum sensor.",
+        about="Incoming photosynthetically active radiation as a photon flux: the 400 to "
+              "700 nm band of the solar spectrum used in photosynthesis. It is measured by a "
+              "separate quantum sensor and closely tracks incoming shortwave radiation.",
         extremes=dict(high="brightest", low="dullest", low_halfhour=False),
     ),
 
@@ -511,9 +512,9 @@ VARIABLES = {
         hourly=False,
         scale=100,
         about="Friction velocity, the square root of the kinematic momentum flux measured by the "
-              "sonic anemometer: how turbulent the air over the surface was. It is the quantity "
-              "the u* filter is applied to, so a month of low friction velocity is a month whose "
-              "fluxes lean more heavily on gap-filling. Not gap-filled, so its gaps are missing "
+              "sonic anemometer, and a measure of turbulence over the surface. The u* filter is "
+              "applied to it, so in a month of low friction velocity more of the fluxes are "
+              "gap-filled. Friction velocity itself is not gap-filled; its gaps are missing "
               "records.",
         extremes=dict(high="most turbulent", low="least turbulent", low_halfhour=False),
     ),
@@ -555,13 +556,13 @@ VARIABLES = {
         hourly=True,
         scale=1000,
         about="Net ecosystem exchange of CO₂, signed by the micrometeorological convention: "
-              "negative is uptake by the ecosystem, positive is release to the atmosphere. The "
-              "monthly figure is the total, so a month reads directly as the carbon the site "
-              "gained or lost.",
+              "negative is uptake by the ecosystem, positive is release to the atmosphere. "
+              "Monthly, seasonal and annual figures are totals: the net carbon gained or lost by "
+              "the site.",
         index_groups=[
             dict(title="Carbon balance", ramp="cold",
-                 sub="A sink day closes with a negative total: the ecosystem took up more carbon "
-                     "than it released over the twenty-four hours.",
+                 sub="A sink day has a negative daily total: the ecosystem took up more carbon "
+                     "than it released over the 24 hours.",
                  items=[dict(key="sink", label="sink days (daily total < 0 {units})",
                              stat="sum", op="lt", value=0.0)]),
         ],
@@ -628,8 +629,8 @@ VARIABLES = {
         hourly=False,
         scale=1000,
         about="Gross primary productivity: the carbon fixed by photosynthesis, as a positive "
-              "quantity. Not measured but partitioned out of the net flux, so its quality is the "
-              "quality of the net flux it came from.",
+              "quantity. It is not measured but partitioned from the net flux, so its measured "
+              "share is that of the net flux.",
         extremes=dict(high="most productive", low="least productive", low_halfhour=False),
         # No random term is published for a partitioning product, and no ensemble members either -
         # only `_SE`, the spread across the u* percentile versions. Systematic, so summed linearly:
@@ -668,9 +669,9 @@ VARIABLES = {
         digits=2,
         hourly=False,
         scale=1000,
-        about="Ecosystem respiration: the carbon returned by plant and soil respiration, as a "
-              "positive quantity. The other half of the partitioned net flux, and the term that "
-              "keeps rising through a warm night when photosynthesis has stopped.",
+        about="Ecosystem respiration: the carbon released by plant and soil respiration, as a "
+              "positive quantity. Like gross primary productivity it is partitioned from the net "
+              "flux, not measured. Unlike gross primary productivity, it continues at night.",
         extremes=dict(high="highest respiration", low="lowest respiration"),
         uncertainty=[
             dict(kind=SYSTEMATIC, label="u* threshold", columns=[
@@ -710,9 +711,9 @@ VARIABLES = {
         digits=0,
         hourly=True,
         scale=10,
-        about="Latent heat flux, the energy carried away as water vapour. The evaporative half of "
-              "the surface energy balance, and the term that collapses when the soil runs dry "
-              "while the atmosphere's demand does not.",
+        about="Latent heat flux, the energy leaving the surface as water vapour. It is the "
+              "evaporative term of the surface energy balance, and it falls sharply when the soil "
+              "dries while atmospheric demand stays high.",
         extremes=dict(high="strongest evaporation", low="weakest evaporation"),
         # `LE_CORR_JOINTUNC` would be the one to want, and it is -9999 in every record of a real
         # CH-Oe2 file. The random term is what the file actually carries, so that is what is shown,
@@ -737,9 +738,9 @@ VARIABLES = {
         digits=0,
         hourly=True,
         scale=10,
-        about="Sensible heat flux, the energy carried away as warm air. It takes over from the "
-              "latent flux as soil water is exhausted, which is why the two are worth reading "
-              "against each other rather than on their own.",
+        about="Sensible heat flux, the energy leaving the surface as warm air. It takes over from "
+              "the latent heat flux as soil water is depleted, so the two are best read "
+              "together.",
         extremes=dict(high="strongest heating", low="strongest cooling"),
         uncertainty=[
             dict(kind=QUADRATURE, label="random", columns=[("H_F_MDS", ["H_RANDUNC"])]),
@@ -788,13 +789,13 @@ VARIABLES = {
         digits=0,
         hourly=False,
         scale=1,
-        about="Net radiation: incoming minus outgoing radiation, shortwave and longwave together, "
-              "positive when the surface gains energy. It is the energy the soil heat flux and "
-              "the turbulent fluxes divide between them. Where the file carries no net radiation "
-              "of its own it is computed from the file's four radiation components, incoming "
-              "shortwave minus outgoing shortwave plus incoming longwave minus outgoing "
-              "longwave; the column named on each tile then states that formula, and a "
-              "half-hour counts as measured only where all four components were.",
+        about="Net radiation: incoming minus outgoing shortwave and longwave radiation, positive "
+              "when the surface gains energy. The soil heat flux and the turbulent fluxes divide "
+              "it between them. Where the file has no net radiation column, it is computed from "
+              "the four radiation components as incoming shortwave minus outgoing shortwave plus "
+              "incoming longwave minus outgoing longwave. The column named on each tile then "
+              "states that formula, and a half-hour counts as measured only where all four "
+              "components were measured.",
         extremes=dict(high="most net radiation", low="least net radiation"),
     ),
 
@@ -813,10 +814,10 @@ VARIABLES = {
         digits=1,
         hourly=False,
         scale=10,
-        about="Soil heat flux, positive into the soil. Over a year it is close to zero, since "
-              "the soil gives back in winter what it stored in summer; over a month it is the "
-              "part of the net radiation that went into warming or cooling the ground rather "
-              "than into the turbulent fluxes.",
+        about="Soil heat flux, positive into the soil. Over a year it is close to zero, because "
+              "the soil releases in winter the heat it stored in summer. Over a month it is the "
+              "part of net radiation that warmed or cooled the ground rather than entering the "
+              "turbulent fluxes.",
         extremes=dict(high="most heat into the soil", low="most heat out of the soil"),
     ),
 }

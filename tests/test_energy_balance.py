@@ -65,7 +65,7 @@ def test_the_computed_series_is_named_as_computed_on_the_page(energy_atlas):
     entry = next(v for v in energy_atlas.payload["variables"] if v["key"] == "NETRAD")
     assert entry["column"] == FORMULA
     assert entry["column"].startswith("computed")
-    assert "computed from the file's four radiation components" in entry["about"]
+    assert "computed from the four radiation components" in entry["about"]
 
 
 def test_a_record_is_measured_only_where_every_component_was(tmp_path):
