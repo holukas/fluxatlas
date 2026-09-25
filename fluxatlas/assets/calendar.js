@@ -3609,6 +3609,187 @@
   }
 
   /* ------------------------------------------------------------------------------------------
+     A total, accumulated through the year
+     ------------------------------------------------------------------------------------------
+     The standard figure of a flux site: the running total of daily net exchange from 1 January,
+     one line per year. Where a year's line sits in July says how far into the season its uptake
+     had got; where it ends says what the year came to; and the others around it say whether
+     either was unusual. It is drawn for every variable that sums, since the same question - how
+     the year's total built up, and whether it built up early or late - is as fair a question of
+     precipitation as of carbon.
+
+     A missing day enters exactly as it does in the span panel's accumulated precipitation: it adds
+     nothing, and the line holds level across it. The card says so and counts the days, because a
+     running total that silently skips a week is short by whatever that week carried.
+
+     Built on the calendar year rather than the day-of-year the normals fold onto: a running total
+     cannot drop 29 February without dropping what it carried. A leap year runs one day longer, one
+     pixel in three hundred and sixty-six, which the raster accepts on the same grounds.
+     ------------------------------------------------------------------------------------------ */
+
+  /** Whether a variable sums, and the build shipped the daily totals a running total is made of. */
+  const hasCumulative = v => v.agg === 'sum' && !!DAYS.series[v.key + '_sum'];
+
+  /** One running total per year of the record, with the count of missing days to each date. */
+  function cumulativeTracks(key) {
+    return YEARS.map(y => {
+      const start = dayIndex(y, 1, 1);
+      const len = isLeap(y) ? 366 : 365;
+      const run = [], gaps = [];
+      let acc = 0, seen = false, missing = 0;
+      for (let d = 0; d < len; d++) {
+        const i = start + d;
+        const v = i >= 0 && i < DAYS.n ? dayStat(key, 'sum', i) : null;
+        if (isNum(v)) { acc += v; seen = true; } else missing += 1;
+        // Nothing is drawn before the first value, as in the span panel: a line that began at
+        // zero would claim the days before it had been measured and had carried nothing.
+        run.push(seen ? acc : null);
+        gaps.push(missing);
+      }
+      return { y: y, run: run, gaps: gaps, missing: missing };
+    });
+  }
+
+  /** The running total of the daily normals, on the ordinary-year calendar they are built on. */
+  function cumulativeNormal(key) {
+    const n = NORM[key] && NORM[key].sum;
+    if (!n) return null;
+    const out = [];
+    let acc = 0;
+    for (let d = 1; d <= 365; d++) {
+      if (isNum(n.mean[d])) acc += n.mean[d];
+      out.push(acc);
+    }
+    return out;
+  }
+
+  function drawCumulative(key, focus, onPanel) {
+    const v = VARS[key];
+    return function (host) {
+      const tracks = cumulativeTracks(key);
+      const normal = cumulativeNormal(key);
+      const here = tracks.find(t => t.y === focus);
+      const days = [];
+      for (let d = 1; d <= 366; d++) days.push(d);
+
+      const f = frame(host, { aspect: 0.4,
+        ariaLabel: v.short + ' accumulated through the year from 1 January, every year of the '
+          + 'record, ' + focus + ' drawn over the others' });
+      const ext = extent(tracks.map(t => t.run).concat(normal ? [normal] : []));
+      // Zero is always on the axis: it is where every line starts, and for a signed variable it
+      // is the boundary between the two words the page uses for the sign.
+      const lo = Math.min(0, ext[0]), hi = Math.max(0, ext[1]);
+      const pad = (hi - lo) * 0.06 || 1;
+      const sx = linear(1, 366, f.m.left, f.m.left + f.iw);
+      const sy = linear(lo - (lo < 0 ? pad : 0), hi + (hi > 0 ? pad : 0), f.m.top + f.ih, f.m.top);
+      drawAxes(f, sx, sy, { yDigits: 0, yLabel: v.units,
+        xTicks: MONTH_START.map((doy, i) => ({ v: doy, label: MONTH_ABBR[i] }))
+          .filter((t, i) => f.iw > 520 || i % 2 === 0) });
+
+      /* Which side of zero means what, painted rather than only stated. Green is uptake and red
+         release everywhere on this page; the tint is faint so the lines stay the subject. */
+      if (v.sign) {
+        const zero = sy(0);
+        if (zero > f.m.top) {
+          el('rect', { x: f.m.left, y: f.m.top, width: f.iw, height: zero - f.m.top,
+            fill: 'var(--pole-warm)', opacity: 0.07 }, f.svg);
+          svgText(f.svg, f.m.left + f.iw - 6, f.m.top + 13, 'net ' + v.sign.high, 'ax-text',
+            { 'text-anchor': 'end' });
+        }
+        if (zero < f.m.top + f.ih) {
+          el('rect', { x: f.m.left, y: zero, width: f.iw, height: f.m.top + f.ih - zero,
+            fill: 'var(--series-3)', opacity: 0.08 }, f.svg);
+          svgText(f.svg, f.m.left + f.iw - 6, f.m.top + f.ih - 7, 'net ' + v.sign.low, 'ax-text',
+            { 'text-anchor': 'end' });
+        }
+        el('line', { x1: f.m.left, x2: f.m.left + f.iw, y1: zero, y2: zero,
+          stroke: f.p.ink, 'stroke-width': 1.2, opacity: 0.5 }, f.svg);
+      }
+
+      tracks.filter(t => t.y !== focus).forEach(t => {
+        el('path', { d: pathFrom(days, t.run, sx, sy), fill: 'none', stroke: f.p.ink2,
+          'stroke-width': 1.1, opacity: 0.26, 'stroke-linejoin': 'round' }, f.svg);
+      });
+      if (normal) {
+        el('path', { d: pathFrom(days, normal, sx, sy), fill: 'none', stroke: f.p.muted,
+          'stroke-width': 1.6, 'stroke-dasharray': '4 3' }, f.svg);
+      }
+      if (here) {
+        el('path', { d: pathFrom(days, here.run, sx, sy), fill: 'none', stroke: f.p.series[1],
+          'stroke-width': 2.6, 'stroke-linejoin': 'round' }, f.svg);
+      }
+
+      /* Ranked the way the variable ranks everywhere else, so rank 1 of a net exchange is the
+         largest uptake by that date rather than the largest number. */
+      const low = v.rank_first === 'low';
+      hover(f, sx, days, d => {
+        const at = new Date(Date.UTC(focus, 0, d));
+        const title = 'to ' + at.getUTCDate() + ' ' + MONTH_NAME[at.getUTCMonth()] + ' ' + focus;
+        const value = here ? here.run[d - 1] : null;
+        const others = tracks.filter(t => t.y !== focus).map(t => t.run[d - 1]).filter(isNum)
+          .sort((a, b) => a - b);
+        const sense = senseOf(v, value);
+        const rows = [{ k: String(focus), v: isNum(value)
+          ? nf(value, 0) + ' ' + v.units + (sense ? ', ' + sense : '') : 'no value',
+        color: f.p.series[1] }];
+        if (normal && d <= 365) {
+          rows.push({ k: 'normal by this date', v: nf(normal[d - 1], 0) + ' ' + v.units,
+            color: f.p.muted });
+        }
+        if (others.length) {
+          rows.push({ k: 'the other years', v: nf(others[0], 0) + ' to '
+            + nf(others[others.length - 1], 0) + ' ' + v.units, color: f.p.ink2 });
+        }
+        if (isNum(value) && others.length) {
+          const ahead = others.filter(x => (low ? x < value : x > value)).length;
+          rows.push({ k: 'place by this date', v: ord(ahead + 1) + ' of ' + (others.length + 1)
+            + ' (1st = ' + (v.rank_note || 'highest') + ')' });
+        }
+        if (here && here.gaps[d - 1]) {
+          rows.push({ k: 'days without a value so far', v: here.gaps[d - 1] + ', each adding '
+            + 'nothing' });
+        }
+        return tipRows(title, rows);
+      }, onPanel ? d => selectDay(Math.min(d, isLeap(focus) ? 366 : 365)) : null);
+    };
+  }
+
+  /** The card around it, which says which year is drawn over the others and how gaps entered. */
+  function cumulativeCard(parent, v, focus, onPanel) {
+    const tracks = cumulativeTracks(v.key);
+    const gappy = tracks.filter(t => t.missing > 0).length;
+    const legend = [
+      { color: 'var(--series-2)', label: String(focus), line: true },
+      { color: 'var(--text-secondary)', label: 'the other years', line: true }
+    ];
+    if (NORM[v.key] && NORM[v.key].sum) {
+      legend.push({ color: 'var(--text-muted)', label: 'normal', line: true });
+    }
+    if (v.sign) {
+      legend.push({ color: 'var(--series-3)', label: 'net ' + v.sign.low },
+        { color: 'var(--pole-warm)', label: 'net ' + v.sign.high });
+    }
+    chartCard(parent, {
+      title: v.short + ' accumulated through the year', width: 'w-12',
+      sub: 'The running total of the daily figure from 1 January, one line per year, with '
+        + (onPanel ? focus : 'the last year of the record, ' + focus + ',')
+        + ' drawn over the others and the running total of the daily normals dashed.'
+        + (v.sign ? ' Below zero the balance since 1 January is net ' + v.sign.low
+          + ', above it net ' + v.sign.high + '.' : '')
+        + (onPanel ? ' Selecting a date opens that day.' : ''),
+      legend: legend,
+      foot: 'A day without a value adds nothing: the running total holds level across it, as the '
+        + 'accumulated precipitation of a span panel does, so a year with missing days is short '
+        + 'by whatever those days carried. '
+        + (gappy ? gappy + ' of the ' + tracks.length + ' years drawn '
+          + (gappy === 1 ? 'has' : 'have') + ' at least one such day, and the tooltip counts '
+          + 'them to each date.'
+          : 'No year drawn here has one.'),
+      draw: drawCumulative(v.key, focus, onPanel)
+    });
+  }
+
+  /* ------------------------------------------------------------------------------------------
      The variable page at daily resolution
      ------------------------------------------------------------------------------------------
      The span panel asks two questions of a month: how did its days run against the normal for
@@ -3864,6 +4045,8 @@
         { color: 'var(--band-outer)', label: 'range across the record' }],
       draw: drawVarCycle(key)
     });
+    // A total is read as it builds up through the year as well as by what it came to.
+    if (hasCumulative(v)) cumulativeCard(rec, v, YEARS[YEARS.length - 1], false);
 
     const byMonth = document.getElementById('var-months');
     if (met) {
@@ -4060,7 +4243,8 @@
       });
       chartCard(dayByDay, {
         title: 'Precipitation accumulated through the ' + spanNoun(), width: 'w-6',
-        sub: 'The running total against the running total of the daily normals.',
+        sub: 'The running total against the running total of the daily normals. A day without a '
+          + 'value adds nothing, and the running total holds level across it.',
         legend: [
           { color: 'var(--series-1)', label: 'this ' + spanNoun(), line: true },
           { color: 'var(--text-muted)', label: 'normal', line: true }
@@ -4186,10 +4370,22 @@
           { color: 'var(--text-secondary)', label: 'the other years', line: true },
           { color: 'var(--text-muted)', label: 'normal for the date', line: true }
         ],
-        foot: 'A rank places the month as one number among twenty-one. This is what says whether '
-          + 'a warm month was warm throughout or held one spell that carried it.',
+        // Counted rather than written: "twenty-one" was the length of the record this was first
+        // written against, and on any other record it stated a number the chart does not show.
+        foot: 'A rank places the ' + spanNoun() + ' as one number among '
+          + sc.spans().filter(x => sc.idOf(x) === sc.idOf(mo)).length + '. This is what says '
+          + 'whether a warm ' + spanNoun() + ' was warm throughout or held one spell that '
+          + 'carried it.',
         draw: drawMonthShape(mo)
       });
+    }
+
+    /* The year's own carbon balance as it built up, among every other year's. A year is the one
+       span whose running total starts where the convention starts it, on 1 January, so this is
+       drawn on the year panel and nowhere below it. */
+    if (state.scale === 'year') {
+      DATA.variables.filter(v => v.sign && hasCumulative(v))
+        .forEach(v => cumulativeCard(context, v, mo.y, true));
     }
 
     chartCard(context, {
