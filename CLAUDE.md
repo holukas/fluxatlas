@@ -56,7 +56,7 @@ fa.build_atlas("CH-LAE_HH.csv", "atlas.html", variables=["TA"])  # TA and nothin
 | `variables.py` | The registry, keyed by canonical key (`TA`, `PREC`, …), each with the candidate FLUXNET columns that can supply it and the factor onto the canonical unit. |
 | `stats.py` | Theil-Sen trend, spells, growing season, rounding — the estimators shared with the CH-LAE dashboards. |
 | `build.py` | The ported computation: metrics, badges, day tests, normals, seasons, payload, render. The large one. |
-| `assets/` | `calendar.js`, `calendar.css`, `base.css`, `template.html`, `logo.svg`, inlined into the output. |
+| `assets/` | `calendar.js`, `calendar.css`, `base.css`, `designs.css`, `template.html`, `logo.svg`, inlined into the output. |
 | `docs/` | Sphinx, MyST markdown, hosted on Read the Docs. Three parts are generated rather than written: the API reference from the docstrings, the CLI reference from `cli.build_parser` via `sphinx-argparse`, and the variable, column and uncertainty tables from the registry via `docs/_ext/registry_tables.py`. Do not write any of the three out by hand. |
 
 **Selection is the organizing principle.** A metric whose variable is absent is
@@ -270,6 +270,21 @@ not screening it: no drift checks against reanalysis, no plausibility or spike
 screens, no timestamp-shift detection, and no page text that second-guesses a
 record the file marks as measured. A drift check against the file's ERA columns was
 built and removed for exactly this reason.
+
+## Designs
+
+The **Design** menu in the top bar switches between Classic (the page as it was, defined by
+`base.css` and `calendar.css`) and three designs in `assets/designs.css`: Journal, Observatory and
+Swiss. A design is a token set for light and for dark plus typography, applied by `data-design` on
+`<html>`; `setupDesign` in the renderer resolves the remembered choice before the first paint and
+repaints through the same `repaintAll` the light/dark toggle uses. No chart knows which design is
+in force.
+
+Two rules, both held by `tests/test_designs.py`: every colour token a design sets in its light block
+is restated in its two dark blocks (a light block outranks the base dark set, so a missing token
+shows its light value in dark mode), and every token a ramp or the canvas parses stays six-digit
+hex. A design changes colour and type only; it must not change what a colour means. No font is
+fetched, because the page has to work offline.
 
 ## Variables whose sign means something
 
@@ -655,7 +670,7 @@ records anything typed on the command line.
 **The version is declared once**, in `pyproject.toml`; `__init__.py` reads it back
 from the installed distribution, as `diive` does, and the page footer prints that.
 `tests/test_packaging.py` asserts the two agree, that the changelog and
-`CITATION.cff` state the same number, and that the five files in `assets/` are
+`CITATION.cff` state the same number, and that the six files in `assets/` are
 installed - a wheel built without them imports cleanly and then writes a page
 with no styles, no renderer and no mark, which nothing else would catch because
 every other test reads the source tree. `.github/workflows/tests.yml` runs the

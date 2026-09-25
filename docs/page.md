@@ -276,6 +276,23 @@ Chart row labels are measured, not estimated. The left margin is sized from the 
 and anything that still will not fit is shortened, with the full name kept in a `<title>`. A fixed
 margin ran the longer variable names off the edge of the card.
 
+## Designs
+
+The **Design** menu in the top bar sets the look of the page. Every design has a light and a dark
+form, which the light/dark button switches as before, and the choice is remembered in the browser.
+
+| Design | Character |
+| --- | --- |
+| Classic | The page's own look: light cards on a neutral page. |
+| Journal | A printed paper: warm paper tone, serif headings and captions, numbered sections and figures, hairline rules instead of card boxes. Charts are set in sans, as a journal sets its figures. |
+| Observatory | An instrument console: deep ink background, luminous data colours, figures in a monospaced readout. Its light form is a daylight variant. |
+| Swiss | The International Typographic Style: white, heavy black rules, one signal red, large bold numerals, a flat square grid, numbered sections. |
+
+A design changes colour and type only. Every figure, ramp, threshold and badge is the same in all
+four; the colour ramps keep their meaning (cold to warm, uptake to release) and change only their
+shades. No font is downloaded, so the page still works offline: each design names fonts a system
+is likely to have and falls back to the platform's own.
+
 ## The mark
 
 `assets/logo.svg` is nine tiles of the anomaly grid, cold to warm along the diagonal. It is the
