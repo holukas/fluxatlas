@@ -279,11 +279,13 @@ def resample_agg(series, freq, how):
 
 
 def doy365(index):
-    """Day of year with 29 February folded onto 1 March, so one array serves every year.
+    """Day of year with 29 February folded onto 28 February, so one array serves every year.
 
-    A daily normal is a smooth function of the date, so sharing one slot between 29 February and
-    1 March costs nothing measurable and buys an array that is indexed the same way in a leap year
-    and in an ordinary one.
+    In a leap year every day from 29 February on is moved back by one, which puts 29 February in
+    28 February's slot (59) and 1 March in its ordinary-year slot (60), as in every other year. A
+    daily normal is a smooth function of the date, so sharing one slot between 28 and 29 February
+    costs nothing measurable and buys an array that is indexed the same way in a leap year and in
+    an ordinary one.
     """
     doy = np.asarray(index.dayofyear)
     leap = np.asarray(index.is_leap_year)

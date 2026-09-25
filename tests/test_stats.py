@@ -268,7 +268,8 @@ def test_a_gap_does_not_close_the_season_either():
 
 # -- Day of year ---------------------------------------------------------------------------------
 
-def test_29_february_folds_onto_1_march():
+def test_29_february_folds_onto_28_february():
+    """29 February shares 28 February's slot, and 1 March keeps its ordinary-year one."""
     leap = pd.DatetimeIndex(["2020-02-28", "2020-02-29", "2020-03-01", "2020-12-31"])
     ordinary = pd.DatetimeIndex(["2021-02-28", "2021-03-01", "2021-12-31"])
     assert list(stats.doy365(leap)) == [59, 59, 60, 365]
