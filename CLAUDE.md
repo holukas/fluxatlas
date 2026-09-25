@@ -254,6 +254,23 @@ otherwise, for a mean-aggregated variable, one standard deviation of that year's
 own months. A **total** with no published uncertainty gets no band, because the
 spread of twelve monthly totals is not an uncertainty of their sum.
 
+**Each later part of the page has its own container, render function and payload
+key**, so a variable without it draws nothing and leaves no heading: when the
+season runs (`#var-season`, `season_timing`), threshold days by year
+(`#var-thresholds`), the days and half-hours at either end (`#var-extremes`,
+`extreme_halfhours`), through the day (`#var-diurnal`, `diurnal`), and every hour
+of the record (`#var-hourly`, drawn from the hourly layer on the page's one
+`<canvas>` — jsdom has none, so `smoke.mjs` stubs a 2D context). A new part
+follows the same shape.
+
+**The page displays and analyses the dataset; it does not judge whether the data
+are correct.** The input is a final, published product. Describing it is wanted —
+coverage, how gaps were filled, which column a figure came from, provenance — but
+not screening it: no drift checks against reanalysis, no plausibility or spike
+screens, no timestamp-shift detection, and no page text that second-guesses a
+record the file marks as measured. A drift check against the file's ERA columns was
+built and removed for exactly this reason.
+
 ## Variables whose sign means something
 
 `NEE` is signed by the micrometeorological convention, and a bare `+66` states a
@@ -298,7 +315,7 @@ against, and the source of every number quoted in this file.
 `examples/build_fluxnet_atlas.py` builds **one** page from it and takes `--input`
 for any other FLUXNET file, `--vars` to narrow what goes on that page, and `--out`
 for a directory outside the repository, which is worth using since a page of this
-record with the hourly layer is 5.9 MB against 2.3 MB without. One file is the
+record with the hourly layer is 6.6 MB against 2.9 MB without. One file is the
 point — do not add a second output to this script.
 
 **It is the example to keep working, and it is named for the format rather than
@@ -314,7 +331,7 @@ dies on the first `W m⁻²` it prints on a legacy Windows console code page, wh
 is where most of its readers are. Any example that prints a unit needs the same
 four lines.
 
-`pytest` — ~430 tests, ~5 min, of which the renderer smoke test is about half the
+`pytest` — ~490 tests, ~10 min, of which the renderer smoke test is about half the
 wall clock: it builds six mixed selections plus one page for every variable no
 other selection carries, loads each into a DOM and then *drives* it —
 hovering and focusing tiles at every scale, putting every chart under the cursor,

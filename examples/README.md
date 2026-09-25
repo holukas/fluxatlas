@@ -98,7 +98,7 @@ as with everything else on the page. Both ratios are withheld in months whose de
 is too small to mean anything, which in a mid-latitude record is most of the winter.
 
 **Cut the file size.** The hourly arrays behind the day panel's diurnal charts are most
-of the output. The eleven-variable CH-Oe2 page above is 5.9 MB with them and 2.3 MB
+of the output. The eleven-variable CH-Oe2 page above is 6.6 MB with them and 2.9 MB
 without. Drop them if you are sharing the page rather than reading the diurnal cycle.
 
 ```bash

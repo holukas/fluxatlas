@@ -22,8 +22,12 @@ from four directions:
 - day by day: temperature against the climatological band, how far each day sat from its own
   normal, precipitation daily and accumulated, soil water against the rain that drives it, and
   radiation, evaporative demand and humidity each over their own normal band;
-- the mean day of the month, composited from the hourly arrays, against the mean day of that
-  calendar month across the record;
+- the mean day of the month against the mean day of that calendar month across the record,
+  composited from the hourly arrays or, where a build left them out, from the month-by-hour
+  surfaces every page carries;
+- at what hour the month departed from the record, each variable against its own mean day of that
+  calendar month: what a monthly anomaly cannot say is whether a month was warm by night or by
+  day, or whether its carbon balance moved at midday or overnight;
 - where the month sits among its own years;
 - a day calendar.
 
@@ -120,8 +124,38 @@ The rest of the page:
 - for a variable that sums (precipitation and the carbon fluxes), the total accumulated through the
   year, as described for the year panel above, with the last year of the record drawn over the
   others;
+- on the air temperature and net exchange pages, **when the season ran each year**, one row per
+  year on a day-of-year axis. On air temperature the bar is the growing season as the season badges
+  date it: from the first run of six days with a daily mean above 5 °C to the first such run below
+  it after 1 July. On net exchange each bar is an uptake period, a run of at least seven days in
+  which the centred 15-day mean of daily NEE is below zero, and the year's count of uptake days
+  (its sink days) is printed beside it. Start, end and length each carry a Theil-Sen slope per
+  decade. The distinction matters: a season that lengthens because it starts earlier is a different
+  finding from one that lengthens because it ends later. At a managed site the span from first to
+  last uptake day says when uptake happened, not that it held throughout; a cropland can be a sink
+  under one crop and again under a catch crop, and a source between them;
+- for each of the variable's day tests, **the number of days each year that passed it**, with the
+  longest run of consecutive such days beside the count where a run is defined. The two answer
+  different questions: a year can reach a high count in scattered days and never hold the threshold
+  for a week. Runs are counted within the calendar year, and a year the variable does not cover to
+  its normal share shows as a dash rather than as a year with none;
 - the five highest and five lowest months, each linking to its own panel, named from the registry's
   words for each end so that the highest five months of `NEE` are labelled as its largest releases;
+- **through the day**: the record's mean for each hour of each calendar month as one twelve-by-
+  twenty-four surface, and the mean day of each calendar month over the 10th to 90th percentile of
+  the years. A variable that sums - precipitation and the carbon fluxes - is stated as its mean
+  total per hour, so the twenty-four values of a month add up to its mean daily total. Hours are
+  the file's own timestamps, which FLUXNET states in local standard time. A year's cell stands where
+  the product covers the variable's normal share of its half-hours, the record's where at least
+  eight years do, and the net exchange diverges about zero;
+- the ten highest and lowest **days** of the record, by the daily statistic the variable's own
+  charts use, and the ten highest and lowest **half-hours**, each linking to its day. Only records
+  the file marks as measured are ranked, and a day must be at least 90 % measured, the share a day
+  needs to set a record for its date. Half-hours are taken one per day, so a single afternoon cannot
+  fill the list. A carbon flux's half-hours are stated in µmol m⁻² s⁻¹, the rate the file publishes,
+  while its days stay in g C m⁻². An end the variable rests on rather than reaches as an event - no
+  rain, a night without sunshine, humidity at 100 % on hundreds of days - is stated as a bound
+  instead of listed;
 - how much of each year was available and how much was measured, against the variable's warning
   line;
 - the record day by day, in the two forms the span panel uses for a month. Every year is drawn
@@ -130,6 +164,14 @@ The rest of the page:
   departure from the normal for its own date, with the mean of those departures over a centred
   year: a departure that persists for years is a different thing from one that persists for a
   fortnight, and only the running line separates them.
+- **every hour of the record** in one picture, for the variables carried in the hourly layer: one
+  column per day and one row per hour of it, midnight at the bottom, coloured by the hourly mean (or
+  total, for a variable that sums) on the file's own clock. The daily cycle, the seasons and the
+  years read together. The colour domain is the 1st to 99th percentile of the hours, so a few
+  extreme hours do not wash out the rest, and the net exchange diverges about zero, green for uptake
+  and red for release. Where the page is narrower than the record is long, a column is the mean of
+  several days. Hovering reads one hour and selecting it opens that day. A page built with
+  `--no-hourly` has no such chart and says so.
 
 Nothing on the page is computed twice. The slopes are the ones the grid's foot row prints, and the
 fitted line is drawn from the two endpoints the build ships rather than re-fitted in the browser,
@@ -250,5 +292,7 @@ standalone file and the favicon fall back to the light one.
 ## File size
 
 The hourly arrays behind the diurnal charts are most of the output. A twenty-one-year FULLSET page
-with them runs to about 6 MB. `--no-hourly`, or `hourly=False`, drops them, and costs the diurnal
-composites and nothing else.
+with them runs to about 6.6 MB. `--no-hourly`, or `hourly=False`, drops them, and costs the day
+panel's diurnal course and the hour-by-day picture on each variable page, and nothing else: the
+month-by-hour surfaces are built either way, so the span panels' mean day and hour-by-hour
+departures remain. The same page without the hourly arrays is about 2.9 MB.
