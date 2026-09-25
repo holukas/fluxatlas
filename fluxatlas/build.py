@@ -814,6 +814,16 @@ BADGES = [
 #        'flag'   whether the day set a threshold  'meas'  the measured share of the day
 # ----------------------------------------------------------------------------------------------
 
+# The denominators below which the two energy-balance ratios are withheld, set from the CH-Oe2
+# record. Binned by the span's available energy, the monthly closure ratio has a 10-90 % range of
+# 0.69 to 1.18 above 60 W m-2 and 0.52 to 1.37 between 40 and 60, and then comes apart: 0.26 to
+# 1.95 between 20 and 40, and negative ratios and values past 4 below 20. So closure is formed
+# from 40 W m-2. The evaporative fraction holds its range further down, because its numerator is
+# part of its denominator - 0.53 to 1.14 between 20 and 30 W m-2 of H + LE - and fails only below
+# 20, where a negative sensible flux can cancel most of the latent one and the ratio reaches 5.
+CLOSURE_MIN_ENERGY = 40.0   # W m-2 of NETRAD - G
+EF_MIN_ENERGY = 20.0        # W m-2 of H + LE
+
 METRICS = [
     dict(key="TA_anom", var="TA", field="anom", scale="div", center=0.0,
          poles=("--pole-cold", "--pole-warm"), digits=1,
@@ -974,6 +984,45 @@ METRICS = [
          about="Monthly mean sensible heat flux, the energy leaving the surface as warm air. Read "
                "against the latent flux it states how the available energy was partitioned.",
          day=dict(kind="value", stat="mean")),
+    dict(key="NETRAD", var="NETRAD", field="value", scale="seq",
+         stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0,
+         group="Energy", label="Net radiation, monthly mean", short="NETRAD",
+         about="Monthly mean net radiation, the energy available at the surface before the soil "
+               "and the turbulent fluxes divide it.",
+         day=dict(kind="value", stat="mean")),
+    dict(key="G", var="G", field="value", scale="div", center=0.0,
+         poles=("--pole-cold", "--pole-warm"), digits=1,
+         group="Energy", label="Soil heat flux, monthly mean", short="G",
+         about="Monthly mean soil heat flux. Red months warmed the soil, blue months drew heat "
+               "out of it; over a whole year the two nearly cancel.",
+         day=dict(kind="value", stat="mean")),
+    # The two ratios of the energy balance. Each is formed from the span's own means rather than
+    # half-hour by half-hour, and each explodes where its denominator nears zero, so a span whose
+    # denominator is below the threshold carries no value at all. The margins beside the grid are
+    # the mean of the months that carry one; the year tile is the ratio of the year's own means.
+    dict(key="ebr", var="NETRAD", field="extra", extra="ebr", scale="div", center=100.0,
+         poles=("--series-4", "--series-1"), digits=0, unit="%", agg="mean",
+         group="Energy", label="Energy balance closure", short="Closure",
+         about="The turbulent fluxes as a share of the available energy, (H + LE) / (NETRAD − G), "
+               "from the span's own means. 100 % is a closed energy balance; eddy covariance "
+               "sites commonly close to between 70 and 90 %, a shortfall common to the method "
+               "rather than particular to one record. Formed only where each of the four terms "
+               "covers at least the share of the span its normal requires, and withheld where "
+               f"the available energy is below {CLOSURE_MIN_ENERGY:.0f} W m⁻², as it is in the "
+               "winter months of a mid-latitude site: there the denominator nears zero and the "
+               "ratio no longer describes the balance.",
+         day=dict(kind="none")),
+    dict(key="ef", var="LE", field="extra", extra="ef", scale="seq",
+         stops=("--neutral-mid", "--series-1"), digits=0, unit="%", agg="mean",
+         group="Energy", label="Evaporative fraction", short="EF",
+         about="The latent heat flux as a share of the two turbulent fluxes together, "
+               "LE / (H + LE), from the span's own means: how much of the energy the surface "
+               "gave to the air went into evaporation rather than into heating it. It tends to "
+               "fall as the soil dries. Formed only where both fluxes cover at least the share "
+               "of the span their normals require, and withheld where H + LE is below "
+               f"{EF_MIN_ENERGY:.0f} W m⁻², where a negative sensible flux can cancel most of the "
+               "latent one and the ratio leaves the range in which it has a meaning.",
+         day=dict(kind="none")),
 
     # The two composite metrics answer the questions the per-variable ones cannot: how far from
     # normal a month was at all, and in how many independent ways at once.
@@ -2203,6 +2252,28 @@ def span_stats(sp, keys, table, day_values, dates, events, loaded):
         s["x"]["dtr"] = float(dtr.mean()) if len(dtr) else None
         s["x"]["gdd"] = float(gdd.sum()) if len(gdd) else None
     s["x"]["nrec"] = sum(s.get(f"n_{k}", 0) for k in ("recwarm", "reccold", "recwet"))
+
+    # The energy balance, from the span's own means. A term is used only where it covers the span
+    # well enough to carry a normal, since a mean over a third of a month set against means over
+    # all of it is not a ratio of the same period. The keys are absent from a build that lacks a
+    # term, which is what drops the metric; they are None where the terms are present but the span
+    # cannot support the ratio, which leaves the tile empty.
+    def usable(key):
+        return (key in keys and s[key] is not None and s[f"{key}_avail"] is not None
+                and s[f"{key}_avail"] >= varreg.coverage(key).normal)
+
+    if all(k in keys for k in ("H", "LE", "NETRAD", "G")):
+        s["x"]["ebr"] = None
+        if all(usable(k) for k in ("H", "LE", "NETRAD", "G")):
+            available = s["NETRAD"] - s["G"]
+            if available >= CLOSURE_MIN_ENERGY:
+                s["x"]["ebr"] = 100.0 * (s["H"] + s["LE"]) / available
+    if all(k in keys for k in ("H", "LE")):
+        s["x"]["ef"] = None
+        if usable("H") and usable("LE"):
+            turbulent = s["H"] + s["LE"]
+            if turbulent >= EF_MIN_ENERGY:
+                s["x"]["ef"] = 100.0 * s["LE"] / turbulent
 
     # The composite: how far from normal this span was on its most unusual axis, and on how many
     # axes at once. Only the axes that are present, sufficiently measured and have a normal are

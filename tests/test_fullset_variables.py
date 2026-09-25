@@ -39,6 +39,9 @@ OE2 = {
     "LW_IN": ("LW_IN_F", "LW_IN_F_QC", 157.347, 470.525),
     "PPFD_IN": ("PPFD_IN", None, -14.248, 2332.340),
     "USTAR": ("USTAR", None, 0.005, 3.921),
+    "G": ("G_F_MDS", "G_F_MDS_QC", -250.600, 217.300),
+    "NETRAD": ("computed: SW_IN_F − SW_OUT + LW_IN_F − LW_OUT", "SW_IN_F_QC & LW_IN_F_QC",
+               -248.960, 889.790),
 }
 
 

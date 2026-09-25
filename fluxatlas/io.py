@@ -284,7 +284,65 @@ def available(source):
                 qc = next((q for q in v.qc_candidates if q in columns), None)
                 out[key] = dict(column=name, factor=factor, qc=qc, units=v.units, title=v.title)
                 break
+        if key not in out:
+            derived = _derived_spec(key, columns)
+            if derived:
+                out[key] = dict(derived, units=v.units, title=v.title)
     return out
+
+
+# ----------------------------------------------------------------------------------------------
+# Variables computed from the file's own columns
+#
+# Net radiation is the one case: a FULLSET file publishes its four components and not the sum, so
+# a file that would otherwise never supply it can. Kept here, apart from the reader, because the
+# rest of the read then needs to know nothing about it: `_add_derived` writes the series and a
+# quality flag into the frame under the names the spec gives, and from that point on the derived
+# variable is read, converted, checked and flagged exactly as a column the file carried would be.
+# ----------------------------------------------------------------------------------------------
+
+def _derived_spec(key, columns):
+    """The resolution of a variable computed from its components, or None where it cannot be.
+
+    `column` is the name the page shows for the series and `qc` the name of the flag written for
+    it; neither is a column of the file. The flag names the component flags it is built from, so
+    `--list` states what the measured share of the result rests on.
+    """
+    found = varreg.derivation(key, columns)
+    if found is None:
+        return None
+    flags = [qc for _, _, qc in found["components"] if qc]
+    return dict(column=found["column"], factor=1.0, qc=" & ".join(flags) or None,
+                components=found["components"])
+
+
+def _source_columns(spec):
+    """The columns of the file a resolved variable is read from."""
+    if "components" in spec:
+        return [c for _, name, qc in spec["components"] for c in (name, qc) if c]
+    return [c for c in (spec["column"], spec.get("qc")) if c]
+
+
+def _add_derived(df, specs):
+    """Compute each derived variable into `df`, with a flag of 0 where every component is measured.
+
+    A component missing in a record leaves the sum missing there: a net radiation without one of
+    its terms is not a smaller net radiation but none. A component with no quality flag counts as
+    measured wherever it is present, the same rule the reader applies to a column without one.
+    """
+    for spec in specs.values():
+        if "components" not in spec:
+            continue
+        total, measured = 0.0, True
+        for sign, name, qc in spec["components"]:
+            values = pd.to_numeric(df[name], errors="coerce")
+            total = total + sign * values.mask(values <= MISSING + 1).astype(float)
+            if qc:
+                flag = pd.to_numeric(df[qc], errors="coerce")
+                measured = measured & flag.isin(list(varreg.MEASURED_QC_CODES))
+        df[spec["column"]] = total
+        if spec.get("qc"):
+            df[spec["qc"]] = np.where(measured, 0, 1)
 
 
 def resolve(source, keys, label="the file"):
@@ -329,9 +387,13 @@ def resolve(source, keys, label="the file"):
     for key, want in mapping.items():
         if want is None:
             if key not in present:
+                recipe = varreg.VARIABLES[key].get("derived")
                 raise KeyError(
                     f"{label} carries no column for {key}. Looked for: "
                     + ", ".join(n for n, _ in varreg.make(key).candidates)
+                    + (", or all of its components: "
+                       + "; ".join(" or ".join(names) for _, names in recipe["terms"])
+                       if recipe else "")
                     + ". Pass an explicit mapping if the column is named differently, e.g. "
                     + f'variables={{"{key}": "YOUR_COLUMN"}}')
             specs[key] = dict(present[key])
@@ -433,8 +495,8 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
 
     needed = [c for c in TIMESTAMP_COLUMNS if c in header]
     for spec in specs.values():
-        for col in (spec["column"], spec.get("qc")):
-            if col and col not in needed:
+        for col in _source_columns(spec):
+            if col not in needed:
                 needed.append(col)
 
     # The uncertainty columns are resolved the same way and against the same header, so they cost
@@ -455,6 +517,7 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
                     needed.append(col)
 
     df = _read_frame(path, usecols=needed)
+    _add_derived(df, specs)
 
     # Half-hourly is what this reads, and a file on any other spacing lands on the half-hourly grid
     # rather than missing it. An hourly file fills every second slot, so reindexed onto 30 minutes

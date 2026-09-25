@@ -734,6 +734,78 @@ VARIABLES = {
             dict(kind=QUADRATURE, label="random", columns=[("H_F_MDS", ["H_RANDUNC"])]),
         ],
     ),
+
+    # ------------------------------------------------------------------------------------------
+    # The other two terms of the surface energy balance, which the closure ratio needs: net
+    # radiation supplies the energy and the soil heat flux takes part of it before the turbulent
+    # fluxes can. Both are measured the way meteorology is - continuously, by instruments that do
+    # not depend on turbulence - so both keep the meteorological coverage lines and sit with the
+    # meteorology on the page.
+    # ------------------------------------------------------------------------------------------
+
+    "NETRAD": dict(
+        title="Net radiation",
+        short="Net radiation",
+        units="W m⁻²",
+        columns=[("NETRAD", 1.0), ("NETRAD_1_1_1", 1.0)],
+        qc=["NETRAD_QC"],
+        # Where the file carries no net radiation of its own but does carry the four components,
+        # net radiation is computed from them: incoming shortwave minus outgoing shortwave, plus
+        # incoming longwave minus outgoing longwave. A FULLSET file is the usual case - CH-Oe2
+        # carries all four components and no `NETRAD` - and without this the closure ratio could
+        # never be formed from the file most users arrive with.
+        #
+        # It is derived, not corrected, and the page says so: the column the tile names is the
+        # formula, and a record is measured only where every component it needs was measured.
+        # Each term lists its candidates in preference order. `LW_IN_JSB*` is not among them,
+        # because it is itself computed from temperature and humidity, and ERA columns are not,
+        # because a reanalysis flux subtracted from a measured one is not a net radiation of the
+        # site.
+        derived=dict(
+            label="computed",
+            terms=[(+1, ["SW_IN_F", "SW_IN_F_MDS", "SW_IN", "SW_IN_1_1_1"]),
+                   (-1, ["SW_OUT", "SW_OUT_1_1_1"]),
+                   (+1, ["LW_IN_F", "LW_IN_F_MDS", "LW_IN", "LW_IN_1_1_1"]),
+                   (-1, ["LW_OUT", "LW_OUT_1_1_1"])],
+        ),
+        # Computed on CH-Oe2 it spans -249 to 890 W m-2.
+        limits=(-500.0, 1500.0),
+        agg="mean",
+        daily_stats=("mean", "max"),
+        ship=("mean",),
+        digits=0,
+        hourly=False,
+        scale=1,
+        about="Net radiation: incoming minus outgoing radiation, shortwave and longwave together, "
+              "positive when the surface gains energy. It is the energy the soil heat flux and "
+              "the turbulent fluxes divide between them. Where the file carries no net radiation "
+              "of its own it is computed from the file's four radiation components, incoming "
+              "shortwave minus outgoing shortwave plus incoming longwave minus outgoing "
+              "longwave; the column named on each tile then states that formula, and a "
+              "half-hour counts as measured only where all four components were.",
+        extremes=dict(high="most net radiation", low="least net radiation"),
+    ),
+
+    "G": dict(
+        title="Soil heat flux",
+        short="Soil heat flux",
+        units="W m⁻²",
+        columns=[("G_F_MDS", 1.0), ("G", 1.0), ("G_1", 1.0), ("G_1_1_1", 1.0)],
+        qc=["G_F_MDS_QC", "G_QC"],
+        # CH-Oe2 spans -251 to 217 W m-2.
+        limits=(-600.0, 600.0),
+        agg="mean",
+        daily_stats=("mean", "max"),
+        ship=("mean",),
+        digits=1,
+        hourly=False,
+        scale=10,
+        about="Soil heat flux, positive into the soil. Over a year it is close to zero, since "
+              "the soil gives back in winter what it stored in summer; over a month it is the "
+              "part of the net radiation that went into warming or cooling the ground rather "
+              "than into the turbulent fluxes.",
+        extremes=dict(high="most heat into the soil", low="most heat out of the soil"),
+    ),
 }
 
 
@@ -879,6 +951,35 @@ def uncertainty_note(components):
 def rank_first(key):
     """Which end of the distribution takes rank 1: `"high"` or `"low"`."""
     return VARIABLES.get(key, {}).get("rank_first", "high")
+
+
+def derivation(key, columns):
+    """How `key` can be computed from other columns of this file, where it cannot be read directly.
+
+    Answered against column *names*, like the rest of the resolution, so it costs nothing before
+    the data is read. Each term of the registry's recipe takes the first of its candidates the file
+    carries; a recipe with any term the file cannot supply is no recipe, since a net radiation
+    missing one of its four components is not a net radiation.
+
+    Returns None, or `{column, components}` where `column` is the name the page states for the
+    series - the recipe's label and the formula in the file's own column names, so a tile reads as
+    computed rather than as read - and `components` is `[(sign, column, qc_column_or_None), ...]`.
+    """
+    recipe = VARIABLES.get(key, {}).get("derived")
+    if not recipe:
+        return None
+    columns = set(columns)
+    components = []
+    for sign, candidates in recipe["terms"]:
+        name = next((c for c in candidates if c in columns), None)
+        if name is None:
+            return None
+        qc = f"{name}_QC" if f"{name}_QC" in columns else None
+        components.append((sign, name, qc))
+    formula = components[0][1] if components[0][0] > 0 else f"−{components[0][1]}"
+    for sign, name, _ in components[1:]:
+        formula += f" {'+' if sign > 0 else '−'} {name}"
+    return dict(column=f"{recipe['label']}: {formula}", components=components)
 
 
 @lru_cache(maxsize=None)
