@@ -4190,9 +4190,15 @@
        largest releases, which is not what a reader takes "highest" to mean at a flux site. */
     const head = (side, word) => cap(side) + ' five months'
       + (word ? ' <span class="muted">(' + word + ')</span>' : '');
-    return '<div class="twocol"><div><h4>' + head('highest', v.word_high)
+    /* Where every listed month sits on one side of zero, the registry's word for that end can be
+       false: at a site that is a sink in every month the five highest are its smallest uptakes, not
+       its largest releases. Each item already states its own direction; the header follows it. */
+    const all = (list, test) => list.length && list.every(mo => isNum(mo[key].v) && test(mo[key].v));
+    const highWord = v.sign && all(top, x => x <= 0) ? 'smallest net ' + v.sign.low : v.word_high;
+    const lowWord = v.sign && all(bottom, x => x >= 0) ? 'smallest net ' + v.sign.high : v.word_low;
+    return '<div class="twocol"><div><h4>' + head('highest', highWord)
       + '</h4><ul class="ranklist">' + top.map(item).join('') + '</ul></div>'
-      + '<div><h4>' + head('lowest', v.word_low) + '</h4><ul class="ranklist">'
+      + '<div><h4>' + head('lowest', lowWord) + '</h4><ul class="ranklist">'
       + bottom.map(item).join('') + '</ul></div></div>';
   }
 
