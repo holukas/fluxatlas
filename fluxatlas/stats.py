@@ -329,3 +329,73 @@ def percentile_domain(values, lo=2, hi=98, symmetric=False):
     if a == b:
         b = a + 1.0
     return [a, b]
+
+
+def carbon_uptake(daily_total, year, window=15, span=7):
+    """The carbon uptake period of one calendar year, and how many of its days were a net sink.
+
+    The net-exchange counterpart of `growing_season`, and it reports two things because at a
+    managed site they part company.
+
+    **Uptake days** is the count of the year's days whose own net exchange closed below zero: the
+    carbon uptake period in the sense of Churkina et al. (2005), the number of days in a year on
+    which the ecosystem was a net sink. It is the same test the page applies to call a day a sink
+    day, so the two counts cannot disagree.
+
+    **The span** is dated from a smoothed series, as the zero-crossing definitions of the uptake
+    period are:
+
+    - the daily totals are smoothed by a centred running mean over `window` days;
+    - an *uptake period* is every run of at least `span` consecutive dates on which that mean is
+      below zero;
+    - the year's span runs from the first day of its first uptake period to the last day of its
+      last, and its length counts both ends.
+
+    The smoothing keeps one overcast day in June from splitting a season in two; the run length
+    keeps a few mild days in winter from opening one. What the smoothed series dates is the day on
+    which the balance of the surrounding fortnight changes sign, so where strong uptake meets weak
+    release the date sits a few days out from the first sink day, not on it. A cropland can hold several periods in a year
+    - a winter cereal in spring and a catch crop in autumn - or none at all, so every period is
+    returned, and the span from the first to the last says when uptake happened rather than that it
+    happened throughout. `inside` is the number of days the periods themselves cover.
+
+    `daily_total` is the whole record rather than the one year, so the running mean is not cut
+    short at either end of the calendar year; the runs are found on the whole record as well, and a
+    run that crosses the turn of the year is clipped to it, keeping the part that falls inside.
+
+    Consecutive means consecutive **dates**, as in `growing_season`: the series is put onto a
+    complete daily index first, and a day the record does not hold has no smoothed value, so a gap
+    ends a run rather than being skipped. A smoothed value is formed on a day that is itself present
+    and whose window holds at least half its days.
+
+    Returns None where the record holds no day of `year`, and a result with no dates - but still
+    its count of uptake days - where the year held no uptake period.
+    """
+    if daily_total.dropna().empty:
+        return None
+    series = daily_total.set_axis(daily_total.index.normalize())
+    present = series.dropna()
+    days = pd.date_range(present.index.min(), present.index.max(), freq="D")
+    series = series.reindex(days)
+    inside = np.flatnonzero(days.year == year)
+    if inside.size == 0 or not series.iloc[inside].notna().any():
+        return None
+
+    smooth = series.rolling(window, center=True, min_periods=window // 2 + 1).mean()
+    below = (smooth.where(series.notna()) < 0).to_numpy()
+    starts, stops = _runs(below)
+    persistent = stops - starts >= span
+
+    first, last = int(inside[0]), int(inside[-1]) + 1
+    periods = []
+    for a, b in zip(starts[persistent], stops[persistent]):
+        a, b = max(int(a), first), min(int(b), last)
+        if a < b:
+            periods.append((days[a], days[b - 1]))
+
+    uptake_days = int((series.iloc[inside] < 0).sum())
+    if not periods:
+        return dict(start=None, end=None, length=None, periods=[], days=uptake_days, inside=0)
+    start, end = periods[0][0], periods[-1][1]
+    return dict(start=start, end=end, length=int((end - start).days) + 1, periods=periods,
+                days=uptake_days, inside=int(sum((b - a).days + 1 for a, b in periods)))
