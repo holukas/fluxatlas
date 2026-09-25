@@ -54,7 +54,7 @@ reading CH-LAE_meteo_30min_2005-2025.parquet: 6 variable(s), 2005-2025
 building 252 months, 2005-2025 ...
   warning: SW_IN is under 50 % measured in 10 of 252 months (lowest 0 % in January 2005); the
   gap-filled values are used and those months are marked on the grid
-  badges awarded: Frost days 98, Ice days 79, Heavy rain day 55, In cloud 46, Colder than normal
+  badges awarded: Frost days 98, Ice days 79, Heavy rain day 55, Near-saturated air 46, Colder than normal
   46, Tropical nights 45, Wet month 44, ...
   trend TA                 +0.760 °C/decade  p = 0.003, 21 years
   trend PREC total         +5.760 mm/decade  p = 0.923, 20 years
