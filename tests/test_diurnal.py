@@ -238,9 +238,9 @@ def test_the_variable_page_draws_the_surface_and_twelve_mean_days(flux_page):
     views = read(flux_page, "#var-NEE", "#var-PREC")
     for key in ("NEE", "PREC"):
         view = views[f"#var-{key}"]
-        assert view["heading"] == "Through the day"
+        assert view["heading"] == "Diurnal cycle"
         surface_card, days_card = view["var"]
-        assert surface_card["title"] == "Every hour of every calendar month"
+        assert surface_card["title"] == "Mean by calendar month and hour of day"
         assert surface_card["rows"] == [12]
         assert "mean total per hour" in surface_card["sub"]
         assert len(days_card["facets"]) == 12 and days_card["svgs"] == 12
@@ -259,7 +259,7 @@ def test_a_page_whose_build_carries_no_surface_draws_nothing_in_its_place(flux_a
     views = read(page, "#var-NEE", span_hashes(payload)["month"])
     assert views["#var-NEE"]["heading"] is None and views["#var-NEE"]["var"] == []
     titles = [c["title"] for c in views[span_hashes(payload)["month"]]["span"]]
-    assert not any(t.startswith("At what hour") for t in titles)
+    assert not any(t.startswith("Hourly departures") for t in titles)
 
 
 @needs_jsdom
@@ -271,13 +271,14 @@ def test_each_span_scale_differs_by_its_own_months(flux_atlas, flux_page):
     months_in_season = len(flux_atlas.payload["season_defs"][0]["months"])
     for scale, rows in (("month", 1), ("season", months_in_season), ("year", 12)):
         card = next(c for c in views[hashes[scale]]["span"]
-                    if c["title"].startswith("At what hour"))
-        assert card["title"] == f"At what hour this {scale} differed"
+                    if c["title"].startswith("Hourly departures"))
+        assert card["title"] == f"Hourly departures of this {scale} from the record"
         assert card["rows"] == [rows] * n_vars
         assert len(card["captions"]) == n_vars
         assert all(tip and "Record mean" in tip for tip in card["tips"])
     # The net exchange's departure is named by the way it moved, which holds either side of zero.
-    year = next(c for c in views[hashes["year"]]["span"] if c["title"].startswith("At what hour"))
+    year = next(c for c in views[hashes["year"]]["span"]
+                if c["title"].startswith("Hourly departures"))
     nee = year["captions"][[v["key"] for v in flux_atlas.payload["variables"]].index("NEE")]
     assert "toward uptake" in nee or "toward release" in nee
 
@@ -287,7 +288,7 @@ def test_the_mean_day_survives_a_build_without_the_hourly_arrays(flux_atlas, flu
     """Where the hourly arrays are left out, the mean day is drawn from the surface instead."""
     for scale, h in span_hashes(flux_atlas.payload).items():
         card = read(flux_page, h)[h]["span"][0]
-        assert card["title"].startswith("The mean day of"), scale
+        assert card["title"].startswith("Mean diurnal cycle, "), scale
         assert "built without the hourly arrays" in card["foot"]
         # The variables the hourly arrays would have carried, each stated per hour where it sums.
         assert card["svgs"] == 3

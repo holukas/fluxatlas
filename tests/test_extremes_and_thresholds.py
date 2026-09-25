@@ -214,7 +214,7 @@ def page(atlas, tmp_path_factory):
 @needs_jsdom
 def test_the_days_listed_are_the_substantially_measured_ones(page, atlas):
     ext = page["var-TA"]["extremes"]
-    assert ext["heading"] == "Days and half-hours at either end"
+    assert ext["heading"] == "Highest and lowest days and half-hours"
     high = hrefs(ext, "Highest ten days (warmest)")
     low = hrefs(ext, "Lowest ten days (coldest)")
     assert len(high) == len(low) == build.EXTREME_ENTRIES
@@ -277,7 +277,7 @@ def test_a_partitioned_flux_says_its_half_hours_are_not_observations(page):
 @needs_jsdom
 def test_each_day_test_that_happened_has_its_own_chart(page, atlas):
     thr = page["var-TA"]["thresholds"]
-    assert thr["heading"] == "Threshold days, year by year"
+    assert thr["heading"] == "Threshold days by year"
     tests = [f for f in atlas.payload["flags"] if f["var"] == "TA"]
     years = atlas.payload["years"]
     happened = [f for f in tests if any(row["c"][f["key"]] for row in years)]
@@ -292,7 +292,7 @@ def test_each_day_test_that_happened_has_its_own_chart(page, atlas):
 @needs_jsdom
 def test_the_count_and_the_longest_run_sit_side_by_side(page, atlas):
     thr = page["var-TA"]["thresholds"]
-    table = next(c for c in thr["cards"] if c["title"] == "The same counts as numbers")
+    table = next(c for c in thr["cards"] if c["title"] == "Threshold day counts by year")
     tests = [f for f in atlas.payload["flags"] if f["var"] == "TA"
              and any(row["c"][f["key"]] for row in atlas.payload["years"])]
     assert [row[0] for row in table["table"]] == [str(y) for y in range(FIRST, FIRST + YEARS)]
@@ -318,7 +318,7 @@ def test_the_dry_spell_is_drawn_beside_the_wet_days(page, atlas):
     thr = page["var-PREC"]["thresholds"]
     wet = next(c for c in thr["cards"] if c["title"].startswith("Wet days"))
     assert "longest run of consecutive days" in wet["sub"]
-    table = next(c for c in thr["cards"] if c["title"] == "The same counts as numbers")
+    table = next(c for c in thr["cards"] if c["title"] == "Threshold day counts by year")
     first = atlas.payload["years"][0]
     assert table["table"][0][1] == f"{first['c']['wet']} · {first['sp']['wet']} · " \
                                    f"{first['sp']['dry']}"

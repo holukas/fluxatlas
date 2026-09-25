@@ -369,7 +369,7 @@ const nYears = DATA => DATA.meta.last_year - DATA.meta.first_year + 1;
  * reader is given, so a chart that lost its label fails this as well as failing a reader. */
 function driveCumulative(where, required) {
   const svgs = visibleViews().flatMap(root =>
-    Array.from(root.querySelectorAll('svg[aria-label*="accumulated through the year"]')));
+    Array.from(root.querySelectorAll('svg[aria-label*="from 1 January, every year"]')));
   if (!svgs.length) {
     if (required) note(where, 'no chart of the total accumulated through the year was drawn');
     return;
@@ -686,7 +686,7 @@ async function run() {
      * it is the one chart there whose x axis is a date of the year rather than a day of a span. */
     if (isYear && signedSum) {
       await goto(hash, `${where}, back for the accumulated total`);
-      const svg = doc.querySelector('#view-month svg[aria-label*="accumulated through the year"]');
+      const svg = doc.querySelector('#view-month svg[aria-label*="from 1 January, every year"]');
       const hit = svg && svg.querySelector('rect.hit');
       if (hit) {
         hit.dispatchEvent(mouse('click'));

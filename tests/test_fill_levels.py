@@ -308,8 +308,8 @@ def test_a_partitioned_flux_says_its_bars_are_the_net_flux_it_came_from(flagged,
     assert "partitioned from measured net exchange" in gpp
     assert "is not measured: every value is modelled" in gpp
     assert "NEE_VUT_REF measured" in gpp and "NEE_VUT_REF good-quality fill" in gpp
-    assert "How much of each year was measured" not in gpp
-    assert "How much of each year was measured" in nee and "not measured" not in nee
+    assert "Coverage and measured share by year" not in gpp
+    assert "Coverage and measured share by year" in nee and "not measured" not in nee
 
 
 @needs_jsdom

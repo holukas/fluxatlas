@@ -2424,6 +2424,10 @@
      Level 2: one month
      ------------------------------------------------------------------------------------------ */
 
+  /* A variable's short name inside a sentence: the initial capital lowered, an acronym kept
+     ("net CO₂ exchange", "incoming PPFD"). */
+  const shortInText = v => v.short.replace(/^[A-Z](?=[a-z])/, c => c.toLowerCase());
+
   /* The measured share of a span, and how the rest of it was filled in the words of the flag it
      was read from. A code means different things in different columns - 2 is medium-quality fill
      beside a flux and reanalysis beside consolidated meteorology - so the words are the
@@ -2432,7 +2436,7 @@
   function fillPhrase(v, rec) {
     /* A partitioning product is modelled in every half-hour, so its shares are those of the net
        flux it was partitioned from, and they are worded as such. */
-    if (v.partitioned && !v.fill) return 'modelled by partitioning the net exchange';
+    if (v.partitioned && !v.fill) return 'modelled by partitioning of NEE';
     const nee = partitionedFrom(v);
     let text = nf(rec.meas, 0) + (nee ? ' % from measured ' + nee : ' % measured');
     if (!v.fill || !rec.f) return text;
@@ -2538,12 +2542,12 @@
         if (wv === null || hi - lo > wv) { wv = hi - lo; wd = d; }
       }
       if (wd) {
-        rows.push('<dt>Largest day-night range</dt><dd>' + nf(wv, 1) + ' ' + VARS.TA.units
-          + ' <span class="muted">on ' + hitDate(mo, wd) + '</span></dd>');
+        rows.push('<dt>Largest diurnal temperature range</dt><dd>' + nf(wv, 1) + ' '
+          + VARS.TA.units + ' <span class="muted">on ' + hitDate(mo, wd) + '</span></dd>');
       }
       if (isNum(mo.x.dtr)) {
-        rows.push('<dt>Mean day-night range</dt><dd>' + nf(mo.x.dtr, 1) + ' ' + VARS.TA.units
-          + '</dd>');
+        rows.push('<dt>Mean diurnal temperature range</dt><dd>' + nf(mo.x.dtr, 1) + ' '
+          + VARS.TA.units + '</dd>');
       }
       if (isNum(mo.x.gdd)) {
         rows.push('<dt>Degree days above 5 ' + VARS.TA.units + '</dt><dd>' + nf(mo.x.gdd, 0)
@@ -2557,17 +2561,16 @@
     const notes = [];
     if (mo.x.nrec) {
       notes.push(mo.x.nrec + ' day' + (mo.x.nrec === 1 ? '' : 's') + ' in this ' + spanNoun()
-        + ' set a record for its own calendar date. A day that was largely gap-filled cannot '
-        + 'set one.');
+        + ' set a record for the calendar date. Largely gap-filled days are not eligible.');
     }
     Object.keys(mo.ev || {}).forEach(name => {
       const ev = mo.ev[name];
       const label = { gs_start: 'The growing season began', gs_end: 'The growing season ended',
-        last_frost: 'The last frost of spring fell', first_frost: 'The first frost of autumn fell'
+        last_frost: 'The last spring frost occurred', first_frost: 'The first autumn frost occurred'
       }[name];
       notes.push(label + ' on ' + ev.date + (isNum(ev.delta) && ev.delta !== 0
         ? ', ' + Math.abs(ev.delta) + ' days ' + (ev.delta < 0 ? 'earlier' : 'later')
-          + ' than the median date of the record.' : ', the median date of the record.'));
+          + ' than the record median.' : ', the record median.'));
     });
     if (notes.length) html += '<p class="smallnote">' + notes.join(' ') + '</p>';
     return html;
@@ -2584,13 +2587,14 @@
       const strong = isNum(z) && Math.abs(z) >= 1;
       return '<dt>' + VARS[key].short + '</dt><dd' + (strong ? ' class="strong"' : '') + '>'
         + (isNum(z) ? nfs(z, 1) + '<span class="unit"> sd</span>'
-          : '<span class="muted">not judgeable</span>') + '</dd>';
+          : '<span class="muted">not assessed</span>') + '</dd>';
     });
     let head;
     if (!isNum(mo.x.zmax)) {
       head = '<p class="card-sub" style="max-width:none">Fewer than ' + M.composite_min_axes
-        + ' of the ' + axes.length + ' variables could be judged here, so this ' + spanNoun()
-        + ' carries no count: two out of two is not comparable with two out of five.</p>';
+        + ' of the ' + axes.length + ' variables could be assessed for this ' + spanNoun()
+        + ', so no count is given. A count out of two is not comparable with a count out of '
+        + 'five.</p>';
     } else {
       let driver = null;
       axes.forEach(key => {
@@ -2600,24 +2604,24 @@
       });
       head = '<p class="card-sub" style="max-width:none">'
         + (mo.x.nsd === 0
-          ? 'Nothing in this ' + spanNoun() + ' reached one standard deviation from its normal.'
-          : '<b>' + mo.x.nsd + ' of ' + mo.x.nz + ' variables</b> stood at least one standard '
-            + 'deviation from normal')
-        + (driver ? ', the furthest being ' + VARS[driver].short.toLowerCase() + ' at '
-          + nfs(mo.z[driver], 1) + ' standard deviations.' : '.') + '</p>';
+          ? 'No variable in this ' + spanNoun() + ' departed from its normal by one standard '
+            + 'deviation or more.'
+          : '<b>' + mo.x.nsd + ' of ' + mo.x.nz + ' variables</b> departed from their normal by '
+            + 'at least one standard deviation.')
+        + (driver ? ' The largest departure was in ' + shortInText(VARS[driver]) + ', at '
+          + nfs(mo.z[driver], 1) + ' standard deviations.' : '') + '</p>';
     }
     const C = M.composite;
     const pair = C.strongest;
     return head + '<dl class="kv">' + rows.join('') + '</dl>'
-      + '<p class="smallnote">Each figure is that variable’s departure from its own normal '
+      + '<p class="smallnote">Each figure is the variable’s departure from its normal '
       + 'for this ' + spanNoun() + ', in standard deviations of that variable across the record. '
-      + 'A variable the record covers to less than ' + M.cov_badge_text + ' here, or without a '
-      + 'normal, is dropped '
-      + 'rather than counted as ordinary. They do not move independently'
-      + (pair ? ': ' + VARS[pair.a].short.toLowerCase() + ' and ' + VARS[pair.b].short.toLowerCase()
-        + ' correlate at r = ' + nf(pair.r, 2) + ' across the record' : '')
-      + ', so a count of two is not always two separate things. The whole matrix is on the '
-      + 'grid page.</p>';
+      + 'A variable covered to less than ' + M.cov_badge_text + ' here, or without a '
+      + 'normal, is excluded, not counted as ordinary. The variables are correlated'
+      + (pair ? ' (' + shortInText(VARS[pair.a]) + ' and ' + shortInText(VARS[pair.b])
+        + ': r = ' + nf(pair.r, 2) + ' across the record)' : '')
+      + ', so a count of two is not necessarily two independent departures. The full correlation '
+      + 'matrix is on the grid page.</p>';
   }
 
   /**
@@ -2654,29 +2658,36 @@
     let line = head;
     if (rec) {
       const d = monthDigits(key);
-      line += ', which ran '
-        + (isNum(rec.v) ? nf(rec.v, d) + ' ' + VARS[key].units : 'unmeasured');
-      if (isNum(rec.a)) line += ' (' + nfs(rec.a, d) + ' against its normal)';
+      const V = VARS[key];
+      line += ': ' + shortInText(V) + ' '
+        + (isNum(rec.v) ? nf(rec.v, d) + ' ' + V.units : 'no value');
+      const sense = senseOf(V, rec.v);
+      if (sense) line += ', ' + sense;
+      if (isNum(rec.a)) {
+        line += ' (' + (senseAnomaly(V, rec) || nfs(rec.a, d) + ' ' + V.units + ' from normal')
+          + ')';
+      }
       if (isNum(rec.r) && isNum(rec.n)) {
         // "warmest" is a statement about temperature; anything else ranks without a superlative,
         // since high is not better or worse for a carbon flux.
+        const peers = /^[A-Z][a-z]/.test(se.label) ? se.label.toLowerCase() + 's'
+          : se.label + ' seasons';
         line += key === 'TA'
-          ? ' and stands ' + ord(rec.r) + ' warmest of ' + rec.n + ' ' + se.label.toLowerCase() + 's'
-          : ' and ranks ' + ord(rec.r) + ' of ' + rec.n + ' ' + se.label.toLowerCase() + 's'
-            + (VARS[key].rank_note ? ' (1st = ' + VARS[key].rank_note + ')' : '');
+          ? ', ' + ord(rec.r) + ' warmest of ' + rec.n + ' ' + peers
+          : ', ranked ' + ord(rec.r) + ' of ' + rec.n + ' ' + peers
+            + (V.rank_note ? ' (1st = ' + V.rank_note + ')' : '');
       }
     }
     if (se.b.length) {
-      line += (line === head ? ', which carries ' : '. The season carries ')
-        + se.b.map(b => BADGES[b.k].label.toLowerCase()).join(', ');
+      line += '. Season badges: ' + se.b.map(b => BADGES[b.k].label.toLowerCase()).join(', ');
     }
     return line + '.';
   }
 
   function monthBadges(mo) {
     if (!mo.b.length) {
-      return '<ul class="badgelist none"><li><span class="bt"><span class="bd">Nothing in this '
-        + spanNoun() + ' met a badge threshold.</span></span></li></ul>';
+      return '<ul class="badgelist none"><li><span class="bt"><span class="bd">No badge threshold '
+        + 'was met in this ' + spanNoun() + '.</span></span></li></ul>';
     }
     return '<ul class="badgelist">' + mo.b.map(b => {
       const meta = BADGES[b.k];
@@ -2693,7 +2704,7 @@
     if (!rows.length) return '';
     const seen = {};
     rows.forEach(s => { seen[s.why] = (seen[s.why] || []).concat(BADGES[s.key].label); });
-    return '<p class="smallnote">Withheld for want of measurement: '
+    return '<p class="smallnote">Badges withheld for lack of data: '
       + Object.keys(seen).map(why => seen[why].join(', ') + ' (' + why + ')').join('; ') + '.</p>';
   }
 
@@ -2773,7 +2784,8 @@
         run.push(seen ? acc / seen : null);
       });
 
-      const f = frame(host, { aspect: 0.36, ariaLabel: 'Daily temperature departure' });
+      const f = frame(host, { aspect: 0.36,
+        ariaLabel: 'Daily air temperature departure from normal' });
       const ext = extent([dev]);
       const span = Math.max(Math.abs(ext[0]), Math.abs(ext[1]), 1) * 1.12;
       const sx = linear(0.5, mo.n + 0.5, f.m.left, f.m.left + f.iw);
@@ -2801,7 +2813,7 @@
             color: f.p.muted },
           { k: 'departure', v: nfs(dev[i], 1) + ' ' + VARS.TA.units,
             color: isNum(dev[i]) && dev[i] >= 0 ? f.p.warm : f.p.cold },
-          { k: 'month so far', v: nfs(run[i], 1) + ' ' + VARS.TA.units, color: f.p.ink }
+          { k: 'mean departure to date', v: nfs(run[i], 1) + ' ' + VARS.TA.units, color: f.p.ink }
         ]);
       }, d => selectDay(d));
     };
@@ -2824,7 +2836,7 @@
       const rain = monthSeries(mo, 'PREC', 'sum');
 
       const f = frame(host, { aspect: 0.36, margin: { top: 12, right: 52, bottom: 30, left: 46 },
-        ariaLabel: 'Soil water content and precipitation' });
+        ariaLabel: 'Daily soil water content and precipitation' });
       const ext = extent([swc, norm.lo, norm.hi]);
       const pad = (ext[1] - ext[0]) * 0.12 || 1;
       const sx = linear(0.5, mo.n + 0.5, f.m.left, f.m.left + f.iw);
@@ -2856,7 +2868,7 @@
       hover(f, sx, days, d => {
         const i = d - 1;
         return tipRows(labelAt(mo.i0 + d - 1) + ' ' + dateAt(mo.i0 + d - 1).y, [
-          { k: 'soil water', v: nf(swc[i], 1) + ' ' + VARS['SWC'].units,
+          { k: 'soil water content', v: nf(swc[i], 1) + ' ' + VARS['SWC'].units,
             color: f.p.series[2] },
           { k: 'normal for the date', v: nf(norm.mid[i], 1) + ' ' + VARS['SWC'].units,
             color: f.p.muted },
@@ -2881,7 +2893,7 @@
       const norm = monthNormal(mo, key, stat);
       const v = VARS[key];
       const f = frame(host, { aspect: 0.52, margin: { top: 10, right: 12, bottom: 26, left: 44 },
-        ariaLabel: 'Daily ' + v.short + ' against the normal' });
+        ariaLabel: 'Daily ' + shortInText(v) + ' and normal' });
       const ext = extent([value, norm.lo, norm.hi]);
       const pad = (ext[1] - ext[0]) * 0.08 || 1;
       const floor = v.agg === 'sum' || key === 'SW_IN' || key === 'VPD' ? 0 : ext[0] - pad;
@@ -2978,7 +2990,7 @@
       const hours = values.map((v, i) => i + 0.5);
       const v = VARS[key];
       const f = frame(host, { aspect: 0.62, margin: { top: 10, right: 12, bottom: 28, left: 42 },
-        ariaLabel: 'Mean diurnal course of ' + v.short });
+        ariaLabel: 'Mean diurnal cycle of ' + shortInText(v) });
       const ext = extent([values, normal]);
       const lo = (kind === 'bars' || kind === 'area') ? 0 : ext[0] - (ext[1] - ext[0]) * 0.1;
       const sy = linear(lo, ext[1] + (ext[1] - ext[0]) * 0.1 || 1, f.m.top + f.ih, f.m.top);
@@ -3100,7 +3112,7 @@
       });
 
       const f = frame(host, { aspect: 0.36,
-        ariaLabel: 'Daily mean temperature in every ' + peerOf(mo) + ' of the record' });
+        ariaLabel: 'Daily mean air temperature in every ' + peerOf(mo) + ' of the record' });
       const ext = extent(series.map(s => s.values));
       const sx = linear(0.5, mo.n + 0.5, f.m.left, f.m.left + f.iw);
       const sy = linear(ext[0] - 1, ext[1] + 1, f.m.top + f.ih, f.m.top);
@@ -3131,7 +3143,7 @@
             color: f.p.series[1] },
           { k: 'normal for the date', v: nf(norm.mid[i], 1) + ' ' + VARS.TA.units,
             color: f.p.muted },
-          { k: 'coldest to warmest', v: others.length
+          { k: 'other years, range', v: others.length
             ? nf(others[0], 1) + ' – ' + nf(others[others.length - 1], 1) : '–' },
           { k: isNum(rank) ? ord(rank) + ' warmest of ' + (others.length + 1) : '', rule: true }
         ]);
@@ -3178,7 +3190,7 @@
         nhi.push(NORM.TA.mean.p90[doy]);
         nmean.push(NORM.TA.mean.mean[doy]);
       }
-      const f = frame(host, { aspect: 0.36, ariaLabel: 'Daily temperature' });
+      const f = frame(host, { aspect: 0.36, ariaLabel: 'Daily air temperature' });
       const ext = extent([tmin, tmax, nlo, nhi]);
       const sx = linear(0.5, mo.n + 0.5, f.m.left, f.m.left + f.iw);
       const sy = linear(ext[0] - 1, ext[1] + 1, f.m.top + f.ih, f.m.top);
@@ -3196,7 +3208,7 @@
           { k: 'minimum', v: nf(tmin[i], 1) + ' ' + VARS.TA.units },
           { k: 'mean', v: nf(tmean[i], 1) + ' ' + VARS.TA.units, color: f.p.series[1] },
           { k: 'maximum', v: nf(tmax[i], 1) + ' ' + VARS.TA.units },
-          { k: 'normal', v: nf(nmean[i], 1) + ' ' + VARS.TA.units, color: f.p.muted }
+          { k: 'normal of daily mean', v: nf(nmean[i], 1) + ' ' + VARS.TA.units, color: f.p.muted }
         ]);
       }, d => selectDay(d));
     };
@@ -3228,7 +3240,7 @@
       hover(f, sx, days, d => {
         const i = d - 1;
         return tipRows(labelAt(mo.i0 + d - 1) + ' ' + dateAt(mo.i0 + d - 1).y, [
-          { k: 'total', v: nf(sums[i], 1) + ' ' + VARS.PREC.units, color: f.p.series[0] },
+          { k: 'daily total', v: nf(sums[i], 1) + ' ' + VARS.PREC.units, color: f.p.series[0] },
           { k: 'normal for the date', v: nf(norm[i], 1) + ' ' + VARS.PREC.units, color: f.p.muted }
         ]);
       }, d => selectDay(d));
@@ -3464,9 +3476,9 @@
     if (!wrapping) return '';
     const first = MONTH_NAME[wrapping.months[0] - 1];
     const last = MONTH_NAME[wrapping.months[wrapping.months.length - 1] - 1];
-    return ' ' + wrapping.label + ' runs ' + first + ' to ' + last + ' and is labelled by the year '
-      + 'of its ' + last + ', so the first one in the record is short of its ' + first
-      + ' and the last ' + first + ' belongs to one the record does not reach.';
+    return ' ' + wrapping.label + ' runs from ' + first + ' to ' + last + ' and takes the year of '
+      + 'its ' + last + '. The first one in the record therefore lacks its ' + first
+      + ', and the last ' + first + ' of the record belongs to a season outside it.';
   }
 
   /* Which season each calendar month falls in, read from the scheme the atlas was built with
@@ -3488,9 +3500,9 @@
     const bits = [];
     const ta = mo.TA, pr = mo.PREC;
     if (ta && isNum(ta.v)) {
-      let s = 'Mean temperature <b>' + nf(ta.v, 1) + ' ' + VARS.TA.units + '</b>';
+      let s = 'Mean air temperature <b>' + nf(ta.v, 1) + ' ' + VARS.TA.units + '</b>';
       if (isNum(ta.a)) {
-        s += ', ' + nfs(ta.a, 1) + ' ' + VARS.TA.units + ' against the '
+        s += ', ' + nfs(ta.a, 1) + ' ' + VARS.TA.units + ' relative to the '
           + peerOf(mo) + ' normal';
       }
       if (isNum(ta.r) && isNum(ta.n)) s += ' (' + ord(ta.r) + ' warmest of ' + ta.n + ')';
@@ -3521,14 +3533,17 @@
         const sense = senseOf(V, rec.v);
         if (sense) s += ' (' + sense + ')';
         if (isNum(rec.a)) {
-          s += ', ' + (senseAnomaly(V, rec) || nfs(rec.a, d) + ' against the '
-            + peerOf(mo) + ' normal');
+          s += ', ' + (senseAnomaly(V, rec) || nfs(rec.a, d) + ' ' + V.units
+            + ' relative to the ' + peerOf(mo) + ' normal');
         }
-        if (isNum(rec.r) && isNum(rec.n)) s += ' (ranks ' + ord(rec.r) + ' of ' + rec.n + ')';
+        if (isNum(rec.r) && isNum(rec.n)) {
+          s += ' (ranked ' + ord(rec.r) + ' of ' + rec.n
+            + (V.rank_note ? ', 1st = ' + V.rank_note : '') + ')';
+        }
         bits.push(s);
       });
     }
-    if (!bits.length) return 'No variable in this ' + spanNoun() + ' carries a value.';
+    if (!bits.length) return 'No variable has a value for this ' + spanNoun() + '.';
     return cap(bits.join('; ')) + '.';
   }
 
@@ -3571,34 +3586,36 @@
     const d = v.digits;
     const rows = [];
     const unit = ' ' + v.units;
+    // A signed figure carries its direction wherever it is printed.
+    const sensed = (x, when) => nf(x, d) + unit + ' in ' + when
+      + (senseOf(v, x) ? ' (' + senseOf(v, x) + ')' : '');
 
     if (met && met.trend_year) {
       rows.push({ k: 'Trend over the record', v: trendSentence(met, met.trend_year) });
     }
     if (met && met.epoch && met.epoch.early) {
       const e = met.epoch;
-      rows.push({ k: 'The record halved',
-        v: nf(e.early.mean, d) + unit + ' over ' + e.early.y0 + '–' + e.early.y1 + ', '
-          + nf(e.late.mean, d) + unit + ' over ' + e.late.y0 + '–' + e.late.y1
+      rows.push({ k: 'First and second half of the record',
+        v: sensed(e.early.mean, e.early.y0 + '–' + e.early.y1) + ', '
+          + sensed(e.late.mean, e.late.y0 + '–' + e.late.y1)
           + ' (' + nfs(e.late.mean - e.early.mean, d) + unit + ')' });
     }
     if (ex.high) {
       rows.push({ k: 'Highest month',
-        v: nf(ex.high[key].v, d) + unit + ' in ' + MONTH_NAME[ex.high.m - 1] + ' ' + ex.high.y });
+        v: sensed(ex.high[key].v, MONTH_NAME[ex.high.m - 1] + ' ' + ex.high.y) });
       rows.push({ k: 'Lowest month',
-        v: nf(ex.low[key].v, d) + unit + ' in ' + MONTH_NAME[ex.low.m - 1] + ' ' + ex.low.y });
+        v: sensed(ex.low[key].v, MONTH_NAME[ex.low.m - 1] + ' ' + ex.low.y) });
     }
     if (ex.yearHigh) {
-      rows.push({ k: 'Highest year',
-        v: nf(ex.yearHigh[key].v, d) + unit + ' in ' + ex.yearHigh.y });
-      rows.push({ k: 'Lowest year', v: nf(ex.yearLow[key].v, d) + unit + ' in ' + ex.yearLow.y });
+      rows.push({ k: 'Highest year', v: sensed(ex.yearHigh[key].v, ex.yearHigh.y) });
+      rows.push({ k: 'Lowest year', v: sensed(ex.yearLow[key].v, ex.yearLow.y) });
     }
     rows.push({ k: v.derived ? 'Computed from' : 'Read from',
       v: '<code>' + esc(v.derived ? v.column.replace(/^computed:\s*/, '') : v.column) + '</code>'
         + (v.product ? ' (' + esc(v.product) + ')' : '') });
-    if (v.unc_note) rows.push({ k: 'Uncertainty covers', v: v.unc_note });
-    rows.push({ k: 'Coverage warning below', v: nf(v.cov.warn, 0) + ' % measured, which '
-      + (v.thin ? v.thin + ' month' + (v.thin === 1 ? ' is' : 's are') : 'no month is') });
+    if (v.unc_note) rows.push({ k: 'Uncertainty components', v: v.unc_note });
+    rows.push({ k: 'Coverage warning', v: 'below ' + nf(v.cov.warn, 0) + ' % measured; '
+      + (v.thin ? v.thin + ' month' + (v.thin === 1 ? '' : 's') : 'no month') + ' below it' });
     return '<dl class="kv wide">' + rows.map(r =>
       '<dt>' + r.k + '</dt><dd>' + r.v + '</dd>').join('') + '</dl>';
   }
@@ -3624,8 +3641,9 @@
       const lows = slopes.map(t => (t ? t.lo : null)).filter(isNum);
       const highs = slopes.map(t => (t ? t.hi : null)).filter(isNum);
       if (!lows.length) {
-        svgText(f.svg, f.width / 2, f.height / 2, 'No calendar month has enough complete years',
-          'ax-text', { 'text-anchor': 'middle' });
+        svgText(f.svg, f.width / 2, f.height / 2,
+          'No calendar month has enough complete years for a trend', 'ax-text',
+          { 'text-anchor': 'middle' });
         return;
       }
       const lo = Math.min(0, Math.min.apply(null, lows));
@@ -3681,8 +3699,8 @@
     const published = YEAR_ROWS.map(r => (r[key] && isNum(r[key].u) ? r[key].u : null));
     if (published.some(isNum)) {
       return { half: published, label: '± ' + (v.unc_note || 'published uncertainty'),
-        note: 'The band is the published uncertainty, covering ' + (v.unc_note || 'what the file '
-          + 'gives') + '.' };
+        note: 'The band is the published uncertainty'
+          + (v.unc_note ? ' (' + v.unc_note + ')' : '') + '.' };
     }
     if (v.agg === 'sum') return null;
     const half = YEAR_ROWS.map(r => {
@@ -3694,10 +3712,10 @@
       return Math.sqrt(varc);
     });
     return half.some(isNum)
-      ? { half: half, label: '± 1 sd of its months',
-        note: 'The band is one standard deviation of the year’s own monthly figures, which '
-          + 'describes how much the year varied rather than how well it is known. This file '
-          + 'publishes no uncertainty for ' + v.short.toLowerCase() + '.' }
+      ? { half: half, label: '± 1 sd of monthly values',
+        note: 'The band is ±1 standard deviation of the year’s monthly values. It shows the '
+          + 'variability within the year, not the uncertainty of the annual value. The file '
+          + 'publishes no uncertainty for ' + shortInText(v) + '.' }
       : null;
   }
 
@@ -3715,7 +3733,8 @@
       const bandHi = values.map((x, i) => (isNum(x) && band && isNum(band.half[i])
         ? x + band.half[i] : null));
 
-      const f = frame(host, { aspect: 0.36, ariaLabel: v.short + ' in every year of the record' });
+      const f = frame(host, { aspect: 0.36,
+        ariaLabel: 'Annual ' + shortInText(v) + ', every year of the record' });
       const ext = extent([values, bandLo, bandHi]);
       const pad = (ext[1] - ext[0]) * 0.12 || 1;
       const sx = linear(years[0] - 0.5, years[years.length - 1] + 0.5, f.m.left, f.m.left + f.iw);
@@ -3776,7 +3795,9 @@
       const clim = CLIM[key] || {};
       const months = [];
       for (let m = 1; m <= 12; m++) months.push(clim[String(m)] || null);
-      const f = frame(host, { aspect: 0.4, ariaLabel: v.short + ' through the year' });
+      const f = frame(host, { aspect: 0.4,
+        ariaLabel: 'Normal, standard deviation and range of ' + shortInText(v)
+          + ' by calendar month' });
       const all = [];
       months.forEach(n => { if (n) all.push(n.min, n.max); });
       if (!all.length) {
@@ -3809,7 +3830,7 @@
         const n = months[m - 1];
         if (!n) return tipRows(MONTH_NAME[m - 1], [{ k: 'Normal', v: 'not enough years' }]);
         return tipRows(MONTH_NAME[m - 1], [
-          { k: 'Normal', v: nf(n.mean, v.digits) + ' ' + v.units + ' over ' + n.n + ' years' },
+          { k: 'Normal', v: nf(n.mean, v.digits) + ' ' + v.units + ' (' + n.n + ' years)' },
           { k: 'Standard deviation', v: nf(n.sd, v.digits) + ' ' + v.units },
           { k: 'Highest', v: nf(n.max, v.digits) + ' in ' + n.max_year },
           { k: 'Lowest', v: nf(n.min, v.digits) + ' in ' + n.min_year }
@@ -3853,8 +3874,8 @@
       const levels = v.fill ? v.fill.levels : [];
       const fills = YEAR_ROWS.map(r => (r[key] && r[key].f) || []);
       const f = frame(host, { aspect: 0.3, ariaLabel: nee
-        ? v.short + ': share of each year for which ' + nee + ' was measured'
-        : v.short + (noMeas ? ' available share by year' : ' measured share by year') });
+        ? v.short + ': share of each year with ' + nee + ' measured'
+        : (noMeas ? 'Available' : 'Measured') + ' share of ' + shortInText(v) + ' by year' });
       const sx = linear(years[0] - 0.5, years[years.length - 1] + 0.5, f.m.left, f.m.left + f.iw);
       const sy = linear(0, 100, f.m.top + f.ih, f.m.top);
       const every = Math.max(1, Math.ceil(years.length / Math.max(3, Math.floor(f.iw / 54))));
@@ -3969,8 +3990,8 @@
       for (let d = 1; d <= 366; d++) days.push(d);
 
       const f = frame(host, { aspect: 0.4,
-        ariaLabel: v.short + ' accumulated through the year from 1 January, every year of the '
-          + 'record, ' + focus + ' drawn over the others' });
+        ariaLabel: 'Cumulative ' + shortInText(v) + ' from 1 January, every year of the record, '
+          + focus + ' highlighted' });
       const ext = extent(tracks.map(t => t.run).concat(normal ? [normal] : []));
       // Zero is always on the axis: it is where every line starts, and for a signed variable it
       // is the boundary between the two words the page uses for the sign.
@@ -4033,17 +4054,16 @@
             color: f.p.muted });
         }
         if (others.length) {
-          rows.push({ k: 'the other years', v: nf(others[0], 0) + ' to '
+          rows.push({ k: 'other years, range', v: nf(others[0], 0) + ' to '
             + nf(others[others.length - 1], 0) + ' ' + v.units, color: f.p.ink2 });
         }
         if (isNum(value) && others.length) {
           const ahead = others.filter(x => (low ? x < value : x > value)).length;
-          rows.push({ k: 'place by this date', v: ord(ahead + 1) + ' of ' + (others.length + 1)
+          rows.push({ k: 'rank by this date', v: ord(ahead + 1) + ' of ' + (others.length + 1)
             + ' (1st = ' + (v.rank_note || 'highest') + ')' });
         }
         if (here && here.gaps[d - 1]) {
-          rows.push({ k: 'days without a value so far', v: here.gaps[d - 1] + ', each adding '
-            + 'nothing' });
+          rows.push({ k: 'missing days to date', v: here.gaps[d - 1] + ', each adding zero' });
         }
         return tipRows(title, rows);
       }, onPanel ? d => selectDay(Math.min(d, isLeap(focus) ? 366 : 365)) : null);
@@ -4056,7 +4076,7 @@
     const gappy = tracks.filter(t => t.missing > 0).length;
     const legend = [
       { color: 'var(--series-2)', label: String(focus), line: true },
-      { color: 'var(--text-secondary)', label: 'the other years', line: true }
+      { color: 'var(--text-secondary)', label: 'other years', line: true }
     ];
     if (NORM[v.key] && NORM[v.key].sum) {
       legend.push({ color: 'var(--text-muted)', label: 'normal', line: true });
@@ -4066,21 +4086,21 @@
         { color: 'var(--pole-warm)', label: 'net ' + v.sign.high });
     }
     chartCard(parent, {
-      title: v.short + ' accumulated through the year', width: 'w-12',
-      sub: 'The running total of the daily figure from 1 January, one line per year, with '
-        + (onPanel ? focus : 'the last year of the record, ' + focus + ',')
-        + ' drawn over the others and the running total of the daily normals dashed.'
-        + (v.sign ? ' Below zero the balance since 1 January is net ' + v.sign.low
-          + ', above it net ' + v.sign.high + '.' : '')
-        + (onPanel ? ' Selecting a date opens that day.' : ''),
+      title: 'Cumulative ' + shortInText(v) + ' from 1 January', width: 'w-12',
+      sub: 'Running total of the daily values from 1 January, one line per year. '
+        + (onPanel ? focus : 'The last year of the record, ' + focus + ',')
+        + ' is highlighted; the dashed line is the running total of the daily normals.'
+        + (v.sign ? ' Below zero the cumulative balance is net ' + v.sign.low
+          + ', above zero net ' + v.sign.high + '.' : '')
+        + (onPanel ? ' Select a date to open that day.' : ''),
       legend: legend,
-      foot: 'A day without a value adds nothing: the running total holds level across it, as the '
-        + 'accumulated precipitation of a span panel does, so a year with missing days is short '
+      foot: 'A missing day adds zero, so the running total stays level across it, as in the '
+        + 'cumulative precipitation of a span panel. A year with missing days is therefore short '
         + 'by whatever those days carried. '
-        + (gappy ? gappy + ' of the ' + tracks.length + ' years drawn '
-          + (gappy === 1 ? 'has' : 'have') + ' at least one such day, and the tooltip counts '
-          + 'them to each date.'
-          : 'No year drawn here has one.'),
+        + (gappy ? gappy + ' of the ' + tracks.length + ' years '
+          + (gappy === 1 ? 'has' : 'have') + ' at least one missing day; the tooltip gives the '
+          + 'count to each date.'
+          : 'No year has a missing day.'),
       draw: drawCumulative(v.key, focus, onPanel)
     });
   }
@@ -4134,7 +4154,7 @@
       }
 
       const f = frame(host, { aspect: 0.36,
-        ariaLabel: v.short + ' through the year, every year of the record' });
+        ariaLabel: 'Daily ' + shortInText(v) + ' by day of year, every year of the record' });
       const ext = extent([norm.p10, norm.p90].concat(tracks.map(t => t.slice(1))));
       const pad = (ext[1] - ext[0]) * 0.04 || 1;
       const sx = linear(1, 365, f.m.left, f.m.left + f.iw);
@@ -4156,7 +4176,8 @@
         const at = new Date(Date.UTC(2001, 0, d));
         return tipRows(at.getUTCDate() + ' ' + MONTH_NAME[at.getUTCMonth()], [
           { k: 'Normal', v: nf(norm.mean[d], v.digits) + ' ' + v.units, color: f.p.ink },
-          { k: '10th to 90th', v: nf(norm.p10[d], v.digits) + ' to ' + nf(norm.p90[d], v.digits),
+          { k: '10th–90th percentile', v: nf(norm.p10[d], v.digits) + ' to '
+            + nf(norm.p90[d], v.digits),
             color: 'var(--band-outer)' },
           { k: 'Years drawn', v: String(values.length) }
         ]);
@@ -4194,7 +4215,7 @@
       }
 
       const f = frame(host, { aspect: 0.3,
-        ariaLabel: v.short + ' departure from the normal for each date' });
+        ariaLabel: 'Daily departure of ' + shortInText(v) + ' from the normal for the date' });
       const ext = extent([dev]);
       const span = Math.max(Math.abs(ext[0]), Math.abs(ext[1]), 1) * 1.06;
       const sx = linear(0, DAYS.n, f.m.left, f.m.left + f.iw);
@@ -4238,8 +4259,8 @@
       hover(f, sx, YEARS.map(y => dayIndex(y, 7, 1)), i => {
         const at = dateAt(i);
         return tipRows(String(at.y), [
-          { k: 'Running mean', v: isNum(run[i]) ? nfs(run[i], v.digits) + ' ' + v.units
-            : 'not formed', color: f.p.ink }
+          { k: '365-day running mean', v: isNum(run[i]) ? nfs(run[i], v.digits) + ' ' + v.units
+            : 'too few days', color: f.p.ink }
         ]);
       }, i => { location.hash = dateAt(i).y + '-' + M.year_slug; });
     };
@@ -4310,44 +4331,46 @@
 
     host.innerHTML = '<p class="monthlede" id="var-lede"></p>'
       + '<div class="grid" id="var-summary"></div>'
-      + '<h2 class="section">Over the record</h2><div class="grid" id="var-record"></div>'
+      + '<h2 class="section">Annual values and annual cycle</h2>'
+      + '<div class="grid" id="var-record"></div>'
       // Each of these is filled by one part of the page below, and stays empty - no heading, no
       // space - where the build carries nothing for it, so a page without them reads as before.
       + '<div id="var-season"></div><div id="var-thresholds"></div>'
-      + '<h2 class="section">Month by month</h2><div class="grid" id="var-months"></div>'
-      + (hasDaily(v) ? '<h2 class="section">Day by day</h2>'
+      + '<h2 class="section">Monthly trends and extremes</h2>'
+      + '<div class="grid" id="var-months"></div>'
+      + (hasDaily(v) ? '<h2 class="section">Daily series</h2>'
         + '<div class="grid" id="var-daily"></div>' : '')
       + '<div id="var-extremes"></div><div id="var-diurnal"></div>'
-      + '<h2 class="section">What the record covers</h2><div class="grid" id="var-cov"></div>'
+      + '<h2 class="section">Coverage</h2><div class="grid" id="var-cov"></div>'
       + '<div id="var-hourly"></div>';
 
     document.getElementById('var-lede').innerHTML = v.about
       + ' ' + sourceOf(v) + ', ' + v.first_year + '–' + v.last_year + '.';
 
     cardEl(document.getElementById('var-summary'), {
-      title: 'This variable over ' + M.first_year + '–' + M.last_year, width: 'w-12',
-      sub: 'Every figure here is the one the grid shows, aggregated the way this variable '
-        + 'aggregates: ' + (v.agg === 'sum' ? 'a span is its total' : 'a span is its mean') + '.'
+      title: 'Summary, ' + M.first_year + '–' + M.last_year, width: 'w-12',
+      sub: 'The figures shown on the grid. Each span is stated as its '
+        + (v.agg === 'sum' ? 'total' : 'mean') + '.'
     }).innerHTML = varSummary(key);
 
     const rec = document.getElementById('var-record');
     const band = yearBand(key);
     chartCard(rec, {
-      title: 'Every year of the record', width: 'w-7',
+      title: 'Annual values', width: 'w-7',
       sub: 'One point per year' + (met && met.trend_year && met.trend_year.fit
-        ? ', with the Theil-Sen slope the page publishes drawn through them' : '')
-        + '. Selecting a year opens it.',
-      legend: [{ color: 'var(--series-1)', label: 'the year', line: true }]
+        ? ', with the published Theil-Sen trend line' : '')
+        + '. Select a year to open it.',
+      legend: [{ color: 'var(--series-1)', label: 'annual value', line: true }]
         .concat(band ? [{ color: 'var(--band-outer)', label: band.label }] : [])
-        .concat([{ color: 'var(--text-primary)', label: 'fitted trend', line: true }]),
+        .concat([{ color: 'var(--text-primary)', label: 'Theil-Sen trend', line: true }]),
       foot: [band ? band.note : '', met && met.trend_year ? trendSentence(met, met.trend_year) : '']
         .filter(Boolean).join(' '),
       draw: drawVarYears(key)
     });
     chartCard(rec, {
-      title: 'The shape of the year', width: 'w-5',
-      sub: 'Each calendar month over the whole record: its normal, one standard deviation either '
-        + 'side, and the full range it has covered.',
+      title: 'Mean annual cycle', width: 'w-5',
+      sub: 'Normal of each calendar month, ±1 standard deviation, and the full range over the '
+        + 'record.',
       legend: [{ color: 'var(--series-1)', label: 'normal', line: true },
         { color: 'var(--band-outer)', label: 'range across the record' }],
       draw: drawVarCycle(key)
@@ -4358,55 +4381,51 @@
     const byMonth = document.getElementById('var-months');
     if (met) {
       chartCard(byMonth, {
-        title: 'The trend of each calendar month', width: 'w-7',
-        sub: 'A slope per decade fitted through that calendar month alone, with its 95 % interval. '
-          + 'A bar is solid where Kendall p is below ' + nf(TREND_ALPHA, 2) + '.',
-        foot: 'One annual slope is the average of these twelve, and averaging them hides the case '
-          + 'this chart exists for: a record whose winters have moved and whose summers have not '
-          + 'says something an annual figure cannot.',
+        title: 'Trends by calendar month', width: 'w-7',
+        sub: 'Slope per decade fitted to each calendar month separately, with its 95 % interval. '
+          + 'Bars are solid where Kendall p is below ' + nf(TREND_ALPHA, 2) + '.',
+        foot: 'The annual slope averages these twelve and can hide a change confined to some '
+          + 'months, such as winters that have changed while summers have not.',
         draw: drawMonthlyTrends(key)
       });
       const table = monthlyTrendTable(key);
       if (table) {
-        cardEl(byMonth, { title: 'The same slopes as numbers', width: 'w-5',
-          sub: 'Withheld where a calendar month has fewer than ' + M.trend_min_years
+        cardEl(byMonth, { title: 'Monthly trend statistics', width: 'w-5',
+          sub: 'Withheld for a calendar month with fewer than ' + M.trend_min_years
             + ' complete years.' }).innerHTML = table;
       }
     }
     cardEl(byMonth, {
-      title: 'The months at either end', width: 'w-12',
-      sub: 'The five highest and five lowest months of the record, with their departure from the '
-        + 'calendar-month normal. Selecting one opens it.'
+      title: 'Highest and lowest months', width: 'w-12',
+      sub: 'The five highest and five lowest months of the record, with the departure from the '
+        + 'calendar-month normal. Select a month to open it.'
     }).innerHTML = varMoments(key);
 
     if (hasDaily(v)) {
       const daily = document.getElementById('var-daily');
       chartCard(daily, {
-        title: 'Every year of the record, day by day', width: 'w-6',
-        sub: 'One faint line per year on the day-of-year axis, over the ±' + M.clim_window
+        title: 'Daily values by day of year', width: 'w-6',
+        sub: 'One faint line per year on a day-of-year axis, over the ±' + M.clim_window
           + ' day normal band for each date.',
         legend: [
           { color: 'var(--band-outer)', label: 'normal 10th–90th percentile' },
           { color: 'var(--series-1)', label: 'one year', line: true },
           { color: 'var(--text-primary)', label: 'normal for the date', line: true }
         ],
-        foot: 'Drawn along the year rather than along the record, because at this length the '
-          + 'question a daily scale can answer is where in the year this variable varies and '
-          + 'where it holds still.',
+        foot: 'Plotted by day of year, so the spread between years at each date is visible.',
         draw: drawVarDailyCycle(key)
       });
       chartCard(daily, {
-        title: 'How far each day sat from its normal', width: 'w-6',
-        sub: 'Every day of the record against the normal for the same date, with the mean of '
-          + 'those departures over a centred year.',
+        title: 'Daily departures from the normal', width: 'w-6',
+        sub: 'Each day of the record minus the normal for the same date, with a centred one-year '
+          + 'running mean of the departures.',
         legend: [
           { color: 'var(--pole-warm)', label: 'above the normal for the date' },
-          { color: 'var(--pole-cold)', label: 'below it' },
-          { color: 'var(--text-primary)', label: 'year-long running mean', line: true }
+          { color: 'var(--pole-cold)', label: 'below the normal for the date' },
+          { color: 'var(--text-primary)', label: 'one-year running mean', line: true }
         ],
-        foot: 'A departure that persists for years is a different thing from one that persists '
-          + 'for a fortnight, and only the running line separates them. Selecting a point opens '
-          + 'its year.',
+        foot: 'The running mean separates departures that persist for years from those that last '
+          + 'weeks. Select a point to open its year.',
         draw: drawVarDailyDeparture(key)
       });
     }
@@ -4421,33 +4440,32 @@
        and the card says so in its title, its text and its legend. */
     const covSub = nee
       ? v.short + ' is not measured: every value is modelled by partitioning the net ecosystem '
-        + 'exchange ' + nee + '. The bars show the share of each year the product covers, and the '
-        + 'share for which ' + nee + ' was measured rather than gap-filled. Above that, the rest is '
-        + 'split by how ' + v.fill.flag + ' says ' + nee + ' was filled; the flag follows '
-        + v.fill.note + '. The dashed line is this variable’s warning threshold.'
+        + 'exchange ' + nee + '. Bars show the share of each year covered by the product and the '
+        + 'share for which ' + nee + ' was measured rather than gap-filled. The remainder is split '
+        + 'by how ' + v.fill.flag + ' states ' + nee + ' was filled; the flag follows '
+        + v.fill.note + '. The dashed line is the warning threshold for this variable.'
       : v.partitioned && !v.fill
-        ? v.short + ' is not measured. Every value of it is modelled, by partitioning the net '
-          + 'ecosystem exchange, and this build carries no flag of that net flux, so the bars show '
-          + 'only the share of each year the product covers.'
-        : 'The share of each year the product covers, and the share that came from the instrument '
-          + 'rather than from the gap-filling model. The dashed line is this variable’s warning '
-          + 'threshold.'
-          + (v.fill ? ' Above the measured share, the rest is split by how ' + v.fill.flag
-            + ' says it was filled; the flag follows ' + v.fill.note + '.' : '');
+        ? v.short + ' is not measured: every value is modelled by partitioning the net ecosystem '
+          + 'exchange. This build carries no flag for the net flux, so the bars show only the '
+          + 'share of each year covered by the product.'
+        : 'Share of each year covered by the product, and share measured rather than gap-filled. '
+          + 'The dashed line is the warning threshold for this variable.'
+          + (v.fill ? ' Above the measured share, the remainder is split by how ' + v.fill.flag
+            + ' states it was filled; the flag follows ' + v.fill.note + '.' : '');
     const covLegend = [{ color: 'var(--band-outer)', label: 'available' }]
       .concat(v.partitioned && !v.fill ? []
         : [{ color: 'var(--series-1)', label: nee ? nee + ' measured' : 'measured' }])
       .concat(fillLegend, [{ color: 'var(--pole-warm)', label: 'warning line', line: true }]);
     chartCard(document.getElementById('var-cov'), {
-      title: nee ? 'How much of each year was partitioned from measured net exchange'
-        : v.partitioned ? 'How much of each year the product covers'
-          : 'How much of each year was measured',
+      title: nee ? 'Coverage and share partitioned from measured net exchange, by year'
+        : v.partitioned ? 'Coverage by year'
+          : 'Coverage and measured share by year',
       width: 'w-12',
       sub: covSub,
       legend: covLegend,
-      foot: 'Every statistic on this page is gated on availability and only warned on by the '
-        + 'measured share. Where the measured share itself trends through the record, part of a '
-        + 'slope above may be that trend rather than the ecosystem.',
+      foot: 'Every statistic on this page is gated on availability; the measured share only '
+        + 'raises a warning. Where the measured share itself trends through the record, part of '
+        + 'a slope above may follow that trend rather than a change in the ecosystem.',
       draw: drawVarCoverage(key)
     });
 
@@ -4483,10 +4501,10 @@
 
   /* One timing slope in words: "6.7 days per decade earlier (95 % interval ...), Kendall p = ...". */
   function timingSlope(t, name) {
-    if (!t) return 'not taken';
+    if (!t) return 'not computed';
     if (!isNum(t.slope)) {
       return 'withheld: ' + t.n + ' complete year' + (t.n === 1 ? '' : 's') + ' of the '
-        + M.trend_min_years + ' a slope needs';
+        + M.trend_min_years + ' required';
     }
     const words = TIMING_WORDS[name];
     const size = Math.abs(+t.slope.toFixed(1));
@@ -4494,7 +4512,7 @@
     return (size === 0 ? 'no change' : nf(size, 1) + ' days per decade '
       + (t.slope < 0 ? words[0] : words[1]))
       + ' (95 % interval ' + nfs(t.lo, 1) + ' to ' + nfs(t.hi, 1) + '), Kendall p = '
-      + (isNum(t.p) ? nf(t.p, 3) : 'not defined') + (sig ? '' : ', so undecided');
+      + (isNum(t.p) ? nf(t.p, 3) : 'not defined') + (sig ? '' : ', not significant');
   }
 
   /* How far one year's figure sat from the record median, in the badges' own terms. */
@@ -4520,8 +4538,8 @@
       const f0 = { top: 24, right: uptake ? 46 : 16, bottom: 30,
         left: Math.max(40, textWidth(labels, 'ax-text') + 14) };
       const f = frame(host, { height: f0.top + n * rowH + f0.bottom, margin: f0,
-        ariaLabel: (uptake ? 'The carbon uptake period' : 'The growing season')
-          + ' of every year, on a day-of-year axis' });
+        ariaLabel: (uptake ? 'Carbon uptake period' : 'Growing season')
+          + ' by year on a day-of-year axis' });
       const sx = linear(1, 366, f.m.left, f.m.left + f.iw);
       const rowY = i => f.m.top + i * rowH;
       const mid = i => rowY(i) + rowH / 2;
@@ -4638,11 +4656,11 @@
     const lines = [];
     if (!isNum(row.start)) {
       lines.push({ k: uptake ? 'Uptake period' : 'Growing season',
-        v: uptake ? 'none formed' : 'none found' });
+        v: 'none' });
     } else {
-      lines.push({ k: uptake ? 'First uptake day' : 'Began', v: isoLabel(row.s)
+      lines.push({ k: uptake ? 'First uptake day' : 'Start', v: isoLabel(row.s)
         + timingDelta(row, 'start', 'day') });
-      lines.push({ k: uptake ? 'Last uptake day' : 'Ended', v: isoLabel(row.e)
+      lines.push({ k: uptake ? 'Last uptake day' : 'End', v: isoLabel(row.e)
         + timingDelta(row, 'end', 'day') });
       lines.push({ k: uptake ? 'First to last' : 'Length', v: row.length + ' days'
         + timingDelta(row, 'length', 'day') });
@@ -4660,8 +4678,8 @@
         + timingDelta(row, 'days', 'day') });
     }
     if (!row.complete) {
-      lines.push({ rule: true, k: 'Not every month of this year is covered, so it is kept out '
-        + 'of the slopes.' });
+      lines.push({ rule: true, k: 'Not every month of this year is covered; excluded from the '
+        + 'trends.' });
     }
     return tipRows(String(row.y), lines);
   }
@@ -4711,48 +4729,49 @@
     const sign = v.sign || { low: 'uptake', high: 'release' };
 
     const sub = uptake
-      ? 'One row per year. Each solid bar is an uptake period: a run of at least ' + T.span
-        + ' days in which the ' + T.window + '-day running mean of daily net exchange stays below '
-        + 'zero, so the site is a net sink of carbon. The thin line runs from the first uptake day '
-        + 'to the last, and the figure at the right counts the days whose own total was net '
-        + sign.low + '. Selecting a row opens its year.'
-      : 'One bar per year, from the start of the growing season to its end: the first run of '
-        + T.span + ' days with a daily mean above ' + nf(T.base, 0) + ' ' + T.units + ', and the '
-        + 'first such run below it after 1 July. These are the dates the season badges state. '
-        + 'Selecting a row opens its year.';
+      ? 'One row per year. Each solid bar is an uptake period: at least ' + T.span
+        + ' consecutive days on which the ' + T.window + '-day running mean of daily net exchange '
+        + 'is below zero, so that the site is a net carbon sink. The thin line runs from the first '
+        + 'to the last uptake day. The number at the right counts the days with a daily total of '
+        + 'net ' + sign.low + '. Select a row to open its year.'
+      : 'One bar per year from the start to the end of the growing season. The start is the '
+        + 'first run of ' + T.span + ' days with a daily mean above ' + nf(T.base, 0) + ' '
+        + T.units + '; the end is the first such run below it after 1 July. The season badges '
+        + 'use the same dates. Select a row to open its year.';
     const foot = [
-      'Per decade: ' + slopes.join('; ') + '.',
-      'A season that lengthens because it begins earlier is a different finding from one that '
-        + 'lengthens because it ends later, and the length alone cannot tell them apart.',
-      uptake ? 'At a managed site the span from the first uptake day to the last says when '
-        + 'uptake happened, not that it held throughout: a cropland can be a net sink under a '
-        + 'winter cereal in spring and under a catch crop in autumn, and a net source between '
-        + 'them after harvest and tillage. A shift in either date can be a change in what was '
-        + 'sown rather than in the climate, so the periods themselves and the count of uptake '
-        + 'days are read beside the span, not after it. A period that runs over the turn of the '
-        + 'year is cut there, and its part in each year is drawn in that year.' : '',
-      none.length ? 'No uptake period formed in ' + none.join(', ') + '.' : '',
-      partial.length ? 'Drawn faintly and kept out of the slopes, because not every month is '
-        + 'covered: ' + partial.join(', ') + '.' : ''
+      'Trends: ' + slopes.join('; ') + '.',
+      'The start and end trends show whether a change in length comes from an earlier start or '
+        + 'a later end.',
+      uptake ? 'At a managed site, uptake need not be continuous between the first and last '
+        + 'uptake day. A cropland can be a net sink under a winter cereal in spring and under a '
+        + 'catch crop in autumn, and a net source after harvest and tillage in between. A shift '
+        + 'in either date can reflect a change in the crop rather than in the climate; read it '
+        + 'together with the uptake periods and the count of uptake days. A period that crosses '
+        + 'the turn of the year is split there, and each part is drawn in its own year.' : '',
+      none.length ? 'No uptake period in ' + none.join(', ') + '.' : '',
+      partial.length ? 'Years without full monthly coverage, drawn faintly and excluded from the '
+        + 'trends: ' + partial.join(', ') + '.' : ''
     ].filter(Boolean).join(' ');
 
     chartCard(grid, {
-      title: 'When the season runs', width: 'w-8', sub: sub,
+      title: uptake ? 'Carbon uptake period by year' : 'Growing season by year', width: 'w-8',
+      sub: sub,
       legend: [{ color: uptake ? 'var(--series-3)' : 'var(--series-1)',
         label: uptake ? 'uptake period (net ' + sign.low + ')' : 'growing season' }]
         .concat(uptake ? [{ color: 'var(--series-3)', label: 'first to last uptake day',
           line: true }] : [])
         .concat([{ color: 'var(--text-primary)', label: 'record median (dotted)', line: true },
-          { color: 'var(--text-primary)', label: 'fitted trend of start and end (dashed)', line: true }]),
+          { color: 'var(--text-primary)', label: 'Theil-Sen trend of start and end (dashed)',
+            line: true }]),
       foot: foot,
       draw: drawSeasonTiming(key, T)
     });
     cardEl(grid, {
-      title: uptake ? 'The uptake period in numbers' : 'The growing season in numbers',
+      title: uptake ? 'Uptake period medians and trends' : 'Growing season medians and trends',
       width: 'w-4',
-      sub: 'Medians over every year with a ' + (uptake ? 'period' : 'season')
-        + '; Theil–Sen slopes over the complete years, withheld below ' + M.trend_min_years
-        + '. A negative slope of a date is a move earlier in the year.'
+      sub: 'Medians over all years with a ' + (uptake ? 'period' : 'season')
+        + '. Theil-Sen slopes over complete years, withheld below ' + M.trend_min_years
+        + ' years. A negative slope of a date is a shift earlier in the year.'
     }).innerHTML = timingTable(T);
   }
 
@@ -4762,7 +4781,8 @@
   /* The runs drawn beside a test other than its own. A dry spell is not a day test: it is the
      longest run of days that failed the wet-day test, which the build counts because a drought is
      the run a precipitation record is read for. It sits with the test it is the absence of. */
-  const RUNS_BESIDE = { wet: [{ key: 'dry', label: 'longest run without one', short: 'dry run' }] };
+  const RUNS_BESIDE = { wet: [{ key: 'dry', label: 'longest run without a wet day',
+    short: 'dry run' }] };
 
   /**
    * One day test's count in one year, or null where the year cannot be counted.
@@ -4781,7 +4801,7 @@
       run that belongs beside it. */
   function runsOf(f) {
     const has = k => YEAR_ROWS.some(row => row.sp && isNum(row.sp[k]));
-    return (has(f.key) ? [{ key: f.key, label: 'longest unbroken run', short: 'run' }] : [])
+    return (has(f.key) ? [{ key: f.key, label: 'longest consecutive run', short: 'run' }] : [])
       .concat((RUNS_BESIDE[f.key] || []).filter(run => has(run.key)));
   }
 
@@ -4838,7 +4858,7 @@
       const years = YEAR_ROWS.map(row => row.y);
       const lines = [{ values: counts, label: 'days in the year' }].concat(runs);
       const fr = frame(host, { aspect: 0.5,
-        ariaLabel: cap(f.label) + ' and the longest run of them, in every year of the record' });
+        ariaLabel: cap(f.label) + ' and longest run, by year' });
       const top = extent(lines.map(l => l.values))[1];
       const sx = linear(years[0] - 0.5, years[years.length - 1] + 0.5, fr.m.left,
         fr.m.left + fr.iw);
@@ -4906,17 +4926,17 @@
     });
     if (!drawn.length && !never.length) return;
 
-    host.innerHTML = '<h2 class="section">Threshold days, year by year</h2>'
+    host.innerHTML = '<h2 class="section">Threshold days by year</h2>'
       + '<div class="grid" id="var-thresholds-grid"></div>';
     const grid = document.getElementById('var-thresholds-grid');
     const gate = nf(cov(key).normal, 0);
     drawn.forEach(d => {
       chartCard(grid, {
         title: cap(d.f.label), width: 'w-4',
-        sub: 'The days of each year that passed this test'
-          + (d.runs.length ? ', and beside them the longest run of consecutive days, counted '
-            + 'within the calendar year, so a run that crosses 1 January is split there' : '')
-          + '. A year less than ' + gate + ' % available is not counted.',
+        sub: 'Days per year that meet this threshold'
+          + (d.runs.length ? ', and the longest run of consecutive days, counted within the '
+            + 'calendar year (a run that crosses 1 January is split there)' : '')
+          + '. Years less than ' + gate + ' % available are not counted.',
         legend: [{ color: 'var(--series-1)', label: 'days in the year', line: true }]
           .concat(d.runs.map((r, k) => ({ color: 'var(--series-' + (k + 2) + ')',
             label: r.label, line: true }))),
@@ -4927,20 +4947,19 @@
     });
     if (drawn.length) {
       cardEl(grid, {
-        title: 'The same counts as numbers', width: 'w-12',
-        sub: 'Days in the year that passed each test'
+        title: 'Threshold day counts by year', width: 'w-12',
+        sub: 'Days per year that meet each threshold'
           + (drawn.some(d => d.runs.length) ? ', followed by the longest run where one is defined'
-            : '') + '. A dash is a year less than ' + gate + ' % available. Selecting a year '
-          + 'opens it.',
+            : '') + '. A dash marks a year less than ' + gate + ' % available. Select a year to '
+          + 'open it.',
         foot: drawn.some(d => d.runs.length)
-          ? 'A count and a run answer different questions: the count is how often the threshold '
-            + 'was reached, the run how long it was held. A year can reach a high count in '
-            + 'scattered days and never hold the threshold for a week.' : ''
+          ? 'The count is how often the threshold was reached; the run is how long it was held. '
+            + 'A high count can come from scattered days without a long run.' : ''
       }).innerHTML = thresholdTable(drawn);
     }
     if (never.length) {
       grid.insertAdjacentHTML('beforeend', '<p class="card-sub w-12" style="max-width:none">'
-        + 'Not drawn, because no counted year of the record had one: ' + never.join(', ')
+        + 'Not drawn because no counted year had such a day: ' + never.join(', ')
         + '.</p>');
     }
   }
@@ -5056,8 +5075,8 @@
         '<p class="card-sub">'
         + (noun === 'days' ? days + ' reach ' + value
           : 'On ' + days + ' at least one half-hour reaches ' + value)
-        + ', more than a list has room for, so this end is a bound the variable rests on rather '
-        + 'than an event, and is not listed.</p>';
+        + ', more than a list has room for. This end is a bound of the variable rather than an '
+        + 'event and is not listed.</p>';
       return;
     }
     if (!end.items.length) return;
@@ -5076,7 +5095,7 @@
     const halfhours = own && ((own.high && own.high.length) || ties.high) ? own : null;
     if (!(days && days.n) && !halfhours) return;
 
-    host.innerHTML = '<h2 class="section">Days and half-hours at either end</h2>'
+    host.innerHTML = '<h2 class="section">Highest and lowest days and half-hours</h2>'
       + '<div class="grid ranks' + (v.sign ? ' signed' : '')
       + '" id="var-extremes-grid"></div><p class="section-note"></p>';
     const grid = document.getElementById('var-extremes-grid');
@@ -5095,7 +5114,7 @@
       endCard(grid, 'highest', 'days', end('high', days.high), v.units, v.digits, sub);
       endCard(grid, 'lowest', 'days', end('low', days.low), v.units, v.digits, sub);
       notes.push('Only days at least ' + rule + ' measured are ranked, the share a day needs to set '
-        + 'a record for its date, because a gap-filled value cannot hold one: '
+        + 'a record for its date, since a gap-filled value cannot hold a record. '
         + days.n.toLocaleString('en-GB') + ' of the record’s ' + DAYS.n.toLocaleString('en-GB')
         + ' days qualify.');
       if (own && own.low_day === false) floors.push('days');
@@ -5107,34 +5126,34 @@
       const words = endWords(v, high.map(row => row[1]), low.map(row => row[1]));
       const end = (side, rows) => (rows ? { tie: ties[side], word: words[side],
         items: rows.map(row => halfhourItem(v, halfhours, row)) } : null);
-      const sub = 'Measured half-hours, in ' + halfhours.units + ', at most one from any day.';
+      const sub = 'Measured half-hours, in ' + halfhours.units + ', at most one per day.';
       endCard(grid, 'highest', 'half-hours', end('high', halfhours.high), halfhours.units,
         halfhours.digits, sub);
       endCard(grid, 'lowest', 'half-hours', end('low', halfhours.low), halfhours.units,
         halfhours.digits, sub);
-      notes.push('Gap-filled half-hours are not ranked, and one day gives at most one half-hour, so '
-        + 'that a single afternoon cannot fill a list. Times are the file’s own: the start and end '
-        + 'of the averaging window.');
+      notes.push('Gap-filled half-hours are not ranked, and each day contributes at most one '
+        + 'half-hour, so a single afternoon cannot fill a list. Times are the start and end of '
+        + 'the averaging window, as stated in the file.');
       if (halfhours.rate) {
-        notes.push('Half-hours are stated as the rate the file publishes, in ' + halfhours.units
-          + ', rather than as the ' + v.units + ' one half-hour contributes to a total; the days '
-          + 'and every longer span stay in ' + v.units + '.');
+        notes.push('Half-hours are stated as the published rate, in ' + halfhours.units
+          + ', not as the ' + v.units + ' one half-hour contributes to a total. Days and longer '
+          + 'spans are in ' + v.units + '.');
       }
       if (!halfhours.low) floors.push('half-hours');
       if (!(days && days.n)) {
-        notes.push('No day of the record was ' + rule + ' measured, so no day is ranked.');
+        notes.push('No day of the record is at least ' + rule + ' measured, so no day is ranked.');
       }
       if (halfhours.partitioned) {
-        notes.push(v.short + ' is not measured but partitioned out of the net flux: a half-hour '
-          + 'counts as measured where the net flux it came from was, so these are the '
-          + 'partitioning’s values at observed half-hours, not observations.');
+        notes.push(v.short + ' is not measured but partitioned out of the net flux. A half-hour '
+          + 'counts as measured where that net flux was measured, so these are partitioned values '
+          + 'at observed half-hours, not observations.');
       }
     }
     if (floors.length) {
       notes.push('The lowest ' + floors.join(' and ') + ' are not listed: for this variable the low '
-        + 'end is a floor much of the record rests on rather than an event.');
+        + 'end is a floor reached by much of the record, not an event.');
     }
-    notes.push('Selecting an entry opens its day.');
+    notes.push('Select an entry to open its day.');
     host.querySelector('.section-note').innerHTML = notes.join(' ');
   }
 
@@ -5359,7 +5378,7 @@
     return function (host) {
       drawHeat({
         rows: rows, colour: colour(), keyLabel: s.units,
-        ariaLabel: v.short + ' by calendar month and hour of day, the record’s mean',
+        ariaLabel: v.short + ', record mean by calendar month and hour of day',
         format: x => nf(x, digits),
         tip: (r, h) => {
           const x = rows[r].values[h];
@@ -5372,7 +5391,7 @@
             lines.push({ k: 'Years, 10th–90th percentile', v: nf(lo, digits) + ' to '
               + nf(hi, digits) });
           }
-          lines.push({ k: 'Years covering it', v: String(surfaceYears(s, r + 1, h)) });
+          lines.push({ k: 'Years covering this hour', v: String(surfaceYears(s, r + 1, h)) });
           return tipRows(MONTH_NAME[r] + ', ' + hourSpan(h), lines);
         }
       })(host);
@@ -5388,7 +5407,7 @@
     const hours = mean.map((x, h) => h + 0.5);
     return function (host) {
       const f = frame(host, { aspect: 0.62, margin: { top: 8, right: 10, bottom: 26, left: 42 },
-        ariaLabel: 'Mean day of ' + MONTH_NAME[m - 1] + ', ' + v.short });
+        ariaLabel: 'Mean diurnal cycle of ' + MONTH_NAME[m - 1] + ', ' + v.short });
       const sx = linear(0, 24, f.m.left, f.m.left + f.iw);
       const sy = linear(ext[0], ext[1], f.m.top + f.ih, f.m.top);
       drawAxes(f, sx, sy, { yDigits: Math.min(digits, 2), yTickCount: 3,
@@ -5422,22 +5441,22 @@
     if (!host || !s || !s.mean.some(isNum)) return;
     const v = VARS[key];
     const per = s.total ? ', stated as the mean total per hour' : '';
-    host.innerHTML = '<h2 class="section">Through the day</h2><div class="grid"></div>';
+    host.innerHTML = '<h2 class="section">Diurnal cycle</h2><div class="grid"></div>';
     const grid = host.querySelector('.grid');
 
     chartCard(grid, {
-      title: 'Every hour of every calendar month', width: 'w-12',
-      sub: 'The record’s mean for each hour of the day in each calendar month' + per + '. Hours '
-        + 'are the file’s own timestamps, which FLUXNET states in local standard time, and each '
-        + 'is the two half-hours that begin in it.',
-      foot: (v.sign ? 'Green is net ' + v.sign.low + ' and red net ' + v.sign.high + ', '
-        + 'diverging about zero as everywhere on the page. ' : '')
-        + (s.total ? 'The twenty-four values of a row add up to that calendar month’s mean '
-          + 'daily total. They are means over every day, not the rate during the hours in '
-          + 'which anything happened. ' : '')
-        + 'A year enters a cell where the product covers at least '
-        + nf(cov(key).normal, 0) + ' % of its half-hours, gap-filled values included, and a cell '
-        + 'is drawn where at least ' + M.min_normal_years + ' years do.',
+      title: 'Mean by calendar month and hour of day', width: 'w-12',
+      sub: 'Record mean for each hour of the day in each calendar month' + per + '. Hours follow '
+        + 'the file’s timestamps, which FLUXNET states in local standard time; each hour combines '
+        + 'the two half-hours that begin in it.',
+      foot: (v.sign ? 'Green is net ' + v.sign.low + ' and red net ' + v.sign.high + '; the '
+        + 'scale diverges about zero, as everywhere on the page. ' : '')
+        + (s.total ? 'The 24 values of a row sum to the mean daily total of that calendar month. '
+          + 'Each is a mean over all days, not over the days on which anything occurred in that '
+          + 'hour. ' : '')
+        + 'A year contributes to a cell where the product covers at least '
+        + nf(cov(key).normal, 0) + ' % of its half-hours, gap-filled values included. A cell is '
+        + 'drawn where at least ' + M.min_normal_years + ' years contribute.',
       draw: drawVarSurface(key)
     });
 
@@ -5450,11 +5469,10 @@
     const pad = (ext[1] - ext[0]) * 0.06;
     const shared = [ext[0] - pad, ext[1] + pad];
     const body = cardEl(grid, {
-      title: 'The mean day of each calendar month', width: 'w-12',
-      sub: 'The record’s mean for each hour' + per + ', over the 10th to 90th percentile of the '
-        + 'years’ own means for that hour. The twelve panels share one axis.',
-      foot: 'The band is the spread between years, not between the days of one month: a wide '
-        + 'band is an hour of the day that one year does differently from the next.'
+      title: 'Mean diurnal cycle by calendar month', width: 'w-12',
+      sub: 'Record mean for each hour' + per + ', over the 10th–90th percentile of the '
+        + 'individual years’ means for that hour. The twelve panels share one y-axis.',
+      foot: 'The band is the spread between years, not between the days of one month.'
     });
     const wrap = document.createElement('div');
     wrap.className = 'dayfacets tight';
@@ -5498,26 +5516,25 @@
       });
       if (rows.some(r => r.values.some(isNum))) facets.push({ key: key, s: s, rows: rows });
     });
-    const whole = state.scale === 'month' ? 'one row of twenty-four hours'
-      : state.scale === 'season' ? 'a row for each of its months'
-        : 'a row for each of its twelve months';
+    const whole = state.scale === 'month' ? 'one row of 24 hours'
+      : state.scale === 'season' ? 'one row per month'
+        : 'twelve rows, one per month';
     const body = cardEl(parent, {
-      title: 'At what hour this ' + spanNoun() + ' differed', width: 'w-12',
+      title: 'Hourly departures of this ' + spanNoun() + ' from the record', width: 'w-12',
       sub: (state.scale === 'month'
         ? 'Each hour of ' + scale().title(mo) + ' minus the mean of that hour over every '
           + peerWord(mo) + ' of the record'
-        : 'Each hour of each month of ' + scale().title(mo) + ' minus the mean of that hour in '
-          + 'the same calendar month over the record') + ', ' + whole
+        : 'Each hour of each month of ' + scale().title(mo) + ' minus the record mean of that '
+          + 'hour in the same calendar month') + '; ' + whole
         + ' per variable. Summed variables are stated as mean totals per hour.',
-      foot: 'A monthly anomaly is one number for the whole month. This separates a month that '
-        + 'was warm by night from one warm by day, and a dry summer that lost its uptake at '
-        + 'midday from one that lost it across the whole day. Each variable keeps one colour '
-        + 'scale across every span, saturating at the departure 95 % of the record’s hours stay '
-        + 'within.'
+      foot: 'A monthly anomaly is one number for the whole month. This chart shows at which hours '
+        + 'the departure occurred: warm nights or warm afternoons, uptake lost at midday or over '
+        + 'the whole day. Each variable uses one colour scale for every span, saturating at the '
+        + 'departure that 95 % of the record’s hours stay within.'
     });
     if (!facets.length) {
       body.innerHTML = '<p class="card-sub">No hour of this ' + spanNoun() + ' has both a value '
-        + 'and a record mean to set it against.</p>';
+        + 'and a record mean.</p>';
       return;
     }
     const wrap = document.createElement('div');
@@ -5666,12 +5683,12 @@
       const end = x => nfs(x, s.digits) + (v.sign ? ' (' + senseOf(v, x) + ')' : '');
       scaleText = end(s.lo) + ' to ' + end(s.hi) + ' ' + hourlyUnit(v)
         + ', diverging about ' + nf(s.center, 0)
-        + ' and bounded at the ' + q1 + ' percentile of the departures from it';
+        + ' and bounded at the ' + q1 + ' percentile of the absolute departures from it';
     } else {
       scaleText = nf(s.lo, s.digits) + ' to ' + nf(s.hi, s.digits) + ' ' + hourlyUnit(v)
         + (s.kind === 'zero'
-          ? ', from zero to the ' + q1 + ' percentile of the hours with any'
-          : ', the ' + q0 + ' to the ' + q1 + ' percentile of every hour');
+          ? ', from zero to the ' + q1 + ' percentile of the hours above zero'
+          : ', ' + q0 + ' to ' + q1 + ' percentile of all hours');
     }
     const items = ['<span class="legend-item">' + wide + scaleText + '</span>'];
     if (s.kind === 'zero') {
@@ -5717,7 +5734,7 @@
       canvas.setAttribute('aria-label', v.title + ', every hour from ' + M.first_year + ' to '
         + M.last_year + ': one column per day and one row per hour of the day, midnight at the '
         + 'bottom, coloured by the hourly ' + (v.agg === 'sum' ? 'total' : 'mean') + ' in '
-        + hourlyUnit(v) + '. Hours the file carries no value for are grey.');
+        + hourlyUnit(v) + '. Hours without a value in the file are grey.');
       canvas.style.cssText = 'position:absolute;left:' + f.m.left + 'px;top:' + f.m.top
         + 'px;width:' + f.iw + 'px;height:' + f.ih + 'px';
       host.insertBefore(canvas, f.svg);
@@ -5826,7 +5843,7 @@
         }
         tip.show(tipRows(WEEKDAY[(t.getUTCDay() + 6) % 7] + ' ' + t.getUTCDate() + ' '
           + MONTH_NAME[t.getUTCMonth()] + ' ' + t.getUTCFullYear(), [
-          { k: 'hour', v: hours },
+          { k: 'Hour', v: hours },
           { k: v.short + (v.agg === 'sum' ? ', total' : ', mean'), v: value }
         ]), ev.clientX, ev.clientY);
       });
@@ -5849,12 +5866,13 @@
     if (!host) return;
     const v = VARS[key];
     // Built without the layer: said once, as the month and day panels say it.
-    const heading = '<h2 class="section">Hour by hour</h2>';
+    const heading = '<h2 class="section">Hourly values</h2>';
+    const title = 'Hourly values by date and time of day';
     if (!HOURLY) {
       host.innerHTML = heading + '<div class="grid"></div>';
-      cardEl(host.lastChild, { title: 'Every hour of the record', width: 'w-12' }).innerHTML =
+      cardEl(host.lastChild, { title: title, width: 'w-12' }).innerHTML =
         '<p class="card-sub" style="max-width:none">This page was built without the hourly '
-        + 'arrays (<code>--no-hourly</code>), so the record is not drawn hour by hour.</p>';
+        + 'arrays (<code>--no-hourly</code>), so hourly values are not shown.</p>';
       return;
     }
     // A variable the layer does not carry is left out, as the diurnal panels leave it out.
@@ -5863,14 +5881,14 @@
     if (!s) return;
     host.innerHTML = heading + '<div class="grid"></div>';
     const body = cardEl(host.lastChild, {
-      title: 'Every hour of the record', width: 'w-12',
-      sub: 'One column per day and one row per hour of it, midnight at the bottom, coloured by '
-        + 'the hourly ' + (v.agg === 'sum' ? 'total' : 'mean') + ' on the file’s own clock. '
-        + 'Hovering reads one hour; selecting it opens its day.',
-      foot: 'An hour without a value in the file is grey. An hour is the '
+      title: title, width: 'w-12',
+      sub: 'One column per day and one row per hour of the day, midnight at the bottom, coloured '
+        + 'by the hourly ' + (v.agg === 'sum' ? 'total' : 'mean') + ' in the file’s time. '
+        + 'Hover to read an hour; select it to open its day.',
+      foot: 'Hours without a value in the file are grey. Each hour is the '
         + (v.agg === 'sum' ? 'sum' : 'mean') + ' of whichever of its two half-hours the file '
-        + 'carries. Where the card is narrower than the record is long, a column is the mean of '
-        + 'several days, greyed in proportion to the hours among them that carry no value.'
+        + 'carries. Where the card has fewer pixel columns than the record has days, a column is '
+        + 'the mean of several days, greyed in proportion to their hours without a value.'
     });
     const chart = document.createElement('div');
     chart.className = 'chart';
@@ -5889,8 +5907,8 @@
    */
   function stoodList(yr) {
     if (!yr.stood || !yr.stood.length) {
-      return '<p class="card-sub" style="max-width:none">Nothing in this year departed far enough '
-        + 'from the record to rank, and no variable placed near either end of it.</p>';
+      return '<p class="card-sub" style="max-width:none">No departure in this year was large '
+        + 'enough to rank, and no variable placed near the top or bottom of the record.</p>';
     }
     return '<dl class="kv stood">' + yr.stood.map(s =>
       '<dt>' + s.k + '</dt><dd class="tone-' + s.tone + '">' + s.v + '</dd>').join('') + '</dl>';
@@ -5917,16 +5935,16 @@
     host.innerHTML = '<p class="monthlede" id="month-lede"></p>'
       + '<div class="tiles" id="month-tiles"></div>'
       + '<p class="seasonline" id="month-season"></p>'
-      + '<h2 class="section">What was notable</h2><div id="month-badges"></div>'
+      + '<h2 class="section">Badges and highlights</h2><div id="month-badges"></div>'
       + (state.scale === 'year' ? '<div class="grid" id="month-stood"></div>' : '')
       + '<div class="grid" id="month-highlights"></div>'
-      + '<h2 class="section">Day by day</h2><div class="grid" id="month-charts"></div>'
-      + '<h2 class="section">The average day</h2><div class="grid" id="month-diurnal"></div>'
-      + '<h2 class="section">This ' + spanNoun() + ' against the record</h2>'
+      + '<h2 class="section">Daily series</h2><div class="grid" id="month-charts"></div>'
+      + '<h2 class="section">Mean diurnal cycle</h2><div class="grid" id="month-diurnal"></div>'
+      + '<h2 class="section">Comparison with the record</h2>'
       + '<div class="grid" id="month-context"></div>'
-      + '<h2 class="section">The days</h2><div class="grid" id="month-days"></div>'
+      + '<h2 class="section">Calendar</h2><div class="grid" id="month-days"></div>'
       + '<div id="day-panel"></div>'
-      + '<h2 class="section">Every day of this ' + spanNoun() + '</h2>'
+      + '<h2 class="section">Daily data</h2>'
       + '<div class="grid" id="month-table"></div>';
 
     document.getElementById('month-lede').innerHTML = monthLede(mo);
@@ -5939,31 +5957,31 @@
        thing a reader opening a year is looking for. */
     if (state.scale === 'year') {
       cardEl(document.getElementById('month-stood'), {
-        title: 'What stood out in ' + mo.y, width: 'w-12',
-        sub: 'Where this year placed among the ' + YEAR_ROWS.length + ' of the record, strongest '
-          + 'first. A year is ranked against every other year rather than against a slot of the '
-          + 'calendar, so the normal behind each figure is the record itself.'
+        title: 'Rank of ' + mo.y + ' among the ' + YEAR_ROWS.length + ' years', width: 'w-12',
+        sub: 'Placings of this year among the ' + YEAR_ROWS.length + ' years of the record, '
+          + 'strongest first. A year is ranked against every other year, so the normal behind '
+          + 'each figure is the record mean.'
       }).innerHTML = stoodList(mo);
     }
 
     const hl = document.getElementById('month-highlights');
     hl.innerHTML = '';
     cardEl(hl, {
-      title: cap(spanNoun()) + ' in single days', width: 'w-4',
-      sub: 'What the ' + spanNoun() + '’s own mean hides.'
+      title: 'Daily extremes', width: 'w-4',
+      sub: 'Extreme days within the ' + spanNoun() + '.'
     }).innerHTML = monthHighlights(mo);
     cardEl(hl, {
-      title: 'How unusual it was', width: 'w-4',
-      sub: 'How far each variable stood from the ' + normalWord() + ', in standard deviations.'
+      title: 'Standardised anomalies', width: 'w-4',
+      sub: 'Departure of each variable from the ' + normalWord() + ', in standard deviations.'
     }).innerHTML = monthComposite(mo);
 
     // Named for the section rather than `charts`, which is the module's chart registry.
     const dayByDay = document.getElementById('month-charts');
     if (VARS.TA) {
       chartCard(dayByDay, {
-        title: 'Daily temperature against the normal', width: 'w-6',
+        title: 'Daily air temperature', width: 'w-6',
         sub: 'Daily range and daily mean, over the ±' + M.clim_window
-          + ' day climatological band for the same date.',
+          + ' day normal band for the same date.',
         legend: [
           { color: 'var(--band-outer)', label: 'normal 10th–90th percentile' },
           { color: 'var(--band-inner)', label: 'daily minimum to maximum' },
@@ -5973,16 +5991,16 @@
         draw: drawMonthTemperature(mo)
       });
       chartCard(dayByDay, {
-        title: 'How far each day sat from its normal', width: 'w-6',
+        title: 'Daily air temperature anomaly', width: 'w-6',
         sub: 'Daily mean minus the normal for the same date. The dashed line is the running mean '
-          + 'of those departures, which is where the monthly anomaly comes from.',
+          + 'of the departures to date, from which the monthly anomaly follows.',
         legend: [
-          { color: 'var(--pole-warm)', label: 'warmer than the date' },
-          { color: 'var(--pole-cold)', label: 'colder than the date' },
-          { color: 'var(--text-primary)', label: 'month to date', line: true }
+          { color: 'var(--pole-warm)', label: 'above the normal for the date' },
+          { color: 'var(--pole-cold)', label: 'below the normal for the date' },
+          { color: 'var(--text-primary)', label: 'mean to date', line: true }
         ],
-        foot: 'One monthly anomaly arises from a month that was uniformly mild and from one that '
-          + 'held a cold first week and a hot last. This separates them.',
+        foot: 'The same monthly anomaly can come from a uniformly mild month or from a cold first '
+          + 'week and a hot last week. The daily departures distinguish the two.',
         draw: drawMonthAnomaly(mo)
       });
     }
@@ -5997,9 +6015,9 @@
         draw: drawMonthPrecip(mo)
       });
       chartCard(dayByDay, {
-        title: 'Precipitation accumulated through the ' + spanNoun(), width: 'w-6',
-        sub: 'The running total against the running total of the daily normals. A day without a '
-          + 'value adds nothing, and the running total holds level across it.',
+        title: 'Cumulative precipitation', width: 'w-6',
+        sub: 'Running total against the running total of the daily normals. A day without a '
+          + 'value adds nothing, so the running total stays level across it.',
         legend: [
           { color: 'var(--series-1)', label: 'this ' + spanNoun(), line: true },
           { color: 'var(--text-muted)', label: 'normal', line: true }
@@ -6009,16 +6027,14 @@
     }
     if (VARS['SWC'] && VARS.PREC) {
       chartCard(dayByDay, {
-        title: 'Soil water and the rain that drives it', width: 'w-6',
-        sub: 'Soil water content against its ±' + M.clim_window + ' day normal band, over '
-          + 'the daily precipitation on its own axis.',
+        title: 'Soil water content and precipitation', width: 'w-6',
+        sub: 'Soil water content with its ±' + M.clim_window + ' day normal band, and daily '
+          + 'precipitation on a separate axis.',
         legend: [
           { color: 'var(--series-3)', label: 'soil water content', line: true },
           { color: 'var(--band-outer)', label: 'normal 10th–90th percentile' },
           { color: 'var(--series-1)', label: 'precipitation, right axis' }
         ],
-        foot: 'A decline in soil water is drying or a probe that has stopped responding, and the '
-          + 'rise after a rain day is what separates the two.',
         draw: drawMonthSoil(mo)
       });
     }
@@ -6032,8 +6048,8 @@
     if (bands.length) {
       const body = cardEl(dayByDay, {
         title: 'Radiation, evaporative demand and humidity', width: 'w-6',
-        sub: 'Each daily mean over its own ±' + M.clim_window + ' day normal band for the same '
-          + 'dates. Selecting a day opens it.'
+        sub: 'Daily means over the ±' + M.clim_window + ' day normal band for each date. Select '
+          + 'a day to open it.'
       });
       const wrap = document.createElement('div');
       wrap.className = 'dayfacets tight';
@@ -6064,22 +6080,20 @@
       : DIURNAL_ORDER.filter(k => surfaceOf(k) && surfaceOf(k).hourly)
         .concat(surfaceKeys().filter(k => surfaceOf(k).hourly && DIURNAL_ORDER.indexOf(k) < 0));
     if (!HOURLY && !meanDayKeys.length) {
-      cardEl(diurnal, { title: 'The average day', width: 'w-12' }).innerHTML =
+      cardEl(diurnal, { title: 'Mean diurnal cycle', width: 'w-12' }).innerHTML =
         '<p class="card-sub" style="max-width:none">This page was built without the hourly '
-        + 'arrays, so no diurnal composite can be drawn. Rebuild without <code>--no-hourly</code>.'
-        + '</p>';
+        + 'arrays, so no mean diurnal cycle can be drawn. Rebuild without '
+        + '<code>--no-hourly</code>.</p>';
     } else {
       const body = cardEl(diurnal, {
-        title: 'The mean day of ' + sc.title(mo), width: 'w-12',
-        sub: 'Every day of the ' + spanNoun() + ' averaged onto one 24-hour axis, against the '
-          + 'same composite '
-          + 'over every ' + peerWord(mo) + ' of the record.',
-        foot: 'A monthly mean cannot show whether a warm month was warm at night or by day, and '
-          + 'the two have different causes: cloud and humidity hold the night up, radiation lifts '
-          + 'the afternoon.'
-          + (fromSurface ? ' This page was built without the hourly arrays, so the mean day is '
-            + 'drawn from the mean of each hour of each month, weighted by the days of the '
-            + 'months.' : '')
+        title: 'Mean diurnal cycle, ' + sc.title(mo), width: 'w-12',
+        sub: 'All days of the ' + spanNoun() + ' averaged by hour of day, against the same '
+          + 'average over every ' + peerWord(mo) + ' of the record.',
+        foot: 'This shows whether a departure occurred at night or during the day, which a '
+          + 'monthly mean does not.'
+          + (fromSurface ? ' This page was built without the hourly arrays, so the mean diurnal '
+            + 'cycle is computed from the mean of each hour of each month, weighted by the number '
+            + 'of days in each month.' : '')
       });
       const wrap = document.createElement('div');
       wrap.className = 'dayfacets';
@@ -6103,7 +6117,7 @@
         mountChart(box.querySelector('.chart'), drawComposite(key, values, normal, kind));
       });
       if (!drawn) {
-        wrap.innerHTML = '<p class="card-sub">No hourly record survives for this '
+        wrap.innerHTML = '<p class="card-sub">No hourly values are available for this '
           + spanNoun() + '.</p>';
       } else {
         body.insertAdjacentHTML('beforeend', legendHTML([
@@ -6119,23 +6133,19 @@
     // -- The month against every other year of the same month --------------------------------
     const context = document.getElementById('month-context');
     const ranks = cardEl(context, {
-      title: state.scale === 'year' ? 'Where this year sits among the others'
-        : 'Where this ' + spanNoun() + ' sits among its own years', width: 'w-6',
-      sub: 'Every ' + peerWord(mo) + ' of the record on one line per variable, this '
-        + 'one filled. The dashed tick is the ' + normalWord() + '.',
-      foot: 'Whether a departure of a degree is remarkable for this ' + spanNoun()
-        + ' or ordinary is a '
-        + 'question about the spread of the other years, which an anomaly alone does not carry. '
-        + 'Selecting another year opens it.'
+      title: 'Position within the record', width: 'w-6',
+      sub: 'Every ' + peerWord(mo) + ' of the record on one line per variable; this one is '
+        + 'filled. The dashed tick marks the ' + normalWord() + '.',
+      foot: 'The spread of the other years shows whether a departure is large for this '
+        + spanNoun() + ', which the anomaly alone does not. Select another year to open it.'
     });
     ranks.appendChild(rankStrips(mo));
 
     if (VARS.TA) {
       chartCard(context, {
-        title: 'The shape of every ' + peerWord(mo) + ' in the record', width: 'w-6',
-        sub: 'Daily mean temperature through the ' + spanNoun() + ', one line per year, '
-          + 'this one drawn over '
-          + 'them.',
+        title: 'Daily air temperature, every ' + peerWord(mo) + ' in the record', width: 'w-6',
+        sub: 'Daily mean air temperature through the ' + spanNoun() + ', one line per year, with '
+          + 'this one on top.',
         legend: [
           { color: 'var(--series-2)', label: sc.title(mo), line: true },
           { color: 'var(--text-secondary)', label: 'the other years', line: true },
@@ -6143,10 +6153,10 @@
         ],
         // Counted rather than written: "twenty-one" was the length of the record this was first
         // written against, and on any other record it stated a number the chart does not show.
-        foot: 'A rank places the ' + spanNoun() + ' as one number among '
-          + sc.spans().filter(x => sc.idOf(x) === sc.idOf(mo)).length + '. This is what says '
-          + 'whether a warm ' + spanNoun() + ' was warm throughout or held one spell that '
-          + 'carried it.',
+        foot: 'A rank places the ' + spanNoun() + ' as one value among '
+          + sc.spans().filter(x => sc.idOf(x) === sc.idOf(mo)).length + '. The daily lines show '
+          + 'whether a warm ' + spanNoun() + ' was warm throughout or owed its rank to a single '
+          + 'spell.',
         draw: drawMonthShape(mo)
       });
     }
@@ -6161,7 +6171,7 @@
 
     chartCard(context, {
       title: 'Every ' + peerWord(mo) + ' in the record', width: 'w-12',
-      sub: metric().label + '. This ' + spanNoun() + ' is highlighted; selecting another opens it.',
+      sub: metric().label + '. This ' + spanNoun() + ' is highlighted; select another to open it.',
       legend: [
         { color: 'var(--series-2)', label: sc.title(mo) },
         { color: 'var(--series-1)', label: 'the other years' },
@@ -6172,9 +6182,9 @@
 
     const daysHost = document.getElementById('month-days');
     const body = cardEl(daysHost, {
-      title: 'The days of ' + sc.title(mo), width: 'w-8',
-      sub: 'Coloured by ' + metric().label.toLowerCase() + '. Chips show the thresholds a day '
-        + 'set, the bar along the bottom its precipitation. Select a day to open it.'
+      title: 'Days of ' + sc.title(mo), width: 'w-8',
+      sub: 'Coloured by ' + metric().label.toLowerCase() + '. Chips mark the thresholds a day '
+        + 'met; the bar along the bottom shows its precipitation. Select a day to open it.'
     });
     body.innerHTML = dayCalendar(mo);
     body.querySelectorAll('.daycell[data-day]').forEach(node => {
@@ -6189,7 +6199,7 @@
     document.getElementById('month-table').innerHTML = '';
     const tbody = cardEl(document.getElementById('month-table'), {
       title: 'Daily values', width: 'w-8',
-      sub: 'The numbers the charts and the calendar above are drawn from.'
+      sub: 'The values behind the charts and the calendar above.'
     });
     tbody.innerHTML = dayTable(mo);
 
@@ -6231,7 +6241,8 @@
     const host = document.getElementById('day-panel');
     const weekday = WEEKDAY_LONG[(new Date(Date.UTC(state.y, state.m - 1, d)).getUTCDay() + 6) % 7];
 
-    host.innerHTML = '<h2 class="section">The day</h2><div class="grid daypanel" id="day-grid"></div>';
+    host.innerHTML = '<h2 class="section">Selected day</h2>'
+      + '<div class="grid daypanel" id="day-grid"></div>';
     const grid = document.getElementById('day-grid');
 
     const body = cardEl(grid, {
@@ -6268,29 +6279,29 @@
     body.innerHTML = kv
       + (records.length
         ? '<p class="smallnote"><b>This is ' + records.map(x => x[1]).join(' and ')
-          + ' ' + dateName + ' in the record.</b> Largely gap-filled days are left out of that '
+          + ' ' + dateName + ' in the record.</b> Largely gap-filled days are excluded from this '
           + 'comparison.</p>'
         : '')
       + '<p class="smallnote">' + (set.length
-        ? 'This day also counts as: ' + set.map(f => f.label).join(', ') + '.'
+        ? 'Thresholds met: ' + set.map(f => f.label).join(', ') + '.'
         : 'This day met none of the thresholds on this page.')
-      + ' Departures in brackets are against the ±' + M.clim_window
+      + ' Values in brackets are departures from the ±' + M.clim_window
       + ' day normal for the same date.</p>';
 
     if (!HOURLY) {
-      const nb = cardEl(grid, { title: 'Diurnal course', width: 'w-8' });
+      const nb = cardEl(grid, { title: 'Hourly values', width: 'w-8' });
       nb.innerHTML = '<p class="card-sub" style="max-width:none">This page was built without the '
-        + 'hourly arrays, so the day is available as statistics only. Rebuild without '
-        + '<code>--no-hourly</code> for the diurnal charts.</p>';
+        + 'hourly arrays, so only daily statistics are shown. Rebuild without '
+        + '<code>--no-hourly</code> for hourly charts.</p>';
       return;
     }
 
     const monthName = MONTH_NAME[state.m - 1];
     const facets = cardEl(grid, {
-      title: 'Through the day', width: 'w-8',
-      sub: 'Hourly means, and hourly totals for precipitation, from the half-hourly records. The '
-        + 'dashed line on each panel is the mean day of every ' + monthName + ' in the record, so '
-        + 'the shape of this day can be read against the shape of an ordinary one.'
+      title: 'Hourly values', width: 'w-8',
+      sub: 'Hourly means (hourly totals for precipitation) from the half-hourly records. The '
+        + 'dashed line on each panel is the mean diurnal cycle of every ' + monthName
+        + ' in the record.'
     });
     const wrap = document.createElement('div');
     wrap.className = 'dayfacets';
@@ -6310,10 +6321,10 @@
         climComposite(key, state.m), kind, { self: 'this day', ref: 'mean ' + monthName }));
     });
     if (!drawn) {
-      wrap.innerHTML = '<p class="card-sub">No hourly record survives for this day.</p>';
+      wrap.innerHTML = '<p class="card-sub">No hourly values are available for this day.</p>';
     } else {
       facets.insertAdjacentHTML('beforeend', legendHTML([
-        { color: 'var(--text-muted)', label: 'the mean ' + monthName + ' day, '
+        { color: 'var(--text-muted)', label: 'mean ' + monthName + ' diurnal cycle, '
           + M.first_year + '–' + M.last_year, line: true }
       ]));
     }

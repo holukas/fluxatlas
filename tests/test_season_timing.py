@@ -317,8 +317,9 @@ def test_the_card_is_drawn_on_the_temperature_and_the_exchange_page_and_nowhere_
     timing = flux_atlas.payload["season_timing"]
 
     ta, nee = found["TA"], found["NEE"]
+    assert "Growing season by year" in ta["text"]
+    assert "Carbon uptake period by year" in nee["text"]
     for card in (ta, nee):
-        assert "When the season runs" in card["text"]
         # The axis is named in months, not in day numbers.
         assert all(m in card["text"] for m in ("Jan", "Apr", "Jul", "Oct"))
         assert not re.search(r"undefined|NaN|\[object", card["text"] + (card["tip"] or ""))
