@@ -611,7 +611,7 @@ select.picker.narrow { min-width: 260px; }
 .strip .sname b { color: var(--text-primary); font-weight: 600; display: block;
                   font-variant-numeric: normal; }
 .striphost { min-width: 0; }
-.striphost svg { display: block; width: 100%; height: 30px; overflow: visible; }
+.striphost svg { display: block; width: 100%; height: 32px; overflow: visible; }
 .strip .srank { font-size: 12px; color: var(--text-muted); text-align: right;
                 font-variant-numeric: tabular-nums; white-space: nowrap; }
 .strip .srank b { color: var(--text-primary); font-weight: 600; }

@@ -139,6 +139,8 @@ complete payloads of three builds were compared before and after, and no figure 
   its month names on a narrow page and clipped its caption; the scale is now on the right, narrow months are labelled
   by their initial, and a shorter caption is used where the full one does not fit. The season chart shortens its median
   labels where they would meet each other or the column of uptake days.
+- **The strips of where a span sits among its years clipped their scale and over-stated carbon.** The strip is taller
+  by the depth of its scale labels, and its values use the span's own precision, as the tiles do.
 - **Cards in two consecutive grids touched.** On the year panel, the card of what stood out sat directly on the cards
   below it. Two grids with no heading between them are now spaced as the cards inside a grid are.
 - **Page text that held for one site only.** The near-saturation badge described a tower 47 m up on a ridge, the

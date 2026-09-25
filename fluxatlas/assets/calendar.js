@@ -3043,7 +3043,8 @@
       const rows = scale().spans().filter(x => scale().idOf(x) === scale().idOf(mo)
         && x[key] && isNum(x[key].v));
       const width = Math.max(140, host.clientWidth || 220);
-      const height = 30;
+      const height = 32;             // the scale labels' descenders sit inside it
+      const d = monthDigits(key);    // a span's precision, as its tile states it
       const svg = el('svg', { viewBox: '0 0 ' + width + ' ' + height, width: width, height: height,
         role: 'img', 'aria-label': v.short + ' in every ' + peerOf(mo) + ' of the record' });
       host.innerHTML = '';
@@ -3069,7 +3070,7 @@
           style: here ? '' : 'cursor:pointer' }, svg);
         dot.addEventListener('mousemove', ev => tip.show(
           tipRows(peerOf(mo) + ' ' + x.y,
-            [{ k: v.short, v: nf(x[key].v, v.digits) + ' ' + v.units }]),
+            [{ k: v.short, v: nf(x[key].v, d) + ' ' + v.units }]),
           ev.clientX, ev.clientY));
         dot.addEventListener('mouseleave', tip.hide);
         if (!here) {
@@ -3077,8 +3078,8 @@
             () => { location.hash = x.y + '-' + scale().slug(mo); });
         }
       });
-      svgText(svg, 4, height - 1, nf(ext[0], v.digits), 'scalebar-text', { 'text-anchor': 'start' });
-      svgText(svg, width - 4, height - 1, nf(ext[1], v.digits), 'scalebar-text',
+      svgText(svg, 4, height - 3, nf(ext[0], d), 'scalebar-text', { 'text-anchor': 'start' });
+      svgText(svg, width - 4, height - 3, nf(ext[1], d), 'scalebar-text',
         { 'text-anchor': 'end' });
     };
   }
@@ -3163,7 +3164,7 @@
           + (v.rank_note ? ' (1st = ' + v.rank_note + ')' : '')
         : 'not ranked';
       row.innerHTML = '<span class="sname"><b>' + v.short + '</b>'
-        + nf(rec.v, v.digits) + ' ' + v.units + '</span>'
+        + nf(rec.v, monthDigits(v.key)) + ' ' + v.units + '</span>'
         + '<div class="striphost"></div>'
         + '<span class="srank">' + rank + '</span>';
       host.appendChild(row);
