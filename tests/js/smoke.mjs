@@ -109,6 +109,23 @@ function stub(window) {
     // matter; that it is a number, and that longer strings measure wider, does.
     return (this.textContent || '').length * 6.6;
   };
+  // jsdom has no canvas: its `getContext` returns null and logs "not implemented", which this
+  // driver reports as a console error. A 2D context that accepts every call and draws nothing
+  // keeps the renderer on the path a browser takes - the image is still built cell by cell, it is
+  // only never shown. What it draws is asserted elsewhere, in a real browser.
+  window.HTMLCanvasElement.prototype.getContext = function getContext(kind) {
+    if (kind !== '2d') return null;
+    const canvas = this;
+    return {
+      canvas,
+      imageSmoothingEnabled: true,
+      createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
+      putImageData() {},
+      drawImage() {},
+      clearRect() {},
+      fillRect() {},
+    };
+  };
 }
 
 const virtualConsole = new VirtualConsole();

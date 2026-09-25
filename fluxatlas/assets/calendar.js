@@ -5470,8 +5470,312 @@
   }
 
   /* ---- Every hour of the record, as date against time of day. --------------------------------
-     Fills #var-hourly from HOURLY. */
-  function renderVarHourly() {}
+     Fills #var-hourly from HOURLY.
+
+     The picture a flux site is checked by: one column per day, one row per hour of it. A gap is a
+     block of its own colour, a timestamp that moves shifts the whole daily cycle along the hour
+     axis from one date to the next, and a sign or unit error recolours every hour at once. None of
+     the three is visible in a monthly figure.
+
+     It is the renderer's one canvas. Twenty years is some 184,000 hours, which as SVG marks is a
+     document too large to lay out and far too slow to rebuild on every resize and theme change.
+     The cells are written into an ImageData one pixel per cell and scaled up with smoothing off,
+     so every cell keeps a hard edge; the axes stay SVG, over the canvas, so their text is the
+     page's own type and the hover target is the `rect.hit` every other chart uses. */
+
+  const HOURLY_ROW = 8;               // CSS pixels per hour of the day
+  const HOURLY_QUANTILES = [0.01, 0.99];
+  const HOURLY_SCHEMES = {};          // per variable: the domain is fixed, only the colours move
+  const HOURLY_GAP = '--text-muted';  // a grey that is neither end of any ramp, in either theme
+
+  function quantileOf(sorted, q) {
+    if (!sorted.length) return null;
+    const pos = (sorted.length - 1) * q, i = Math.floor(pos);
+    return i + 1 < sorted.length ? sorted[i] + (sorted[i + 1] - sorted[i]) * (pos - i) : sorted[i];
+  }
+
+  /**
+   * How one variable's hours are coloured: which ramp, over which domain.
+   *
+   * The ramp is the variable's own metric's, so an hour reads in the colours its months do. The
+   * domain is a percentile range of the hours rather than their extent, because one spike in
+   * twenty years would otherwise put everything else in the middle third of the ramp. A variable
+   * whose sign is a convention (NEE) diverges about zero instead, symmetrically, so a colour's
+   * depth means the same magnitude of uptake as of release. A total that is mostly nothing
+   * (precipitation) is drawn from zero, and a dry hour takes the neutral colour rather than the
+   * palest step of the ramp.
+   * Computed once per variable; the colours are looked up again at every draw.
+   */
+  function hourlyScheme(key) {
+    if (key in HOURLY_SCHEMES) return HOURLY_SCHEMES[key];
+    const h = HOURLY.vars[key], v = VARS[key], met = ownMetric(v);
+    const all = [], positive = [];
+    for (let i = 0; i < h.values.length; i++) {
+      const raw = h.values[i];
+      if (raw === null || raw === undefined) continue;
+      const x = raw / h.scale;
+      all.push(x);
+      if (x > 0) positive.push(x);
+    }
+    let out = null;
+    if (all.length) {
+      const sorted = Float64Array.from(all).sort();
+      const digits = Math.max(0, Math.round(Math.log10(h.scale || 1)));
+      const pole = met && met.scale === 'div'
+        ? [met.poles[0], '--neutral-mid', met.poles[1]] : null;
+      // Signed by a convention: zero is the boundary that means something, whatever the record
+      // mean the metric itself diverges about.
+      if (v.sign && pole) {
+        const dev = Float64Array.from(all, x => Math.abs(x)).sort();
+        const half = quantileOf(dev, HOURLY_QUANTILES[1]) || 1;
+        out = { kind: 'centred', lo: -half, hi: half, center: 0, stops: pole };
+      } else if (v.agg === 'sum' && !v.sign) {
+        const pos = Float64Array.from(positive).sort();
+        out = { kind: 'zero', lo: 0, hi: quantileOf(pos, HOURLY_QUANTILES[1]) || 1,
+          stops: met && met.stops ? met.stops : ['--neutral-mid', '--series-1'],
+          zero: '--neutral-mid' };
+      } else {
+        const lo = quantileOf(sorted, HOURLY_QUANTILES[0]);
+        let hi = quantileOf(sorted, HOURLY_QUANTILES[1]);
+        if (!(hi > lo)) hi = lo + 1;
+        out = { kind: 'range', lo: lo, hi: hi,
+          stops: pole || (met && met.stops) || ['--neutral-mid', '--series-1'] };
+      }
+      out.digits = digits;
+      out.n = all.length;
+    }
+    HOURLY_SCHEMES[key] = out;
+    return out;
+  }
+
+  /** What one hour of a variable is: its mean, or for a total what fell or passed in it. */
+  const hourlyUnit = v => (v.agg === 'sum' ? v.units + ' per hour' : v.units);
+
+  function hourlyLegend(key, s) {
+    const v = VARS[key];
+    const ramp = 'linear-gradient(90deg,' + s.stops.map(t => 'var(' + t + ')').join(',') + ')';
+    const swatch = bg => '<span class="legend-swatch" style="background:' + bg + '"></span>';
+    const wide = '<span class="legend-swatch" style="width:64px;background:' + ramp + '"></span>';
+    const q0 = ord(Math.round(HOURLY_QUANTILES[0] * 100));
+    const q1 = ord(Math.round(HOURLY_QUANTILES[1] * 100));
+    let scaleText;
+    if (s.kind === 'centred') {
+      const end = x => nfs(x, s.digits) + (v.sign ? ' (' + senseOf(v, x) + ')' : '');
+      scaleText = end(s.lo) + ' to ' + end(s.hi) + ' ' + hourlyUnit(v)
+        + ', diverging about ' + nf(s.center, 0)
+        + ' and bounded at the ' + q1 + ' percentile of the departures from it';
+    } else {
+      scaleText = nf(s.lo, s.digits) + ' to ' + nf(s.hi, s.digits) + ' ' + hourlyUnit(v)
+        + (s.kind === 'zero'
+          ? ', from zero to the ' + q1 + ' percentile of the hours with any'
+          : ', the ' + q0 + ' to the ' + q1 + ' percentile of every hour');
+    }
+    const items = ['<span class="legend-item">' + wide + scaleText + '</span>'];
+    if (s.kind === 'zero') {
+      items.push('<span class="legend-item">' + swatch('var(' + s.zero + ')') + 'none</span>');
+    }
+    items.push('<span class="legend-item">' + swatch('var(' + HOURLY_GAP + ')')
+      + 'no value in the file</span>');
+    return '<div class="legend">' + items.join('') + '</div>';
+  }
+
+  /** Day index and hour under a pointer, from its position over the plot. */
+  function hourlyAt(hit, ev, nDays) {
+    const box = hit.getBoundingClientRect();
+    // A box with no size is a page not laid out yet, where the first cell is the honest answer.
+    const fx = box.width > 0 ? (ev.clientX - box.left) / box.width : 0;
+    const fy = box.height > 0 ? (ev.clientY - box.top) / box.height : 0;
+    const day = Math.max(0, Math.min(nDays - 1, Math.floor(fx * nDays)));
+    // Midnight is the bottom row, so the hour counts up the axis.
+    const hour = Math.max(0, Math.min(23, 23 - Math.floor(fy * 24)));
+    return { day: day, hour: hour };
+  }
+
+  function drawHourly(key, s) {
+    return function (host) {
+      const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+      const h = HOURLY.vars[key], v = VARS[key];
+      const nDays = Math.floor(HOURLY.n / 24);
+      const H0 = Date.parse(HOURLY.start + 'T00:00:00Z');
+      const dateOf = i => new Date(H0 + i * 86400000);
+      const f = frame(host, {
+        height: 10 + 24 * HOURLY_ROW + 28,
+        margin: { top: 10, right: 12, bottom: 28, left: 40 }
+      });
+      // The canvas carries the accessible name; the SVG over it is axes and a hover target only.
+      f.svg.removeAttribute('role');
+      f.svg.removeAttribute('aria-label');
+      f.svg.setAttribute('aria-hidden', 'true');
+      f.svg.style.position = 'relative';
+      host.style.position = 'relative';
+
+      const canvas = document.createElement('canvas');
+      canvas.setAttribute('role', 'img');
+      canvas.setAttribute('aria-label', v.title + ', every hour from ' + M.first_year + ' to '
+        + M.last_year + ': one column per day and one row per hour of the day, midnight at the '
+        + 'bottom, coloured by the hourly ' + (v.agg === 'sum' ? 'total' : 'mean') + ' in '
+        + hourlyUnit(v) + '. Hours the file carries no value for are grey.');
+      canvas.style.cssText = 'position:absolute;left:' + f.m.left + 'px;top:' + f.m.top
+        + 'px;width:' + f.iw + 'px;height:' + f.ih + 'px';
+      host.insertBefore(canvas, f.svg);
+
+      const dpr = window.devicePixelRatio || 1;
+      const W = Math.max(1, Math.round(f.iw * dpr)), Hpx = Math.max(1, Math.round(f.ih * dpr));
+      canvas.width = W;
+      canvas.height = Hpx;
+
+      /* More days than device pixels: a column is then the mean of `per` days, so no day is
+         dropped by the downscale, and a column is greyed in proportion to the hours among its days
+         that carry no value, so a gap of two days in a column of five still shows. */
+      const per = Math.max(1, Math.ceil(nDays / W));
+      const cols = Math.ceil(nDays / per);
+      const ctx = canvas.getContext && canvas.getContext('2d');
+      const off = document.createElement('canvas');
+      off.width = cols;
+      off.height = 24;
+      const octx = off.getContext && off.getContext('2d');
+      if (ctx && octx) {
+        const stops = s.stops.map(t => hex2rgb(token(t)));
+        const gap = hex2rgb(token(HOURLY_GAP));
+        const zero = s.zero ? hex2rgb(token(s.zero)) : null;
+        const lut = [];
+        for (let k = 0; k < 256; k++) lut.push(rampRGB(stops, k / 255));
+        const span = (s.hi - s.lo) || 1;
+        const img = octx.createImageData(cols, 24);
+        const px = img.data;
+        for (let hh = 0; hh < 24; hh++) {
+          const row = 23 - hh;
+          for (let c = 0; c < cols; c++) {
+            let sum = 0, n = 0, all = 0;
+            const d1 = Math.min(nDays, (c + 1) * per);
+            for (let d = c * per; d < d1; d++) {
+              all += 1;
+              const raw = h.values[d * 24 + hh];
+              if (raw === null || raw === undefined) continue;
+              sum += raw;
+              n += 1;
+            }
+            let rgb;
+            if (!n) {
+              rgb = gap;
+            } else {
+              const x = sum / n / h.scale;
+              rgb = zero && x === 0 ? zero
+                : lut[Math.max(0, Math.min(255, Math.round((x - s.lo) / span * 255)))];
+              if (n < all) rgb = mix(rgb, gap, 1 - n / all);
+            }
+            const o = (row * cols + c) * 4;
+            px[o] = rgb[0];
+            px[o + 1] = rgb[1];
+            px[o + 2] = rgb[2];
+            px[o + 3] = 255;
+          }
+        }
+        octx.putImageData(img, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, W, Hpx);
+        // The last column may hold fewer than `per` days, so the image is drawn at the width its
+        // columns would have in full and the canvas clips the rest. Anything else stretches the
+        // record by up to a column and puts every year's first day a few days off its tick.
+        ctx.drawImage(off, 0, 0, W * cols * per / nDays, Hpx);
+      }
+
+      // Hours up the side, midnight at the bottom.
+      const yOf = hh => f.m.top + f.ih - hh / 24 * f.ih;
+      [0, 6, 12, 18, 24].forEach(hh => {
+        el('line', { x1: f.m.left - 4, x2: f.m.left, y1: yOf(hh), y2: yOf(hh), class: 'ax-line' },
+          f.svg);
+        svgText(f.svg, f.m.left - 7, yOf(hh) + 4, String(hh).padStart(2, '0') + ':00',
+          'ax-text', { 'text-anchor': 'end' });
+      });
+      // Years along the foot, labelled as often as they fit.
+      const xOf = i => f.m.left + i / nDays * f.iw;
+      const perYear = f.iw * 365.25 / nDays;
+      const every = perYear >= 34 ? 1 : perYear * 2 >= 34 ? 2 : perYear * 5 >= 34 ? 5 : 10;
+      YEARS.forEach(y => {
+        const i0 = Math.round((Date.UTC(y, 0, 1) - H0) / 86400000);
+        const i1 = Math.round((Date.UTC(y + 1, 0, 1) - H0) / 86400000);
+        if (i1 <= 0 || i0 >= nDays) return;
+        el('line', { x1: xOf(i0), x2: xOf(i0), y1: f.m.top + f.ih, y2: f.m.top + f.ih + 4,
+          class: 'ax-line' }, f.svg);
+        if (y % every) return;
+        svgText(f.svg, every === 1 ? (xOf(Math.max(0, i0)) + xOf(Math.min(nDays, i1))) / 2
+          : xOf(i0), f.m.top + f.ih + 17, String(y), 'ax-text', { 'text-anchor': 'middle' });
+      });
+
+      const hit = el('rect', { class: 'hit', x: f.m.left, y: f.m.top, width: f.iw,
+        height: f.ih }, f.svg);
+      hit.style.cursor = 'pointer';
+      hit.addEventListener('mousemove', ev => {
+        const at = hourlyAt(hit, ev, nDays);
+        const t = dateOf(at.day);
+        const raw = h.values[at.day * 24 + at.hour];
+        const hours = String(at.hour).padStart(2, '0') + ':00–'
+          + String(at.hour + 1).padStart(2, '0') + ':00';
+        let value;
+        if (raw === null || raw === undefined) {
+          value = 'no value in the file';
+        } else {
+          const x = raw / h.scale;
+          const sense = senseOf(v, x);
+          value = (v.sign ? nfs(x, s.digits) : nf(x, s.digits)) + ' ' + v.units
+            + (sense ? ' (' + sense + ')' : '');
+        }
+        tip.show(tipRows(WEEKDAY[(t.getUTCDay() + 6) % 7] + ' ' + t.getUTCDate() + ' '
+          + MONTH_NAME[t.getUTCMonth()] + ' ' + t.getUTCFullYear(), [
+          { k: 'hour', v: hours },
+          { k: v.short + (v.agg === 'sum' ? ', total' : ', mean'), v: value }
+        ]), ev.clientX, ev.clientY);
+      });
+      hit.addEventListener('mouseleave', () => tip.hide());
+      hit.addEventListener('click', ev => {
+        const t = dateOf(hourlyAt(hit, ev, nDays).day);
+        location.hash = t.getUTCFullYear() + '-' + String(t.getUTCMonth() + 1).padStart(2, '0')
+          + '-' + String(t.getUTCDate()).padStart(2, '0');
+      });
+
+      const t1 = (window.performance && performance.now) ? performance.now() : Date.now();
+      canvas.dataset.drawMs = (t1 - t0).toFixed(1);
+      canvas.dataset.columns = String(cols);
+      canvas.dataset.daysPerColumn = String(per);
+    };
+  }
+
+  function renderVarHourly(key) {
+    const host = document.getElementById('var-hourly');
+    if (!host) return;
+    const v = VARS[key];
+    // Built without the layer: said once, as the month and day panels say it.
+    if (!HOURLY) {
+      host.innerHTML = '<div class="grid"></div>';
+      cardEl(host.firstChild, { title: 'Every hour of the record', width: 'w-12' }).innerHTML =
+        '<p class="card-sub" style="max-width:none">This page was built without the hourly '
+        + 'arrays (<code>--no-hourly</code>), so the record is not drawn hour by hour.</p>';
+      return;
+    }
+    // A variable the layer does not carry is left out, as the diurnal panels leave it out.
+    if (!HOURLY.vars[key]) return;
+    const s = hourlyScheme(key);
+    if (!s) return;
+    host.innerHTML = '<div class="grid"></div>';
+    const body = cardEl(host.firstChild, {
+      title: 'Every hour of the record', width: 'w-12',
+      sub: 'One column per day and one row per hour of it, midnight at the bottom, coloured by '
+        + 'the hourly ' + (v.agg === 'sum' ? 'total' : 'mean') + ' on the file’s own clock. '
+        + 'Hovering reads one hour; selecting it opens its day.',
+      foot: 'The picture a site is checked by. A gap is a grey block; a timestamp that moves '
+        + 'shifts the whole daily cycle up or down the hour axis from one date to the next; a '
+        + 'sign or unit error recolours every hour at once. An hour is the '
+        + (v.agg === 'sum' ? 'sum' : 'mean') + ' of whichever of its two half-hours the file '
+        + 'carries. Where the card is narrower than the record is long, a column is the mean of '
+        + 'several days, greyed in proportion to the hours among them that carry no value.'
+    });
+    const chart = document.createElement('div');
+    chart.className = 'chart';
+    body.appendChild(chart);
+    body.insertAdjacentHTML('beforeend', hourlyLegend(key, s));
+    mountChart(chart, drawHourly(key, s));
+  }
 
 
   /**
