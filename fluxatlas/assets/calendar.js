@@ -4849,7 +4849,192 @@
 
   /* ---- The days and half-hours at either end. -------------------------------------------------
      Fills #var-extremes from DAYS and DATA.extreme_halfhours. */
-  function renderVarExtremes() {}
+
+  const DAILY_STAT_WORD = { mean: 'daily mean', sum: 'daily total', max: 'daily maximum',
+    min: 'daily minimum' };
+
+  /**
+   * What each end of a list is called, in the registry's words for this variable.
+   *
+   * The same rule `varMoments` follows for the months. "Highest" NEE is the largest release, and
+   * where every value listed at one end sits on the far side of zero the registry's word for that
+   * end is false: at a site whose every measured half-hour of the top ten is an uptake, the highest
+   * ten are its smallest uptakes, not its largest releases.
+   */
+  function endWords(v, high, low) {
+    const all = (list, test) => list.length > 0 && list.every(x => isNum(x) && test(x));
+    return {
+      high: v.sign && all(high, x => x <= 0) ? 'smallest net ' + v.sign.low : v.word_high,
+      low: v.sign && all(low, x => x >= 0) ? 'smallest net ' + v.sign.high : v.word_low
+    };
+  }
+
+  const endHead = (side, count, noun, word) => cap(side) + ' ' + (NUMBER_WORD[count] || count)
+    + ' ' + noun + (word ? ' <span class="muted">(' + word + ')</span>' : '');
+
+  /**
+   * The days at either end of a variable's record, by the daily statistic its own charts use.
+   *
+   * Only days measured to the share a day needs before it may set a record for its date are
+   * ranked: a gap-filled day is a model result, and a model result cannot hold a record. The share
+   * is compared in the rounded form the page carries, against the threshold the build states in
+   * that form, so the browser admits exactly the days `date_record` admits.
+   */
+  function extremeDays(key) {
+    const v = VARS[key];
+    const EH = DATA.extreme_halfhours;
+    const stat = dailyStatOf(v);
+    const values = DAYS.series[key + '_' + stat];
+    const meas = DAYS.meas[key];
+    if (!EH || !values || !meas) return null;
+    const days = [];
+    for (let i = 0; i < DAYS.n; i++) {
+      if (isNum(values[i]) && isNum(meas[i]) && meas[i] >= EH.day_meas_min) days.push(i);
+    }
+    const own = EH.vars[key] || {};
+    const withLow = own.low_day !== false && days.length > 1;
+    // Fewer qualifying days than two full lists would put one day at both ends.
+    const k = Math.min(EH.n, withLow ? Math.floor(days.length / 2) : days.length);
+    /* One end, or the bound it rests on. The daily series is shipped at the precision it is
+       printed at, so two days that read alike compare equal, and where more of them reach the
+       extreme than the list has room for, the list would be days picked by the calendar. */
+    const end = sign => {
+      const order = days.slice().sort((a, b) => sign * (values[b] - values[a]) || a - b);
+      if (!order.length) return { list: [], tie: null };
+      const extreme = values[order[0]];
+      const reaching = order.filter(i => values[i] === extreme).length;
+      return reaching > k ? { list: [], tie: { value: extreme, days: reaching } }
+        : { list: order.slice(0, k), tie: null };
+    };
+    return { stat: stat, values: values, n: days.length, high: end(1),
+      low: withLow ? end(-1) : null };
+  }
+
+  function dayItem(v, stat, values, i) {
+    const at = dateAt(i);
+    const value = values[i];
+    const normal = dayNormal(v.key, stat, at.y, at.m, at.d);
+    const sense = senseOf(v, value);
+    return '<li><a href="#' + at.y + '-' + pad2(at.m) + '-' + pad2(at.d) + '">' + at.d + ' '
+      + MONTH_NAME[at.m - 1] + ' ' + at.y + '</a> <b>' + nf(value, v.digits) + '</b> ' + v.units
+      + (sense ? ', ' + sense : '')
+      + (isNum(normal) ? ' (' + nfs(value - normal, v.digits) + ')' : '')
+      + '</li>';
+  }
+
+  /** "2019-07-25T14:30" as the half-hour it opens: its date and the window it covers. */
+  function halfhourAt(stamp) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(stamp);
+    if (!m) return null;
+    const start = +m[4] * 60 + +m[5];
+    const end = start + 30;
+    const clock = t => pad2(Math.floor(t / 60) % 24) + ':' + pad2(t % 60);
+    return { y: +m[1], m: +m[2], d: +m[3], window: clock(start) + '–' + clock(end) };
+  }
+
+  function halfhourItem(v, own, row) {
+    const at = halfhourAt(row[0]);
+    if (!at || !isNum(row[1])) return '';
+    const sense = senseOf(v, row[1]);
+    return '<li><a href="#' + at.y + '-' + pad2(at.m) + '-' + pad2(at.d) + '">' + at.d + ' '
+      + MONTH_ABBR[at.m - 1] + ' ' + at.y + ', ' + at.window + '</a> <b>'
+      + nf(row[1], own.digits) + '</b> ' + own.units + (sense ? ', ' + sense : '') + '</li>';
+  }
+
+  /**
+   * One end of a list: its entries under a heading, or the bound it rests on in their place.
+   *
+   * `end` is `{ items, word, tie }`, or null where the registry says this end of the variable is a
+   * floor it rests on - zero rain, a night without sunshine - rather than anything a reader would
+   * look for.
+   */
+  function endColumn(side, noun, end, units, digits) {
+    if (!end) return '';
+    if (end.tie) {
+      const value = nf(end.tie.value, digits) + ' ' + units;
+      const days = end.tie.days.toLocaleString('en-GB') + ' days';
+      return '<div><h4>' + cap(side) + ' ' + noun + '</h4><p class="card-sub">'
+        + (noun === 'days' ? days + ' reach ' + value
+          : 'On ' + days + ' at least one half-hour reaches ' + value)
+        + ', more than a list has room for, so this end is a bound the variable rests on rather '
+        + 'than an event, and is not listed.</p></div>';
+    }
+    if (!end.items.length) return '';
+    return '<div><h4>' + endHead(side, end.items.length, noun, end.word)
+      + '</h4><ul class="ranklist">' + end.items.join('') + '</ul></div>';
+  }
+
+  function renderVarExtremes(key) {
+    const host = document.getElementById('var-extremes');
+    const EH = DATA.extreme_halfhours;
+    if (!host || !EH) return;
+    const v = VARS[key];
+    const days = extremeDays(key);
+    const own = (EH.vars || {})[key];
+    const ties = (own && own.ties) || {};
+    const halfhours = own && ((own.high && own.high.length) || ties.high) ? own : null;
+    if (!(days && days.n) && !halfhours) return;
+
+    host.innerHTML = '<h2 class="section">Days and half-hours at either end</h2>'
+      + '<div class="grid" id="var-extremes-grid"></div>';
+    const grid = document.getElementById('var-extremes-grid');
+    const floor = 'The low end is not listed: for this variable it is a floor much of the '
+      + 'record rests on rather than an event.';
+    const rule = nf(EH.day_coverage, 0) + ' %';
+
+    if (days && days.n) {
+      const words = endWords(v, days.high.list.map(i => days.values[i]),
+        days.low ? days.low.list.map(i => days.values[i]) : []);
+      const end = (side, found) => (found ? { tie: found.tie, word: words[side],
+        items: found.list.map(i => dayItem(v, days.stat, days.values, i)) } : null);
+      cardEl(grid, {
+        title: 'The days at either end', width: 'w-12',
+        sub: 'The ' + (days.low ? 'highest and lowest days' : 'highest days') + ' of the '
+          + 'record by ' + DAILY_STAT_WORD[days.stat] + ', in ' + v.units + ', with the departure '
+          + 'from the normal for the date. Only days at least ' + rule + ' measured are ranked, '
+          + 'the share a day needs to set a record for its date, because a gap-filled value '
+          + 'cannot hold one: ' + days.n.toLocaleString('en-GB') + ' of the record’s '
+          + DAYS.n.toLocaleString('en-GB') + ' days qualify. Selecting one opens it.'
+          + (own && own.low_day === false ? ' ' + floor : '')
+      }).innerHTML = '<div class="twocol">'
+        + endColumn('highest', 'days', end('high', days.high), v.units, v.digits)
+        + endColumn('lowest', 'days', end('low', days.low), v.units, v.digits) + '</div>';
+    }
+
+    if (halfhours) {
+      const high = halfhours.high || [];
+      const low = halfhours.low || [];
+      const words = endWords(v, high.map(row => row[1]), low.map(row => row[1]));
+      const end = (side, rows) => (rows ? { tie: ties[side], word: words[side],
+        items: rows.map(row => halfhourItem(v, halfhours, row)) } : null);
+      cardEl(grid, {
+        title: 'The half-hours at either end', width: 'w-12',
+        sub: 'The ' + (halfhours.low ? 'highest and lowest' : 'highest') + ' measured half-hours '
+          + 'of the record, at most one from any day, so that a single afternoon cannot fill the '
+          + 'list. Gap-filled half-hours are not ranked. Times are the file’s own: the start and '
+          + 'end of the averaging window. Selecting one opens its day.'
+          + (halfhours.rate ? ' Stated as the rate the file publishes, in ' + halfhours.units
+            + ', rather than as the ' + v.units + ' one half-hour contributes to a total; the '
+            + 'days and every longer span stay in ' + v.units + '.' : '')
+          + (halfhours.low ? '' : ' ' + floor)
+          + (days && days.n ? '' : ' No day of the record was ' + rule + ' measured, so no day '
+            + 'is ranked.'),
+        foot: [
+          halfhours.partitioned ? v.short + ' is not measured but partitioned out of the net '
+            + 'flux: a half-hour counts as measured where the net flux it came from was, so these '
+            + 'are the partitioning’s values at observed half-hours, not observations.' : '',
+          v.family === 'flux' ? 'At a single half-hour a flux’s extremes are where residual '
+            + 'spikes collect. The quality flag marks a record as measured, not as plausible, so '
+            + 'read the time of day and the season beside each value before taking it as an '
+            + 'event.' : ''
+        ].filter(Boolean).join(' ')
+      }).innerHTML = '<div class="twocol">'
+        + endColumn('highest', 'half-hours', end('high', halfhours.high), halfhours.units,
+          halfhours.digits)
+        + endColumn('lowest', 'half-hours', end('low', halfhours.low), halfhours.units,
+          halfhours.digits) + '</div>';
+    }
+  }
 
   /* ---- Through the day: the month-by-hour surface and the mean day of each calendar month. ----
      Fills #var-diurnal from DATA.diurnal. */

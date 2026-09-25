@@ -2804,9 +2804,107 @@ def season_timing_layer(loaded, dates, day):
     return out or None
 
 
+# How many entries the variable page lists at each end, for the days and for the half-hours alike.
+EXTREME_ENTRIES = 10
+
+# A carbon flux is carried in g C m-2 per half-hour so that a month sums to the figure it is quoted
+# in. A single half-hour stated in that unit ("-0.93 g C m-2") is a quantity no one reads a flux
+# in, so the half-hours of a carbon flux are stated as the rate the file published, in µmol m-2
+# s-1: the registry's conversion inverted. The day and every longer span stay in g C m-2.
+CARBON_UNITS = "g C m⁻²"
+CARBON_RATE_UNITS = "µmol m⁻² s⁻¹"
+CARBON_RATE_DIGITS = 1
+
+
+def record_day_threshold(records_per_day=48):
+    """The shipped daily measured share at or above which a day may hold a record.
+
+    `date_record` compares the exact share against `RECORD_DAY_COVERAGE`; the page receives the
+    share rounded to a whole percent. A day is 48 half-hours, so its share is always k/48, and 43 of
+    48 is 89.6 % - under the line, yet 90 once rounded. Comparing the rounded figure against 90 in
+    the browser would admit exactly the days the build refused, so the threshold is shipped as the
+    smallest rounded share any qualifying day can have, and checked to separate the two cleanly.
+    """
+    shares = [k / records_per_day * 100 for k in range(records_per_day + 1)]
+    passing = [round(s) for s in shares if s >= RECORD_DAY_COVERAGE]
+    failing = [round(s) for s in shares if s < RECORD_DAY_COVERAGE]
+    threshold = min(passing)
+    if failing and max(failing) >= threshold:
+        raise RuntimeError("the rounded daily measured share cannot separate the days a record "
+                           "admits from those it refuses")
+    return int(threshold)
+
+
+def halfhour_ends(values, digits, n=EXTREME_ENTRIES, low=False):
+    """The `n` highest (or lowest) half-hours, no two from the same day, and whether that end ties.
+
+    Taken one per day because the ten warmest half-hours of a record are otherwise the ten warmest
+    of a single afternoon, and a list of one event ten times says less than a list of ten events.
+    Each day contributes its own extreme half-hour; ties go to the earlier record.
+
+    Returns `(rows, tie)`. Where more days reach the extreme value, as printed, than the list has
+    room for, the end is a bound the variable rests on - relative humidity at 100 %, respiration at
+    zero - rather than an event, and a list of ten of them would be ten days picked by the calendar.
+    `rows` is then empty and `tie` states the value and how many days reach it.
+    """
+    if values.empty:
+        return [], None
+    by_day = values.groupby(values.index.normalize())
+    at = by_day.idxmin() if low else by_day.idxmax()
+    picked = values.loc[at.to_numpy()]
+    shown = picked.round(digits).to_numpy()
+    order = np.lexsort((np.arange(len(picked)), shown if low else -shown))
+    extreme = shown[order[0]]
+    reaching = int((shown == extreme).sum())
+    if reaching > n:
+        return [], dict(value=r(float(extreme), digits), days=reaching)
+    return [[f"{picked.index[i]:%Y-%m-%dT%H:%M}", r(float(picked.iloc[i]), digits)]
+            for i in order[:n]], None
+
+
 def extreme_halfhours_layer(loaded, dates, day):
-    """The measured half-hours at either end of each variable's record."""
-    return None
+    """The measured half-hours at either end of each variable's record.
+
+    A modelled value cannot hold a record, so only measured half-hours are ranked, exactly as a day
+    has to be substantially measured before `date_record` lets it win its date. Where the registry
+    says a variable's low end is a floor it rests on rather than an event - zero rain, a night with
+    no sunshine - only the high end is listed (`extremes["low_halfhour"]`), and where an end turns
+    out to be such a bound on this record it is stated as one (`halfhour_ends`).
+
+    `partitioned` marks a partitioning product. GPP and RECO carry the flag of the net flux they were
+    partitioned from, so their "measured" half-hours are the partitioning's values where the net
+    flux was measured, and the page says so rather than presenting them as observations.
+
+    The daily lists are ranked in the browser from the daily series already shipped; what they need
+    from here is the rule for which days count, shipped as `day_meas_min` in the rounded share the
+    page carries (`record_day_threshold`), and whether the low end of each variable's days means
+    anything (`low_day`).
+    """
+    # Imported here rather than at the top of the module so this layer stays self-contained.
+    from .io import _partitioned_from
+
+    first, last = dates[0], dates[-1] + pd.Timedelta(days=1)
+    out = {}
+    for key, d in loaded.items():
+        v = d["v"]
+        series = d["series"]
+        window = (series.index >= first) & (series.index < last)
+        measured = series[window & d["measured"].reindex(series.index, fill_value=False)
+                          .to_numpy(dtype=bool)].dropna()
+        carbon = v.units == CARBON_UNITS and v.agg == "sum"
+        if carbon:
+            measured = measured / varreg.UMOL_TO_GC
+        digits = CARBON_RATE_DIGITS if carbon else v.digits
+        high, high_tie = halfhour_ends(measured, digits)
+        low, low_tie = (halfhour_ends(measured, digits, low=True) if v.extremes["low_halfhour"]
+                        else (None, None))
+        out[key] = dict(
+            units=CARBON_RATE_UNITS if carbon else v.units, digits=digits, rate=bool(carbon),
+            n=int(len(measured)), partitioned=_partitioned_from(v.column or "") is not None,
+            high=high, low=low, ties=dict(high=high_tie, low=low_tie),
+            low_day=bool(v.extremes["low_day"]))
+    return dict(n=EXTREME_ENTRIES, day_coverage=RECORD_DAY_COVERAGE,
+                day_meas_min=record_day_threshold(), vars=out)
 
 
 def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, quiet=False,
