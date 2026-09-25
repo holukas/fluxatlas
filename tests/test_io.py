@@ -540,3 +540,24 @@ def test_a_stated_quality_flag_still_wins_over_the_inherited_one(parquet_path):
     """Inheritance fills a silence; it does not override a caller who named a flag."""
     loaded = io.read_fluxnet(parquet_path, {"TA": dict(column="TA_F", qc="P_F_QC")}, quiet=True)
     assert loaded["TA"]["v"].qc_column == "P_F_QC"
+
+
+def test_a_column_the_registry_does_not_know_inherits_no_flag(tmp_path):
+    """The registry's flags describe the registry's columns and nothing else.
+
+    A caller's own series, named on a file that happens to carry `TA_F_QC` as well, used to take
+    that flag - so its measured share was read off the gap-filling record of a different column.
+    """
+    frame = synthetic_frame(years=2)
+    frame["air_temp"] = frame["TA_F"]
+    path = tmp_path / "own.parquet"
+    frame.to_parquet(path)
+
+    own = io.read_fluxnet(path, {"TA": dict(column="air_temp")}, quiet=True)["TA"]
+    assert own["v"].qc_column is None
+    assert own["measured"].mean() == own["series"].notna().mean()
+
+    # The registry's own column still inherits its flag, and a stated flag still wins.
+    assert io.read_fluxnet(path, {"TA": "TA_F"}, quiet=True)["TA"]["v"].qc_column == "TA_F_QC"
+    stated = io.read_fluxnet(path, {"TA": dict(column="air_temp", qc="TA_F_QC")}, quiet=True)
+    assert stated["TA"]["v"].qc_column == "TA_F_QC"

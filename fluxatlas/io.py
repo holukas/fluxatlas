@@ -425,15 +425,29 @@ def resolve(source, keys, label="the file"):
         # there and need not be elsewhere. The list is the fallback for a column whose partner the
         # file does not carry.
         if "qc" not in spec:
-            candidates = varreg.make(key).qc_candidates
+            v_reg = varreg.make(key)
+            candidates = v_reg.qc_candidates
             direct = f"{spec['column']}_QC"
             paired = _partitioned_from(spec["column"])
+            # A flag named by the column's own FLUXNET name - `<column>_QC`, or for a partitioning
+            # product the flag of the NEE it came from - describes that column exactly, whether or
+            # not the registry lists it: `GPP_DT_VUT_25` is a real FULLSET column, and its flag is
+            # `NEE_VUT_25_QC` by the file's own naming.
+            #
+            # The registry's ordered list is another matter, and is used only for a column the
+            # registry itself lists, by the same rule as the factor below. Applied to a series
+            # mapped in from another convention it paired that series with the gap-filling record
+            # of a different column: `{"TA": {"column": "air_temp"}}` on a file that also carries
+            # `TA_F_QC` took that flag and reported its measured share from it. Such a series
+            # states its own flag with `--qc`, or has none and is measured wherever it is present.
             if direct in candidates and direct in columns:
                 qc = direct
             elif paired and paired in columns:
                 qc = paired
-            else:
+            elif spec["column"] in {name for name, _ in v_reg.candidates}:
                 qc = next((q for q in candidates if q in columns), None)
+            else:
+                qc = None
         # The unit conversion follows the column, not the form the caller used to name it. Naming
         # one of the registry's own candidates - `--var NEE=NEE_CUT_REF`, to take the variant the
         # file carries rather than the one the registry prefers - is a choice of column and not a
