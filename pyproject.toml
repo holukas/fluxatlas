@@ -54,4 +54,3 @@ testpaths = ["tests"]
 # `tests/` is not a package, and conftest.py exports the synthetic-data builders that several
 # test modules import by name.
 pythonpath = ["tests"]
-addopts = "-q"

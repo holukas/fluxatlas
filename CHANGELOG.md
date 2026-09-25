@@ -58,6 +58,7 @@ the complete payload of three builds before and after.
 - **The footer is laid out in three paragraphs:** a *Data* paragraph with the site, the file, its size and digest, the years and the number of variables, then the columns that were read, a *Methods* paragraph stating how the normals, coverage, daily normals and trends are taken, and the tool with the build time written as a date with its UTC offset. It credits the tool and who wrote it, not who built the page, since that is whoever ran the build. Its prose keeps a reading measure instead of running across the full page width.
 - **The build time is stated with its UTC offset.**
 - **The examples say what the default build takes and show what is new.** `examples/README.md` opens with the current `--list` output and its marks, adds the energy-balance build with what decides whether net radiation and each ratio appear, and shows `Atlas.table()` and `Atlas.provenance`; `build_fluxnet_atlas.py` marks the variables built only when named and prints the table's size and the input's digest.
+- **`pytest` prints its summary line again.** `addopts = "-q"` was removed from `pyproject.toml`; with it, `pytest -q` ran at double quiet and left out the pass and fail counts.
 
 ### Performance
 
