@@ -23,6 +23,8 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import pandas as pd
+
 from ._console import say
 from . import build as _build
 from . import io as _io
@@ -68,6 +70,15 @@ def _fingerprint(path):
     with open(path, "rb") as handle:
         digest = hashlib.file_digest(handle, "sha256")
     return dict(bytes=Path(path).stat().st_size, sha256=digest.hexdigest())
+
+
+# Which payload list holds the spans of each scale `Atlas.table` accepts.
+_SCALES = {"month": "months", "season": "seasons", "year": "years"}
+
+# The per-variable figures `Atlas.table` reads off a span row: payload field, column suffix. The
+# suffixes are the ones the span statistics use, so `TA_anom` means the same thing in both places.
+_TABLE_FIELDS = (("v", ""), ("a", "_anom"), ("z", "_z"), ("p", "_pctn"), ("r", "_rank"),
+                 ("n", "_rank_n"), ("meas", "_meas"), ("avail", "_avail"), ("u", "_unc"))
 
 
 class Atlas:
@@ -128,6 +139,70 @@ class Atlas:
     def badges(self):
         """Badge key to the number of months that earned it."""
         return {b["key"]: b["n"] for b in self.payload["badges"]}
+
+    def table(self, scale="month"):
+        """The figures behind the tiles of one scale, as a pandas DataFrame with one row per span.
+
+        `scale` is `"month"`, `"season"` or `"year"`. Months are indexed by their first day, seasons
+        by `(year, season)` with the season's key as the page names it (`DJF`, `MAM`, ...), and
+        years by the year. A season that reaches back over the new year carries the year of its
+        later months, as it does on the page.
+
+        For every variable in the build, with its canonical key as the prefix:
+
+        ============== ================================================================
+        ``TA``         the span's value, a mean or a total as the variable aggregates
+        ``TA_anom``    departure from the normal of the span's peer group
+        ``TA_z``       that departure in standard deviations of the peer group
+        ``TA_pctn``    the value as a percentage of the normal, where the normal is
+                       positive; missing otherwise
+        ``TA_rank``    place among the peer group, 1 being the end the variable ranks
+                       from first (the highest value, or for NEE the largest uptake)
+        ``TA_rank_n``  the number of spans in the peer group the rank is counted among
+        ``TA_meas``    percentage of the span measured rather than gap-filled
+        ``TA_avail``   percentage of the span carrying a value at all
+        ``TA_unc``     the uncertainty of the value, present only for a variable whose
+                       input publishes one
+        ============== ================================================================
+
+        The peer group is the same calendar month of other years, the same season of other years,
+        or every year of the record, according to the scale. A final `badges` column holds the
+        keys of the badges the span earned, in the order the page shows them.
+
+        The figures are read from the payload the page is built from, with the page's own
+        rounding, so the table and the page cannot disagree. A figure the page does not state is
+        missing here rather than zero.
+        """
+        if scale not in _SCALES:
+            raise ValueError(f"scale={scale!r}: expected one of {', '.join(map(repr, _SCALES))}")
+        rows = self.payload[_SCALES[scale]]
+        uncertain = {v["key"] for v in self.payload["variables"] if v["unc_columns"]}
+
+        columns = {}
+        for var in self.payload["variables"]:
+            key = var["key"]
+            for field, suffix in _TABLE_FIELDS:
+                if field == "u" and key not in uncertain:
+                    continue
+                values = [row[key][field] for row in rows]
+                # A rank is a count and stays an integer, with a missing one missing rather than a
+                # float NaN that would print every placing as `3.0`.
+                columns[key + suffix] = (pd.array(values, dtype="Int64") if field in ("r", "n")
+                                         else pd.array(values, dtype=float))
+        columns["badges"] = [tuple(b["k"] for b in row["b"]) for row in rows]
+
+        if scale == "month":
+            index = pd.DatetimeIndex([pd.Timestamp(row["y"], row["m"], 1) for row in rows],
+                                     name="month")
+        elif scale == "season":
+            # From arrays rather than tuples, so a build without seasons gives an empty table
+            # with the same two levels instead of failing to infer them.
+            index = pd.MultiIndex.from_arrays(
+                [pd.Index([row["y"] for row in rows], dtype="int64"),
+                 pd.Index([row["s"] for row in rows], dtype=object)], names=["year", "season"])
+        else:
+            index = pd.Index([row["y"] for row in rows], dtype="int64", name="year")
+        return pd.DataFrame(columns, index=index)
 
     def report(self):
         """Print what the build found, including the trends that qualify every anomaly on it."""

@@ -93,6 +93,23 @@ atlas.write("//share/published/CH-LAE_atlas.html")   # nothing is recomputed
 The payload is built once, on construction. That is the expensive step. `write` can then run as
 often as you need.
 
+## The figures as a table
+
+The numbers on the tiles are available as a pandas DataFrame, one row per span, for analysis or
+export alongside the page:
+
+```python
+months = atlas.table()            # or "season", "year"
+months[["TA", "TA_anom", "TA_z", "TA_rank"]].tail()
+atlas.table("year").to_csv("CH-LAE_years.csv")
+```
+
+Months are indexed by their first day, seasons by year and season, and years by the year. For every
+variable there is its value, anomaly, z-score, rank and the number of spans ranked, percentage of
+normal, measured and available share, and the uncertainty where the input publishes one; a final
+column lists the badges each span earned. The table is read from the payload the page is built
+from, with the same rounding, so the two cannot disagree.
+
 ## What the page records about its input
 
 A page records the file it was built from: the name, the size, the SHA-256 digest, and for each
