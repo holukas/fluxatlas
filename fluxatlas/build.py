@@ -2936,7 +2936,8 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         own = next((m["key"] for m in metrics if m["var"] == key and m["field"] == "value"), None)
         variables.append(dict(key=key, title=v.title, short=v.short, units=v.units,
                               digits=v.digits, agg=v.agg, product=v.source,
-                              column=v.column, ship=list(v.ship), metric=own,
+                              column=v.column, derived=bool(v.derived), ship=list(v.ship),
+                              metric=own,
                               first_year=int(v.first_year), last_year=int(v.last_year),
                               # The page hatches sparse tiles and gates its own "best month"
                               # search on these, so they travel per variable rather than being

@@ -907,6 +907,7 @@ class Variable:
         # Filled in by the reader.
         self.uncertainty_note = None
         self.column = None
+        self.derived = False        # computed from the file's own columns, not read
         self.factor = 1.0
         self.qc_column = None
         # What the flag's codes above 0 mean, and the words for each level the build reports - the

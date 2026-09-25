@@ -30,6 +30,14 @@
   const BADGES = {};
   DATA.badges.forEach(b => { BADGES[b.key] = b; });
   const FLAGS = DATA.flags;
+  /* The columns that are formulae over the file's own columns rather than columns of it - net
+     radiation from its four components, where the file publishes no sum. Said where a figure's
+     source is named, since "read from" a formula is not what happened. */
+  const DERIVED_COLUMNS = new Set(DATA.variables.filter(v => v.derived).map(v => v.column));
+  const sourceOf = v => (v.derived
+    ? "Computed from the file's own columns: <code>"
+      + esc(v.column.replace(/^computed:\s*/, '')) + '</code>'
+    : 'Read from <code>' + esc(v.column) + '</code>');
   const MONTHS = DATA.months;
   const SEASONS = DATA.seasons;
   const YEAR_ROWS = DATA.years;
@@ -1824,7 +1832,9 @@
       + '<span class="tile-label">' + label + '</span>'
       + '<span class="tile-value">' + value + (unit ? '<span class="unit">' + unit + '</span>' : '')
       + '</span><span class="tile-sub">' + sub + '</span>'
-      + (src ? '<span class="tile-src" title="read from this column">' + esc(src) + '</span>' : '')
+      + (src ? '<span class="tile-src" title="' + (DERIVED_COLUMNS.has(src)
+        ? 'computed from these columns of the file' : 'read from this column') + '">'
+        + esc(src) + '</span>' : '')
       + '</div>';
   }
 
@@ -3511,8 +3521,9 @@
         v: nf(ex.yearHigh[key].v, d) + unit + ' in ' + ex.yearHigh.y });
       rows.push({ k: 'Lowest year', v: nf(ex.yearLow[key].v, d) + unit + ' in ' + ex.yearLow.y });
     }
-    rows.push({ k: 'Read from', v: '<code>' + esc(v.column) + '</code>'
-      + (v.product ? ' (' + esc(v.product) + ')' : '') });
+    rows.push({ k: v.derived ? 'Computed from' : 'Read from',
+      v: '<code>' + esc(v.derived ? v.column.replace(/^computed:\s*/, '') : v.column) + '</code>'
+        + (v.product ? ' (' + esc(v.product) + ')' : '') });
     if (v.unc_note) rows.push({ k: 'Uncertainty covers', v: v.unc_note });
     rows.push({ k: 'Coverage warning below', v: nf(v.cov.warn, 0) + ' % measured, which '
       + (v.thin ? v.thin + ' month' + (v.thin === 1 ? ' is' : 's are') : 'no month is') });
@@ -4207,7 +4218,7 @@
       + '<h2 class="section">What the record covers</h2><div class="grid" id="var-cov"></div>';
 
     document.getElementById('var-lede').innerHTML = v.about
-      + ' Read from <code>' + esc(v.column) + '</code>, ' + v.first_year + '–' + v.last_year + '.';
+      + ' ' + sourceOf(v) + ', ' + v.first_year + '–' + v.last_year + '.';
 
     cardEl(document.getElementById('var-summary'), {
       title: 'This variable over ' + M.first_year + '–' + M.last_year, width: 'w-12',

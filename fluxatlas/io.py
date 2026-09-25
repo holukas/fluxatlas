@@ -604,6 +604,7 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
         v = varreg.make(key)
         spec = specs[key]
         v.column, v.factor, v.qc_column = spec["column"], spec["factor"], spec.get("qc")
+        v.derived = "components" in spec
         v.source = path.name
         v.first_year, v.last_year = first, last
 
