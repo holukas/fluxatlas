@@ -2351,27 +2351,31 @@ def evaluate_badges(s, keys, scale="month"):
     for badge in BADGES:
         if not badge_at_scale(badge, scale):
             continue
-        blocked = None
+        # `cause` says what kind of reason it is, so the page can list the ones that describe the
+        # span (data, coverage, normal, spread) and leave out a variable the build does not carry.
+        blocked = cause = None
         for need in badge["needs"]:
             if need not in keys:
-                blocked = f"{need} is not included in this build"
+                blocked, cause = f"{need} is not included in this build", "absent"
             elif s[need] is None:
-                blocked = f"no {need} data in this {noun}"
+                blocked, cause = f"no {need} data in this {noun}", "data"
             elif s[f"{need}_avail"] is None or s[f"{need}_avail"] < varreg.coverage(need).badge:
+                cause = "coverage"
                 blocked = (f"{need} covers {s[f'{need}_avail']:.0f} % of this {noun}, below the "
                            f"{varreg.coverage(need).badge:.0f} % required for a badge")
             elif badge.get("needs_normal", True) and s[f"{need}_norm"] is None:
-                blocked = f"{need} has no normal {peers}"
+                blocked, cause = f"{need} has no normal {peers}", "normal"
             elif badge.get("needs_normal", True) and not s[f"{need}_sd"]:
                 # A normal can exist and still have no spread - a sensor stuck at one reading, or a
                 # variable that is zero throughout the same month of every year. Every badge phrased
                 # as a departure divides by that spread, so there is nothing for them to say.
+                cause = "spread"
                 blocked = (f"{need} has zero spread {peers}, so a departure from normal is "
                            f"undefined")
             if blocked:
                 break
         if blocked:
-            suppressed.append(dict(key=badge["key"], why=blocked))
+            suppressed.append(dict(key=badge["key"], why=blocked, c=cause))
             continue
         try:
             why = badge["rule"](s)

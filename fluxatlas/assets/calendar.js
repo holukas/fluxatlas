@@ -2698,13 +2698,14 @@
   }
 
   function suppressedNote(mo) {
-    /* Only the badges withheld for coverage are worth reporting: a badge withheld because the
-       variable is not in this build says nothing about the month. */
-    const rows = mo.sup.filter(s => /measured|no .* data/.test(s.why));
+    /* Every badge withheld for a reason that describes this span - no data, too little coverage,
+       no normal, no spread - is listed. One withheld because its variable is not in the build
+       (cause `absent`) says nothing about the span and is left out. */
+    const rows = mo.sup.filter(s => s.c !== 'absent');
     if (!rows.length) return '';
     const seen = {};
     rows.forEach(s => { seen[s.why] = (seen[s.why] || []).concat(BADGES[s.key].label); });
-    return '<p class="smallnote">Badges withheld for lack of data: '
+    return '<p class="smallnote">Badges not evaluated: '
       + Object.keys(seen).map(why => seen[why].join(', ') + ' (' + why + ')').join('; ') + '.</p>';
   }
 
