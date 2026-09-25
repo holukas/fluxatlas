@@ -1803,7 +1803,8 @@
     document.getElementById('badge-lede').textContent =
       'A badge marks something notable about a month and states the numbers behind it. '
       + 'Select one to keep only the months that carry it. Badges are withheld where less than '
-      + M.cov_badge_text + ' of the variable behind them is measured. So an unbadged '
+      + M.cov_badge_text + ' of the span carries a value for the variable behind them. So an '
+      + 'unbadged '
       + 'tile means either nothing was notable or it could not be judged. The month says which.';
   }
 
@@ -2028,7 +2029,7 @@
       esc(M.site) + (M.site_long ? ' — ' + esc(M.site_long) : '') + '. Built ' + esc(M.generated)
       + (file ? ' from <code>' + esc(file) + '</code>' : '')
       + (P ? fileFingerprint(P) : '') + '. Normals use the months at '
-      + 'least ' + M.cov_normal_text + ' measured, and need at least ' + M.min_normal_years
+      + 'least ' + M.cov_normal_text + ' covered, and need at least ' + M.min_normal_years
       + ' such years; daily normals pool a ±' + M.clim_window + ' day window across all years.';
     renderProvenance(P);
 
@@ -2133,11 +2134,13 @@
     body = cardEl(host, { title: 'What a badge rests on', width: 'w-6',
       sub: 'Coverage rules, stated once and applied everywhere.' });
     body.innerHTML = '<p class="card-sub" style="max-width:none">A badge is a claim about a month, '
-      + 'so a month that was not measured cannot make one. Every badge names the variables it '
-      + 'reads and is withheld where less than ' + M.cov_badge_text + ' of them is '
-      + 'measured; the month view lists what was withheld and why. A calendar-month normal, and '
+      + 'so a month the record does not cover cannot make one. Every badge names the variables '
+      + 'it reads and is withheld where the record covers less than ' + M.cov_badge_text
+      + ' of the month for them, gap-filled values included; how much of it was measured is '
+      + 'stated and hatched rather than gated on. The month view lists what was withheld and why. '
+      + 'A calendar-month normal, and '
       + 'every anomaly, standard score and rank taken from it, uses only the years whose month is '
-      + 'at least ' + M.cov_normal_text + ' measured, and is not computed at all below '
+      + 'at least ' + M.cov_normal_text + ' covered, and is not computed at all below '
       + M.min_normal_years + ' such years. A sparse month is ranked against nothing, so it can '
       + 'never come out as the driest on record.</p>';
 
@@ -2541,7 +2544,8 @@
     return head + '<dl class="kv">' + rows.join('') + '</dl>'
       + '<p class="smallnote">Each figure is that variable’s departure from its own normal '
       + 'for this ' + spanNoun() + ', in standard deviations of that variable across the record. '
-      + 'A variable below ' + M.cov_badge_text + ' measured, or without a normal here, is dropped '
+      + 'A variable the record covers to less than ' + M.cov_badge_text + ' here, or without a '
+      + 'normal, is dropped '
       + 'rather than counted as ordinary. They do not move independently'
       + (pair ? ': ' + VARS[pair.a].short.toLowerCase() + ' and ' + VARS[pair.b].short.toLowerCase()
         + ' correlate at r = ' + nf(pair.r, 2) + ' across the record' : '')

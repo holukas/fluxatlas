@@ -46,14 +46,15 @@ defined.
 
 Two rules keep the badges honest.
 
-- **A badge is a claim about a month, so a month that was not measured cannot make one.** Every
-  badge names the variables it reads, and is skipped where the measured share of that variable
-  falls below `MIN_BADGE_COVERAGE`. The month view says which badges were suppressed and why,
-  rather than showing a tile that silently means "we do not know".
+- **A badge is a claim about a month, so a month the record does not cover cannot make one.**
+  Every badge names the variables it reads, and is skipped where the available share of that
+  variable - gap-filled values included - falls below its `coverage(key).badge` threshold. The
+  month view says which badges were suppressed and why, rather than showing a tile that silently
+  means "we do not know". How much was *measured* gates nothing; it is stated and hatched.
 - **A normal is built from the months that can support one.** A calendar-month normal, and every
-  anomaly, z-score and rank derived from it, uses only the years whose month is at least
-  `NORMAL_MIN_COVERAGE` measured, and is withheld entirely below `MIN_NORMAL_YEARS` of them. A
-  sparse month is ranked against nothing and can therefore never be "the driest on record".
+  anomaly, z-score and rank derived from it, uses only the years whose month the record covers to
+  at least `coverage(key).normal`, and is withheld entirely below `MIN_NORMAL_YEARS` of them. A
+  span with no such normal is ranked against nothing and can never be "the driest on record".
 
 The normal is not stationary, and the page says so
 --------------------------------------------------
