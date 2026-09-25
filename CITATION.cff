@@ -8,8 +8,8 @@ authors:
 title: "fluxatlas"
 abstract: "Standalone HTML explorer for eddy covariance records: fluxes, meteorology, badges,
   trends, day by day."
-version: 0.3.1
-date-released: 2026-08-06
+version: 0.4.0
+date-released: 2026-09-25
 license: GPL-3.0
 # The concept DOI, which resolves to whichever version is current. Cite this one unless the work
 # depends on a particular release, in which case cite the version DOI below it.

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 | Unreleased
 
 Net radiation, the soil heat flux and six more FULLSET variables can now be read, and the
 energy-balance closure and the evaporative fraction are computed from them. The page says how each
