@@ -12,6 +12,10 @@ such rather than smoothed into a single span.
 from __future__ import annotations
 
 import json
+import re
+import shutil
+import subprocess
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -250,3 +254,94 @@ def test_a_year_with_a_month_missing_is_not_complete():
     series.loc["2011-05-01":"2011-05-31 23:30"] = np.nan
     dates = pd.date_range("2010-01-01", "2012-12-31", freq="D")
     assert build._complete_years(dict(series=series), "TA", dates) == {2010, 2012}
+
+
+# -- The page ---------------------------------------------------------------------------------
+
+NODE = shutil.which("node")
+JSDOM = Path(__file__).parent / "js" / "node_modules" / "jsdom"
+
+# Loads a built page, opens each variable page named on the command line, and prints what
+# `#var-season` holds there and the tooltip one row of its chart shows.
+READ_SEASON = r"""
+const { readFileSync } = require('fs');
+const { JSDOM } = require(process.argv[2]);
+const page = process.argv[3];
+const keys = process.argv.slice(4);
+const dom = new JSDOM(readFileSync(page, 'utf-8'), {
+  url: 'https://fluxatlas.test/atlas.html', runScripts: 'dangerously', pretendToBeVisual: true,
+  beforeParse(w) {
+    w.scrollTo = () => {};
+    w.matchMedia = q => ({ media: q, matches: false, addEventListener() {},
+      removeEventListener() {}, addListener() {}, removeListener() {} });
+    w.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+    w.Element.prototype.scrollIntoView = function () {};
+    w.SVGElement.prototype.getComputedTextLength = function () {
+      return (this.textContent || '').length * 6.6; };
+  }
+});
+const w = dom.window;
+const tick = () => new Promise(r => w.setTimeout(r, 0));
+(async () => {
+  await tick();
+  const out = {};
+  for (const key of keys) {
+    w.location.hash = '#var-' + key;
+    await tick(); await tick();
+    const host = w.document.getElementById('var-season');
+    const hit = host.querySelector('rect.hit');
+    let tipText = null;
+    if (hit) {
+      hit.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 20, clientY: 20 }));
+      tipText = w.document.getElementById('tooltip').textContent;
+    }
+    out[key] = { text: host.textContent, bars: host.querySelectorAll('svg rect[rx]').length,
+      tip: tipText };
+  }
+  process.stdout.write(JSON.stringify(out));
+})();
+"""
+
+
+@pytest.mark.skipif(NODE is None or not JSDOM.is_dir(),
+                    reason="node with jsdom is not available; run `npm install` in tests/js")
+def test_the_card_is_drawn_on_the_temperature_and_the_exchange_page_and_nowhere_else(
+        flux_atlas, tmp_path):
+    page = flux_atlas.write(tmp_path / "atlas.html", quiet=True)
+    script = tmp_path / "read_season.cjs"
+    script.write_text(READ_SEASON, encoding="utf-8")
+    result = subprocess.run([NODE, str(script), str(JSDOM), str(page), "TA", "NEE", "PREC", "GPP"],
+                            capture_output=True, text=True, encoding="utf-8", timeout=120)
+    assert result.returncode == 0, result.stderr
+    found = json.loads(result.stdout)
+    timing = flux_atlas.payload["season_timing"]
+
+    ta, nee = found["TA"], found["NEE"]
+    for card in (ta, nee):
+        assert "When the season runs" in card["text"]
+        # The axis is named in months, not in day numbers.
+        assert all(m in card["text"] for m in ("Jan", "Apr", "Jul", "Oct"))
+        assert not re.search(r"undefined|NaN|\[object", card["text"] + (card["tip"] or ""))
+    # One bar per year for the season; at least one per year for the uptake periods.
+    assert ta["bars"] == len(timing["TA"]["years"])
+    assert nee["bars"] == sum(len(row["periods"]) for row in timing["NEE"]["years"])
+
+    # The slopes are stated per decade, in words that say which way the dates moved.
+    assert "days per decade" in ta["text"]
+    assert re.search(r"start [\d.]+ days per decade (earlier|later)", ta["text"])
+    # The exchange page uses the page's words for the sign, and says what a span means at a
+    # managed site.
+    assert "net uptake" in nee["text"]
+    assert "managed site" in nee["text"]
+    assert "Uptake days" in nee["text"]
+
+    # The tooltip is the year's own, in the badges' words.
+    first = timing["TA"]["years"][0]
+    assert ta["tip"].startswith(str(first["y"]))
+    when = pd.Timestamp(first["s"])
+    assert f"{when.day} {when:%B} {when.year}" in ta["tip"]
+    assert "Days of net uptake" in nee["tip"]
+
+    for other in ("PREC", "GPP"):
+        assert found[other]["text"] == ""
+        assert found[other]["tip"] is None

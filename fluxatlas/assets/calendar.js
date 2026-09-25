@@ -4375,7 +4375,288 @@
 
   /* ---- When the season runs: growing season on TA, carbon uptake period on NEE. -------------
      Fills #var-season from DATA.season_timing. */
-  function renderVarSeason() {}
+
+  /* A folded day of the year (29 February shares 28 February's slot) as "21 Mar", read off an
+     ordinary year because that is the year the folded numbering is. */
+  function doyLabel(doy, long) {
+    const at = new Date(Date.UTC(2001, 0, Math.round(doy)));
+    return at.getUTCDate() + ' ' + (long ? MONTH_NAME : MONTH_ABBR)[at.getUTCMonth()];
+  }
+
+  /* "2016-04-03" as "3 April 2016", the form the season badges state a date in. */
+  function isoLabel(iso) {
+    const p = String(iso).split('-').map(Number);
+    return p[2] + ' ' + MONTH_NAME[p[1] - 1] + ' ' + p[0];
+  }
+
+  /* The words a slope of each timing figure is read in. A start that moves to a smaller day of the
+     year is an earlier start; a length that grows is a longer season. */
+  const TIMING_WORDS = {
+    start: ['earlier', 'later'], end: ['earlier', 'later'],
+    length: ['shorter', 'longer'], days: ['fewer', 'more']
+  };
+
+  /* One timing slope in words: "6.7 days per decade earlier (95 % interval ...), Kendall p = ...". */
+  function timingSlope(t, name) {
+    if (!t) return 'not taken';
+    if (!isNum(t.slope)) {
+      return 'withheld: ' + t.n + ' complete year' + (t.n === 1 ? '' : 's') + ' of the '
+        + M.trend_min_years + ' a slope needs';
+    }
+    const words = TIMING_WORDS[name];
+    const size = Math.abs(+t.slope.toFixed(1));
+    const sig = isNum(t.p) && t.p < TREND_ALPHA;
+    return (size === 0 ? 'no change' : nf(size, 1) + ' days per decade '
+      + (t.slope < 0 ? words[0] : words[1]))
+      + ' (95 % interval ' + nfs(t.lo, 1) + ' to ' + nfs(t.hi, 1) + '), Kendall p = '
+      + (isNum(t.p) ? nf(t.p, 3) : 'not defined') + (sig ? '' : ', so undecided');
+  }
+
+  /* How far one year's figure sat from the record median, in the badges' own terms. */
+  function timingDelta(row, name, unit) {
+    const d = row.delta ? row.delta[name] : null;
+    if (!isNum(d)) return '';
+    const words = TIMING_WORDS[name];
+    if (d === 0) return ', ' + (name === 'start' || name === 'end' ? 'the usual date' : 'as usual');
+    return ', ' + Math.abs(d) + ' ' + unit + (Math.abs(d) === 1 ? '' : 's') + ' '
+      + (d < 0 ? words[0] : words[1]) + ' than usual';
+  }
+
+  /** One bar per year on a day-of-year axis: the growing season, or the uptake periods. */
+  function drawSeasonTiming(key, T) {
+    const v = VARS[key];
+    const uptake = T.kind === 'uptake';
+    return function (host) {
+      const rows = T.years;
+      const n = rows.length;
+      const every = n > 32 ? 2 : 1;
+      const labels = rows.map(row => String(row.y));
+      const rowH = 16;
+      const f0 = { top: 24, right: uptake ? 46 : 16, bottom: 30,
+        left: Math.max(40, textWidth(labels, 'ax-text') + 14) };
+      const f = frame(host, { height: f0.top + n * rowH + f0.bottom, margin: f0,
+        ariaLabel: (uptake ? 'The carbon uptake period' : 'The growing season')
+          + ' of every year, on a day-of-year axis' });
+      const sx = linear(1, 366, f.m.left, f.m.left + f.iw);
+      const rowY = i => f.m.top + i * rowH;
+      const mid = i => rowY(i) + rowH / 2;
+      const sy = linear(0, n, f.m.top, f.m.top + f.ih);
+      drawAxes(f, sx, sy, { yTicks: [],
+        xTicks: MONTH_START.map((doy, i) => ({ v: doy, label: MONTH_ABBR[i] }))
+          .filter((t, i) => f.iw > 520 || i % 2 === 0) });
+      MONTH_START.forEach(doy => {
+        el('line', { x1: sx(doy), x2: sx(doy), y1: f.m.top, y2: f.m.top + f.ih,
+          class: 'gridline' }, f.svg);
+      });
+
+      /* Where a bar ends. The growing season is dated to end on the first day out of it, so its
+         bar stops where that day begins; an uptake period is dated to its last day inside, so its
+         bar runs through that day. Either way a bar is as long as the length the page states. */
+      const through = uptake ? 1 : 0;
+      const colour = uptake ? 'var(--series-3)' : f.p.series[0];
+      rows.forEach((row, i) => {
+        if (i % every === 0) {
+          svgText(f.svg, f.m.left - 8, mid(i) + 4, labels[i], 'ax-text', { 'text-anchor': 'end' });
+        }
+        // A year that is not complete is drawn, since its dates are real, but faintly: it is kept
+        // out of the slopes, and a season dated beside a gap may be dated to the gap.
+        const weight = row.complete ? 1 : 0.35;
+        if (!isNum(row.start)) {
+          svgText(f.svg, f.m.left + 6, mid(i) + 4, uptake ? 'no uptake period'
+            : 'no growing season', 'ax-text', { opacity: 0.8 });
+        } else if (uptake) {
+          el('line', { x1: sx(row.start), x2: sx(row.end + through), y1: mid(i), y2: mid(i),
+            stroke: colour, 'stroke-width': 1.2, opacity: 0.55 * weight }, f.svg);
+          row.periods.forEach(p => {
+            el('rect', { x: sx(p[0]), y: rowY(i) + 3,
+              width: Math.max(1.5, sx(p[1] + through) - sx(p[0])), height: rowH - 6, rx: 2,
+              fill: colour, opacity: 0.9 * weight }, f.svg);
+          });
+        } else {
+          el('rect', { x: sx(row.start), y: rowY(i) + 3,
+            width: Math.max(1.5, sx(row.end + through) - sx(row.start)), height: rowH - 6, rx: 2,
+            fill: colour, opacity: 0.85 * weight }, f.svg);
+        }
+        if (uptake && i % every === 0) {
+          svgText(f.svg, f.m.left + f.iw + 8, mid(i) + 4, String(row.days), 'ax-text',
+            { opacity: weight === 1 ? 1 : 0.6 });
+        }
+      });
+      if (uptake) {
+        svgText(f.svg, f.m.left + f.iw + 8, f.m.top - 8, 'days', 'ax-text');
+      }
+
+      // The record medians, which are the dates the season badges call usual. Each label reads
+      // away from the middle of the year, and turns back where it would run off the chart.
+      const med = T.median || {};
+      [['start', 0], ['end', through]].forEach(([name, shift]) => {
+        if (!isNum(med[name])) return;
+        const x = sx(med[name] + shift);
+        el('line', { x1: x, x2: x, y1: f.m.top - 4, y2: f.m.top + f.ih, stroke: f.p.ink,
+          'stroke-width': 1.2, 'stroke-dasharray': '2 3', opacity: 0.7 }, f.svg);
+        const label = 'median ' + name + ' ' + doyLabel(med[name]);
+        const w = textWidth([label], 'ax-text');
+        const left = name === 'start' ? x - w >= 0 : x + w > f.width;
+        svgText(f.svg, x + (left ? -4 : 4), f.m.top - 8, label, 'ax-text',
+          { 'text-anchor': left ? 'end' : 'start' });
+      });
+
+      // The fitted slopes of the start and the end, drawn through the rows they were fitted on,
+      // from the two endpoints the build published rather than a fit made here.
+      const at = y => rows.findIndex(row => row.y === y);
+      [['start', 0], ['end', through]].forEach(([name, shift]) => {
+        const t = T.trend && T.trend[name];
+        if (!t || !t.fit || at(t.y0) < 0 || at(t.y1) < 0) return;
+        el('line', { x1: sx(t.fit[0] + shift), x2: sx(t.fit[1] + shift), y1: mid(at(t.y0)),
+          y2: mid(at(t.y1)), stroke: f.p.ink, 'stroke-width': 1.8, 'stroke-dasharray': '6 4',
+          opacity: isNum(t.p) && t.p < TREND_ALPHA ? 0.9 : 0.45 }, f.svg);
+      });
+
+      // Read by row rather than by column: the question under the cursor is which year.
+      const band = el('rect', { x: f.m.left, width: f.iw, height: rowH, y: f.m.top,
+        fill: f.p.ink, opacity: 0 }, f.svg);
+      const hit = el('rect', { class: 'hit', x: f.m.left, y: f.m.top, width: f.iw, height: f.ih },
+        f.svg);
+      const rowAt = ev => {
+        const box = f.svg.getBoundingClientRect();
+        const py = (ev.clientY - box.top) * (f.height / (box.height || f.height));
+        const i = Math.floor((py - f.m.top) / rowH);
+        return Math.max(0, Math.min(n - 1, isFinite(i) ? i : 0));
+      };
+      hit.addEventListener('mousemove', ev => {
+        const i = rowAt(ev);
+        band.setAttribute('y', rowY(i));
+        band.setAttribute('opacity', 0.06);
+        tip.show(timingTip(v, T, rows[i]), ev.clientX, ev.clientY);
+      });
+      hit.addEventListener('mouseleave', () => { band.setAttribute('opacity', 0); tip.hide(); });
+      hit.addEventListener('click', ev => { location.hash = rows[rowAt(ev)].y + '-' + M.year_slug; });
+    };
+  }
+
+  /** What one year's row says, in the words the season badges and the sign convention use. */
+  function timingTip(v, T, row) {
+    const uptake = T.kind === 'uptake';
+    const lines = [];
+    if (!isNum(row.start)) {
+      lines.push({ k: uptake ? 'Uptake period' : 'Growing season',
+        v: uptake ? 'none formed' : 'none found' });
+    } else {
+      lines.push({ k: uptake ? 'First uptake day' : 'Began', v: isoLabel(row.s)
+        + timingDelta(row, 'start', 'day') });
+      lines.push({ k: uptake ? 'Last uptake day' : 'Ended', v: isoLabel(row.e)
+        + timingDelta(row, 'end', 'day') });
+      lines.push({ k: uptake ? 'First to last' : 'Length', v: row.length + ' days'
+        + timingDelta(row, 'length', 'day') });
+    }
+    if (uptake) {
+      if (row.periods.length) {
+        lines.push({ k: 'Uptake periods', v: row.periods.length + ', covering ' + row.inside
+          + ' days' });
+        row.periods.slice(0, 5).forEach(p => {
+          lines.push({ k: '', v: doyLabel(p[0]) + ' – ' + doyLabel(p[1]), color: 'var(--series-3)' });
+        });
+        if (row.periods.length > 5) lines.push({ k: '', v: 'and ' + (row.periods.length - 5) + ' more' });
+      }
+      lines.push({ k: 'Days of net ' + (v.sign ? v.sign.low : 'uptake'), v: row.days
+        + timingDelta(row, 'days', 'day') });
+    }
+    if (!row.complete) {
+      lines.push({ rule: true, k: 'Not every month of this year is covered, so it is kept out '
+        + 'of the slopes.' });
+    }
+    return tipRows(String(row.y), lines);
+  }
+
+  /** The medians and slopes as numbers, one row per timing figure. */
+  function timingTable(T) {
+    const uptake = T.kind === 'uptake';
+    const names = uptake ? ['start', 'end', 'length', 'days'] : ['start', 'end', 'length'];
+    const title = {
+      start: uptake ? 'First uptake day' : 'Start', end: uptake ? 'Last uptake day' : 'End',
+      length: uptake ? 'First to last, days' : 'Length, days', days: 'Uptake days'
+    };
+    const med = T.median || {};
+    const rows = names.map(name => {
+      const t = T.trend ? T.trend[name] : null;
+      const has = t && isNum(t.slope);
+      const sig = has && isNum(t.p) && t.p < TREND_ALPHA;
+      const middle = !isNum(med[name]) ? '—'
+        : (name === 'start' || name === 'end') ? doyLabel(med[name]) : nf(med[name], 0);
+      return '<tr><th scope="row">' + title[name] + '</th><td>' + middle + '</td>'
+        + '<td>' + (has ? nfs(t.slope, 1) : '—') + '</td>'
+        + '<td>' + (has && isNum(t.lo) ? nfs(t.lo, 1) + ' to ' + nfs(t.hi, 1) : '—') + '</td>'
+        + '<td>' + (has && isNum(t.p) ? nf(t.p, 3) + (sig ? ' *' : '') : '—') + '</td>'
+        + '<td>' + (t ? t.n : 0) + '</td></tr>';
+    });
+    return '<div class="tablewrap"><table class="datatable"><thead><tr><th scope="col"></th>'
+      + '<th scope="col">Median</th><th scope="col">Days / decade</th>'
+      + '<th scope="col">95 % interval</th><th scope="col">Kendall p</th>'
+      + '<th scope="col">Years</th></tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
+  }
+
+  function renderVarSeason(key) {
+    const host = document.getElementById('var-season');
+    const T = DATA.season_timing ? DATA.season_timing[key] : null;
+    if (!host || !T || !T.years || !T.years.length) return;
+    const v = VARS[key];
+    const uptake = T.kind === 'uptake';
+    host.innerHTML = '<div class="grid" style="margin-top:var(--gap)"></div>';
+    const grid = host.firstChild;
+    const tr = T.trend || {};
+    const slopes = ['start', 'end', 'length'].concat(uptake ? ['days'] : []).map(name =>
+      '<b>' + { start: uptake ? 'first uptake day' : 'start', end: uptake ? 'last uptake day' : 'end',
+        length: uptake ? 'first to last' : 'length', days: 'uptake days' }[name] + '</b> '
+      + timingSlope(tr[name], name));
+    const none = uptake ? T.years.filter(row => !isNum(row.start)).map(row => row.y) : [];
+    const partial = T.years.filter(row => !row.complete).map(row => row.y);
+    const sign = v.sign || { low: 'uptake', high: 'release' };
+
+    const sub = uptake
+      ? 'One row per year. Each solid bar is an uptake period: a run of at least ' + T.span
+        + ' days in which the ' + T.window + '-day running mean of daily net exchange stays below '
+        + 'zero, so the site is a net sink of carbon. The thin line runs from the first uptake day '
+        + 'to the last, and the figure at the right counts the days whose own total was net '
+        + sign.low + '. Selecting a row opens its year.'
+      : 'One bar per year, from the start of the growing season to its end: the first run of '
+        + T.span + ' days with a daily mean above ' + nf(T.base, 0) + ' ' + T.units + ', and the '
+        + 'first such run below it after 1 July. These are the dates the season badges state. '
+        + 'Selecting a row opens its year.';
+    const foot = [
+      'Per decade: ' + slopes.join('; ') + '.',
+      'A season that lengthens because it begins earlier is a different finding from one that '
+        + 'lengthens because it ends later, and the length alone cannot tell them apart.',
+      uptake ? 'At a managed site the span from the first uptake day to the last says when '
+        + 'uptake happened, not that it held throughout: a cropland can be a net sink under a '
+        + 'winter cereal in spring and under a catch crop in autumn, and a net source between '
+        + 'them after harvest and tillage. A shift in either date can be a change in what was '
+        + 'sown rather than in the climate, so the periods themselves and the count of uptake '
+        + 'days are read beside the span, not after it. A period that runs over the turn of the '
+        + 'year is cut there, and its part in each year is drawn in that year.' : '',
+      none.length ? 'No uptake period formed in ' + none.join(', ') + '.' : '',
+      partial.length ? 'Drawn faintly and kept out of the slopes, because not every month is '
+        + 'covered: ' + partial.join(', ') + '.' : ''
+    ].filter(Boolean).join(' ');
+
+    chartCard(grid, {
+      title: 'When the season runs', width: 'w-8', sub: sub,
+      legend: [{ color: uptake ? 'var(--series-3)' : 'var(--series-1)',
+        label: uptake ? 'uptake period (net ' + sign.low + ')' : 'growing season' }]
+        .concat(uptake ? [{ color: 'var(--series-3)', label: 'first to last uptake day',
+          line: true }] : [])
+        .concat([{ color: 'var(--text-primary)', label: 'record median (dotted)', line: true },
+          { color: 'var(--text-primary)', label: 'fitted trend of start and end (dashed)', line: true }]),
+      foot: foot,
+      draw: drawSeasonTiming(key, T)
+    });
+    cardEl(grid, {
+      title: uptake ? 'The uptake period in numbers' : 'The growing season in numbers',
+      width: 'w-4',
+      sub: 'Medians over every year with a ' + (uptake ? 'period' : 'season')
+        + '; Theil–Sen slopes over the complete years, withheld below ' + M.trend_min_years
+        + '. A negative slope of a date is a move earlier in the year.'
+    }).innerHTML = timingTable(T);
+  }
 
   /* ---- Threshold days and the longest spell, year by year. ----------------------------------
      Fills #var-thresholds from the year rows' counts and spells. */
