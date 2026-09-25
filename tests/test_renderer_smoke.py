@@ -251,7 +251,7 @@ def test_the_callers_text_arrives_as_text(frame, tmp_path):
 
     page = found["checks"]["page"]
     assert page["title"] == title
-    assert "XX-<u>Syn</u> — Plot <u>north</u> & south <!-- open" in page["footer"]["text"]
+    assert "XX-<u>Syn</u>, Plot <u>north</u> & south <!-- open" in page["footer"]["text"]
     assert "record <u>v2</u>.parquet" in page["footer"]["text"]
     assert "XX-<u>Syn</u>" in page["crumbs"]["text"]
     assert PLANTED_COLUMN in page["provenance"]["text"]

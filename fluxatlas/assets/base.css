@@ -439,8 +439,14 @@ td.num-cold { color: var(--pole-cold); }
   border-top: 1px solid var(--border); margin-top: 20px;
   padding: 22px clamp(14px, 2.5vw, 34px) 40px;
 }
-.footer p { max-width: 1760px; margin: 0 auto; font-size: 12.5px; color: var(--text-muted); }
-/* The credit line sits under the method note and is read after it, not instead of it. */
+/* The footer sits on the page's own left edge, but its prose keeps a reading measure: across the
+   full page width a line ran to some 250 characters. */
+.footer-inner { max-width: 1760px; margin: 0 auto; }
+.footer p { max-width: 110ch; margin: 0; font-size: 12.5px; color: var(--text-muted); }
+/* Three paragraphs - what the page was built from, how its figures were taken, who made it - each
+   led by a word in the stronger ink, the layout the author's other explorer pages use. */
+.footer p + p, .footer .prov + p { margin-top: 8px; }
+.footer p > b:first-child { color: var(--text-secondary); font-weight: 600; }
 .footer .credit { margin-top: 8px; }
 .footer .credit a { color: var(--text-secondary); }
 .footer .credit a:hover { color: var(--series-1); }
@@ -458,12 +464,15 @@ td.num-cold { color: var(--pole-cold); }
   color: var(--text-secondary);
 }
 
-.footer .prov { max-width: 1760px; margin: 8px auto 0; font-size: 12.5px; color: var(--text-muted); }
+.footer .prov { max-width: 110ch; margin: 8px 0 0; font-size: 12.5px; color: var(--text-muted); }
 .footer .prov[hidden] { display: none; }
 .footer .prov summary { cursor: pointer; color: var(--text-secondary); width: max-content; }
 .footer .prov summary:hover { color: var(--text-primary); }
 .footer .prov p { margin: 8px 0 6px; max-width: 90ch; }
-.footer .prov .tablewrap { max-width: 720px; }
+.footer .prov .tablewrap { max-width: 110ch; }
+/* A computed series names its formula where a column would be, and at one line it pushed the
+   factor out of the table; the names wrap instead, at their own separators where they can. */
+.footer .prov td code { white-space: normal; overflow-wrap: anywhere; }
 
 /* ---------------------------------------------------------------------------------------------
    Print and forced colours
