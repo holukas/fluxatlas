@@ -600,7 +600,7 @@ BADGES = [
 
     # -- The year's turning points ----------------------------------------------------------
     # Each is stated against the median date of the same event across the record: a date on its
-    # own says nothing, and the departure from the usual date is the whole content.
+    # own says nothing, and the departure from the record median date is the whole content.
     dict(key="gs_start", label="Growing season begins", group="Season", icon="sprout",
          tone="grow", priority=2, needs=("TA",), needs_normal=False,
          about="Start of the growing season: the first run of six consecutive days with a mean "
@@ -608,8 +608,8 @@ BADGES = [
          rule=lambda s: (
              f"The growing season began on {s['ev_gs_start']['date']}, "
              + (f"{abs(s['ev_gs_start']['delta'])} days "
-                f"{'earlier' if s['ev_gs_start']['delta'] < 0 else 'later'} than usual"
-                if s["ev_gs_start"]["delta"] else "the usual date")
+                f"{'earlier' if s['ev_gs_start']['delta'] < 0 else 'later'} than the record median"
+                if s["ev_gs_start"]["delta"] else "the record median date")
              + (f", and ran {s['ev_gs_start']['length']} days" if s["ev_gs_start"]["length"]
                 else "")) if s["ev_gs_start"] else None),
 
@@ -621,8 +621,8 @@ BADGES = [
          rule=lambda s: (
              f"The growing season ended on {s['ev_gs_end']['date']}, "
              + (f"{abs(s['ev_gs_end']['delta'])} days "
-                f"{'earlier' if s['ev_gs_end']['delta'] < 0 else 'later'} than usual"
-                if s["ev_gs_end"]["delta"] else "the usual date")) if s["ev_gs_end"] else None),
+                f"{'earlier' if s['ev_gs_end']['delta'] < 0 else 'later'} than the record median"
+                if s["ev_gs_end"]["delta"] else "the record median date")) if s["ev_gs_end"] else None),
 
     dict(key="last_frost", label="Last frost of spring", group="Season", icon="snowflake",
          tone="cold", priority=2, needs=("TA",), needs_normal=False,
@@ -632,8 +632,8 @@ BADGES = [
              f"Last frost of January to June on "
              f"{s['ev_last_frost']['date']}"
              + (f", {abs(s['ev_last_frost']['delta'])} days "
-                f"{'earlier' if s['ev_last_frost']['delta'] < 0 else 'later'} than usual"
-                if s["ev_last_frost"]["delta"] else ", the usual date"))
+                f"{'earlier' if s['ev_last_frost']['delta'] < 0 else 'later'} than the record median"
+                if s["ev_last_frost"]["delta"] else ", the record median date"))
          if s["ev_last_frost"] else None),
 
     dict(key="first_frost", label="First frost of autumn", group="Season", icon="snowflake",
@@ -644,8 +644,8 @@ BADGES = [
              f"First frost of July to December on "
              f"{s['ev_first_frost']['date']}"
              + (f", {abs(s['ev_first_frost']['delta'])} days "
-                f"{'earlier' if s['ev_first_frost']['delta'] < 0 else 'later'} than usual"
-                if s["ev_first_frost"]["delta"] else ", the usual date"))
+                f"{'earlier' if s['ev_first_frost']['delta'] < 0 else 'later'} than the record median"
+                if s["ev_first_frost"]["delta"] else ", the record median date"))
          if s["ev_first_frost"] else None),
 
     # -- Days that stood out against their own date -------------------------------------------
@@ -736,7 +736,7 @@ BADGES = [
                "dates are marked on their months.",
          rule=lambda s: (
              f"The growing season ran {s['ev_gslen']['days']} days, "
-             f"{s['ev_gslen']['delta']} more than the usual {s['ev_gslen']['normal']:.0f}")
+             f"{s['ev_gslen']['delta']} more than the record median of {s['ev_gslen']['normal']:.0f}")
          if (s["ev_gslen"] and s["ev_gslen"]["delta"] is not None
              and s["ev_gslen"]["delta"] >= SEASON_LENGTH_DELTA) else None),
 
@@ -745,7 +745,7 @@ BADGES = [
          about="Growing season at least ten days shorter than the record median.",
          rule=lambda s: (
              f"The growing season ran {s['ev_gslen']['days']} days, "
-             f"{abs(s['ev_gslen']['delta'])} fewer than the usual "
+             f"{abs(s['ev_gslen']['delta'])} fewer than the record median of "
              f"{s['ev_gslen']['normal']:.0f}")
          if (s["ev_gslen"] and s["ev_gslen"]["delta"] is not None
              and s["ev_gslen"]["delta"] <= -SEASON_LENGTH_DELTA) else None),
@@ -757,7 +757,7 @@ BADGES = [
                "northern-hemisphere site.",
          rule=lambda s: (
              f"The last frost of spring fell on {s['ev_last_frost']['date']}, "
-             f"{s['ev_last_frost']['delta']} days later than usual"
+             f"{s['ev_last_frost']['delta']} days later than the record median"
              + (f"; the frost-free period was {s['ev_frostfree']['days']} days"
                 if s["ev_frostfree"] else ""))
          if (s["ev_last_frost"] and s["ev_last_frost"]["delta"] is not None
@@ -770,7 +770,7 @@ BADGES = [
                "northern-hemisphere site.",
          rule=lambda s: (
              f"The first frost of autumn fell on {s['ev_first_frost']['date']}, "
-             f"{abs(s['ev_first_frost']['delta'])} days earlier than usual"
+             f"{abs(s['ev_first_frost']['delta'])} days earlier than the record median"
              + (f"; the frost-free period was {s['ev_frostfree']['days']} days"
                 if s["ev_frostfree"] else ""))
          if (s["ev_first_frost"] and s["ev_first_frost"]["delta"] is not None
