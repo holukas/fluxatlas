@@ -5790,9 +5790,10 @@
     if (!host) return;
     const v = VARS[key];
     // Built without the layer: said once, as the month and day panels say it.
+    const heading = '<h2 class="section">Hour by hour</h2>';
     if (!HOURLY) {
-      host.innerHTML = '<div class="grid"></div>';
-      cardEl(host.firstChild, { title: 'Every hour of the record', width: 'w-12' }).innerHTML =
+      host.innerHTML = heading + '<div class="grid"></div>';
+      cardEl(host.lastChild, { title: 'Every hour of the record', width: 'w-12' }).innerHTML =
         '<p class="card-sub" style="max-width:none">This page was built without the hourly '
         + 'arrays (<code>--no-hourly</code>), so the record is not drawn hour by hour.</p>';
       return;
@@ -5801,8 +5802,8 @@
     if (!HOURLY.vars[key]) return;
     const s = hourlyScheme(key);
     if (!s) return;
-    host.innerHTML = '<div class="grid"></div>';
-    const body = cardEl(host.firstChild, {
+    host.innerHTML = heading + '<div class="grid"></div>';
+    const body = cardEl(host.lastChild, {
       title: 'Every hour of the record', width: 'w-12',
       sub: 'One column per day and one row per hour of it, midnight at the bottom, coloured by '
         + 'the hourly ' + (v.agg === 'sum' ? 'total' : 'mean') + ' on the file’s own clock. '

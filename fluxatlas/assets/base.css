@@ -251,6 +251,9 @@ h2.section {
 }
 
 .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
+/* Two grids one after the other, with no heading between them, are spaced as the cards within a
+   grid are, so the cards of the one do not sit on the cards of the other. */
+.grid:not(:empty) + .grid:not(:empty) { margin-top: var(--gap); }
 
 .card { grid-column: span 12; }
 

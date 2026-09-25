@@ -130,6 +130,8 @@ complete payloads of three builds were compared before and after, and no figure 
   file name, the column names and the title. A `<` in a site description used to break the page.
 - **Toggling the theme on a variable page threw**, and toggling it from a span panel left the grid's tiles in the old
   colours.
+- **Cards in two consecutive grids touched.** On the year panel, the card of what stood out sat directly on the cards
+  below it. Two grids with no heading between them are now spaced as the cards inside a grid are.
 - **Page text that held for one site only.** The near-saturation badge described a tower 47 m up on a ridge, the
   soil-water metric a sensor change in 2020, and the net-sink badge a site that is a sink every summer. The composite
   counted five axes whatever the build contained, and several texts described a forest. Each now states only what holds
