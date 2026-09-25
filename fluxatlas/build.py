@@ -2681,9 +2681,127 @@ def diurnal_layer(loaded, dates, day):
     return dict(first_year=first_year, n_years=n_years, band=list(DIURNAL_BAND), vars=out)
 
 
+# When the season ran. The growing season is the one the badges already date, so it is found by
+# the same call on the same block of days; the uptake period is its counterpart on the net exchange,
+# dated from a centred 15-day running mean in which a week below zero makes a period. See
+# `stats.carbon_uptake` for why each part is there.
+UPTAKE_WINDOW = 15          # days in the running mean the uptake period is dated from
+UPTAKE_SPAN = 7             # consecutive days of that mean below zero that make an uptake period
+
+
+def _doy(when):
+    """A date as the day of the year the page's day-of-year axes use, with 29 February folded."""
+    return int(doy365(pd.DatetimeIndex([when]))[0])
+
+
+def _complete_years(d, key, dates):
+    """The years in which every month is covered well enough to enter a trend.
+
+    The same rule `yearly_figures` applies to the grid's own year column, on the same figure: each
+    month's available share, rounded as the payload rounds it, against the variable's `normal`
+    threshold. A season dated in a year with a missing month may be dated to the gap, so it is
+    drawn but kept out of the slope.
+    """
+    months = pd.date_range(dates[0], dates[-1], freq="MS")
+    have = d["series"].notna().resample("MS").sum().reindex(months, fill_value=0)
+    avail = (have / (months.days_in_month * 48) * 100).round(0)
+    ok = avail >= varreg.coverage(key).normal
+    return {int(year) for year, block in ok.groupby(ok.index.year) if len(block) == 12
+            and bool(block.all())}
+
+
+def _timing_summary(rows, fields):
+    """The record median and the Theil-Sen trend of each field, over the years that carry it.
+
+    The median is taken over every year that has the field, as `season_events` and `year_events`
+    take theirs, so the median start drawn here is the "usual date" the badges measure against. The
+    trend is taken over the complete years alone, and is withheld below `TREND_MIN_YEARS` of them
+    exactly as every other slope on the page is.
+    """
+    median, trends = {}, {}
+    for name in fields:
+        values = [row[name] for row in rows if row[name] is not None]
+        middle = float(np.median(values)) if len(values) >= MIN_NORMAL_YEARS else None
+        median[name] = r(middle, 1)
+        trends[name] = trend_of([(row["y"], row[name]) for row in rows
+                                 if row["complete"] and row[name] is not None])
+        # Each year's departure from the median, taken the way the badges take theirs - a date
+        # truncated as `season_events` does, a length rounded as `year_events` does - so a tooltip
+        # here and a badge on the year's tile cannot state two different numbers of days.
+        for row in rows:
+            delta = None
+            if middle is not None and row[name] is not None:
+                delta = (int(row[name] - middle) if name in ("start", "end")
+                         else int(round(row[name] - middle)))
+            row.setdefault("delta", {})[name] = delta
+    return median, trends
+
+
+def _growing_season_timing(loaded, dates, day):
+    """The growing season of every year, found exactly as the season badges find it."""
+    tmean = day["TA"]["mean"]
+    complete = _complete_years(loaded["TA"], "TA", dates)
+    rows = []
+    for year, block in tmean.groupby(dates.year):
+        block = block.dropna()
+        if block.empty:
+            continue
+        season = growing_season(block, base=GROWING_SEASON_BASE)
+        row = dict(y=int(year), complete=int(year) in complete,
+                   start=None, end=None, length=None, s=None, e=None)
+        if season is not None:
+            row.update(start=_doy(season["start"]), end=_doy(season["end"]),
+                       length=int(season["length"]),
+                       s=f"{season['start']:%Y-%m-%d}", e=f"{season['end']:%Y-%m-%d}")
+        rows.append(row)
+    median, trends = _timing_summary(rows, ("start", "end", "length"))
+    # The run length is read off the function rather than restated, so the page cannot describe a
+    # season six days long while the call that dated it looked for some other number.
+    import inspect
+    span = inspect.signature(growing_season).parameters["span"].default
+    return dict(kind="growing", base=GROWING_SEASON_BASE, units=loaded["TA"]["v"].units,
+                span=span, years=rows, median=median, trend=trends)
+
+
+def _uptake_timing(loaded, dates, day):
+    """The carbon uptake period of every year, from the daily totals the sink days are counted on."""
+    from .stats import carbon_uptake
+
+    total = day["NEE"]["sum"]
+    complete = _complete_years(loaded["NEE"], "NEE", dates)
+    rows = []
+    for year in sorted(set(dates.year)):
+        found = carbon_uptake(total, int(year), window=UPTAKE_WINDOW, span=UPTAKE_SPAN)
+        if found is None:
+            continue
+        row = dict(y=int(year), complete=int(year) in complete, days=found["days"],
+                   inside=found["inside"], length=found["length"],
+                   start=None, end=None, s=None, e=None,
+                   periods=[[_doy(a), _doy(b)] for a, b in found["periods"]])
+        if found["start"] is not None:
+            row.update(start=_doy(found["start"]), end=_doy(found["end"]),
+                       s=f"{found['start']:%Y-%m-%d}", e=f"{found['end']:%Y-%m-%d}")
+        rows.append(row)
+    median, trends = _timing_summary(rows, ("start", "end", "length", "days"))
+    return dict(kind="uptake", window=UPTAKE_WINDOW, span=UPTAKE_SPAN,
+                years=rows, median=median, trend=trends)
+
+
 def season_timing_layer(loaded, dates, day):
-    """When the season ran each year: the growing season, and the carbon uptake period."""
-    return None
+    """When the season ran each year: the growing season, and the carbon uptake period.
+
+    `TA` carries the growing season - the same dates, found by the same call on the same days, as
+    the `gs_start`, `gs_end` and `long_season` badges state - and `NEE` the carbon uptake period of
+    `stats.carbon_uptake`. Each key is present only where its variable is in the build, and the
+    whole layer is None where neither is. Dates travel as the folded day of the year, so every year
+    shares one axis, and as the ISO date for a reader.
+    """
+    out = {}
+    if "TA" in loaded and "TA" in day and "mean" in day["TA"].columns:
+        out["TA"] = _growing_season_timing(loaded, dates, day)
+    if "NEE" in loaded and "NEE" in day and "sum" in day["NEE"].columns:
+        out["NEE"] = _uptake_timing(loaded, dates, day)
+    return out or None
 
 
 def extreme_halfhours_layer(loaded, dates, day):

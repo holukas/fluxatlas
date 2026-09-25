@@ -11,10 +11,13 @@ such rather than smoothed into a single span.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
+import pytest
 
-from fluxatlas import stats
+from fluxatlas import build, stats
 
 
 # -- The uptake period, on series built to show one property each ------------------------------
@@ -117,3 +120,133 @@ def test_a_period_over_the_turn_of_the_year_is_cut_there_and_kept_on_both_sides(
 def test_a_year_the_record_does_not_hold_has_no_answer():
     assert stats.carbon_uptake(_year({}), 2016) is None
     assert stats.carbon_uptake(pd.Series(dtype=float), 2015) is None
+
+
+# -- The layer, on the synthetic record ---------------------------------------------------------
+
+def _layer(atlas, keys):
+    loaded = {k: atlas.loaded[k] for k in keys}
+    first, last = atlas.first_year, atlas.last_year
+    dates = pd.date_range(f"{first}-01-01", f"{last}-12-31", freq="D")
+    day, _ = build.daily_frame(loaded, dates)
+    return build.season_timing_layer(loaded, dates, day)
+
+
+def test_a_timing_is_carried_only_for_the_variables_in_the_build(flux_atlas):
+    assert set(flux_atlas.payload["season_timing"]) == {"TA", "NEE"}
+    assert set(_layer(flux_atlas, ["TA"])) == {"TA"}
+    assert set(_layer(flux_atlas, ["NEE"])) == {"NEE"}
+    assert _layer(flux_atlas, ["PREC", "GPP"]) is None
+
+
+def test_the_payload_carries_what_the_card_draws(flux_atlas):
+    timing = flux_atlas.payload["season_timing"]
+    n_years = flux_atlas.last_year - flux_atlas.first_year + 1
+    for key, fields in (("TA", ("start", "end", "length")),
+                        ("NEE", ("start", "end", "length", "days"))):
+        entry = timing[key]
+        assert [row["y"] for row in entry["years"]] == list(range(flux_atlas.first_year,
+                                                                  flux_atlas.last_year + 1))
+        assert set(entry["trend"]) == set(fields)
+        for name in fields:
+            t = entry["trend"][name]
+            # Twelve complete synthetic years clear TREND_MIN_YEARS, so every slope is stated.
+            assert t["n"] == n_years and "slope" in t
+            assert t["lo"] <= t["slope"] <= t["hi"]
+        for row in entry["years"]:
+            assert 1 <= row["start"] < row["end"] <= 365
+    for row in timing["NEE"]["years"]:
+        assert row["periods"][0][0] == row["start"] and row["periods"][-1][1] == row["end"]
+        assert row["inside"] <= row["length"]
+    # The payload is JSON as it stands, with nothing the page would have to coerce.
+    json.dumps(timing, allow_nan=False)
+
+
+def test_the_synthetic_warming_is_recovered_as_an_earlier_start_and_a_later_end(ta_atlas):
+    """The fixture warms by 0.8 K a decade, so the season has to open earlier and close later."""
+    trend = ta_atlas.payload["season_timing"]["TA"]["trend"]
+    assert trend["start"]["slope"] < 0
+    assert trend["end"]["slope"] > 0
+    assert trend["length"]["slope"] > 0
+    assert trend["length"]["p"] < 0.05
+
+
+def _month_row(payload, year, month):
+    return next(row for row in payload["months"] if row["y"] == year and row["m"] == month)
+
+
+def _badge(row, key):
+    return next((b for b in row["b"] if b["k"] == key), None)
+
+
+def test_the_growing_season_is_the_one_the_badges_state(full_atlas):
+    """The same dates, departures and lengths as `gs_start`, `gs_end` and the season-length badges."""
+    payload = full_atlas.payload
+    timing = payload["season_timing"]["TA"]
+    checked = 0
+    for row in timing["years"]:
+        for name, iso in (("start", row["s"]), ("end", row["e"])):
+            when = pd.Timestamp(iso)
+            month = _month_row(payload, row["y"], when.month)
+            event = month["ev"][f"gs_{name}"]
+            assert event["date"] == f"{when.day} {when:%B}"
+            assert event["delta"] == row["delta"][name]
+            badge = _badge(month, f"gs_{name}")
+            assert badge is not None and f"on {when.day} {when:%B}" in badge["t"]
+            checked += 1
+        year = next(y for y in payload["years"] if y["y"] == row["y"])
+        assert year["x"]["gslen"] == row["length"]
+    assert checked == 2 * len(timing["years"])
+
+
+def test_the_season_length_badges_follow_the_same_departure(full_atlas):
+    payload = full_atlas.payload
+    timing = payload["season_timing"]["TA"]
+    earned = 0
+    for row in timing["years"]:
+        year = next(y for y in payload["years"] if y["y"] == row["y"])
+        delta = row["delta"]["length"]
+        long_, short = _badge(year, "long_season"), _badge(year, "short_season")
+        assert (long_ is not None) == (delta >= build.SEASON_LENGTH_DELTA)
+        assert (short is not None) == (delta <= -build.SEASON_LENGTH_DELTA)
+        for badge in (long_, short):
+            if badge is not None:
+                assert f"ran {row['length']} days, {abs(delta)} " in badge["t"]
+                assert f"usual {timing['median']['length']:.0f}" in badge["t"]
+                earned += 1
+    # Otherwise the agreement above was asserted about nothing.
+    assert earned > 0
+
+
+def test_the_median_is_the_usual_date_the_badges_measure_against(full_atlas):
+    timing = full_atlas.payload["season_timing"]["TA"]
+    for row in timing["years"]:
+        assert row["delta"]["start"] == int(row["start"] - timing["median"]["start"])
+
+
+def test_uptake_days_are_the_pages_sink_days(flux_atlas):
+    """The count is the test the page already applies to call a day a sink day."""
+    payload = flux_atlas.payload
+    for row in payload["season_timing"]["NEE"]["years"]:
+        year = next(y for y in payload["years"] if y["y"] == row["y"])
+        assert row["days"] == year["c"]["sink"]
+
+
+def test_an_incomplete_year_is_drawn_but_kept_out_of_the_slope():
+    rows = [dict(y=2000 + i, complete=i >= 3, start=100 - i, end=250 + i, length=150 + 2 * i)
+            for i in range(12)]
+    median, trends = build._timing_summary(rows, ("start", "end", "length"))
+    assert median["start"] == pytest.approx(np.median([100 - i for i in range(12)]))
+    for t in trends.values():
+        assert t == {"n": 9}
+    rows = [dict(row, complete=True) for row in rows]
+    _, trends = build._timing_summary(rows, ("start",))
+    assert trends["start"]["n"] == 12 and trends["start"]["slope"] == pytest.approx(-10.0)
+
+
+def test_a_year_with_a_month_missing_is_not_complete():
+    index = pd.date_range("2010-01-01", "2012-12-31 23:30", freq="30min")
+    series = pd.Series(1.0, index=index)
+    series.loc["2011-05-01":"2011-05-31 23:30"] = np.nan
+    dates = pd.date_range("2010-01-01", "2012-12-31", freq="D")
+    assert build._complete_years(dict(series=series), "TA", dates) == {2010, 2012}
