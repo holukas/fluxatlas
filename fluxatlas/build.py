@@ -876,6 +876,46 @@ METRICS = [
          about="Monthly mean volumetric soil water content, homogenised across the "
                "2020 sensor change.",
          day=dict(kind="value", stat="mean")),
+    dict(key="TS", var="TS", field="value", scale="div", center=None,
+         poles=("--pole-cold", "--pole-warm"), digits=1,
+         group="Soil", label="Soil temperature, monthly mean", short="TS",
+         about="Monthly mean temperature of the shallowest reported soil layer. Colour diverges "
+               "about the record mean, as it does for air temperature.",
+         day=dict(kind="value", stat="mean")),
+    dict(key="LW_IN", var="LW_IN", field="value", scale="seq",
+         stops=("--neutral-mid", "--series-2"), digits=0,
+         group="Radiation and humidity", label="Incoming longwave, monthly mean", short="LW_IN",
+         about="Monthly mean incoming longwave radiation, which rises with the temperature and "
+               "humidity of the air and with cloud cover.",
+         day=dict(kind="value", stat="mean")),
+    dict(key="PPFD_IN", var="PPFD_IN", field="value", scale="seq",
+         stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0,
+         group="Radiation and humidity", label="Incoming PPFD, monthly mean", short="PPFD_IN",
+         about="Monthly mean photosynthetic photon flux density, the light available to "
+               "photosynthesis.",
+         day=dict(kind="value", stat="mean")),
+    # Station pressure is set by the site's elevation and moves by about one per cent of itself,
+    # so the level says nothing and the departures are the content: a month of persistent high
+    # pressure is a settled one, a month of low pressure an unsettled one. So it diverges about
+    # the record mean, as air temperature does, and the seasons do not dominate it.
+    dict(key="PA", var="PA", field="value", scale="div", center=None,
+         poles=("--series-1", "--series-4"), digits=2,
+         group="Wind and turbulence", label="Atmospheric pressure, monthly mean", short="PA",
+         about="Monthly mean atmospheric pressure at the station. Colour diverges about the "
+               "record mean, so months of persistent high pressure separate from unsettled ones.",
+         day=dict(kind="value", stat="mean")),
+    dict(key="WS", var="WS", field="value", scale="seq",
+         stops=("--neutral-mid", "--cold-1", "--cold-2"), digits=1,
+         group="Wind and turbulence", label="Wind speed, monthly mean", short="WS",
+         about="Monthly mean horizontal wind speed.",
+         day=dict(kind="value", stat="mean")),
+    dict(key="USTAR", var="USTAR", field="value", scale="seq",
+         stops=("--neutral-mid", "--series-3"), digits=2,
+         group="Wind and turbulence", label="Friction velocity, monthly mean", short="u*",
+         about="Monthly mean friction velocity, the turbulence the eddy covariance fluxes depend "
+               "on. A month of weak turbulence is one in which more of the night-time fluxes were "
+               "rejected by the u* filter and replaced by gap-filling.",
+         day=dict(kind="value", stat="mean")),
 
     # The carbon metrics. Green is uptake and red is release everywhere they appear, so the sign
     # of the net flux reads the same on the grid, on the anomaly and on the day panel; that is

@@ -220,3 +220,68 @@ def full_atlas(parquet_path):
     """A built three-variable atlas, shared across the tests that only read it."""
     import fluxatlas as fa
     return fa.Atlas(parquet_path, ["TA", "PREC", "SW_IN"], site="XX-Syn", hourly=False, quiet=True)
+
+
+def add_fullset_extras(frame, seed=2):
+    """The rest of a FULLSET file's meteorology, and the terms of the surface energy balance.
+
+    Appended to whichever frame it is given, and used only by the tests that are about these
+    variables, so no existing fixture changes shape. The columns are the ones a real FULLSET file
+    carries under the names it carries them: `TS_F_MDS_1`, `WS_F`, `PA_F`, `LW_IN_F`, `PPFD_IN`,
+    `USTAR`, `G_F_MDS`, `VPD_F`, `SWC_F_MDS_1`, and the four radiation components `SW_OUT` and
+    `LW_OUT` beside the `SW_IN_F` and `LW_IN_F` - with **no** `NETRAD` column, because a FULLSET
+    file publishes none and net radiation then has to be computed from the four.
+
+    Three properties are load-bearing:
+
+    - net radiation minus the soil heat flux is about 0.84 of incoming shortwave less 10 W m-2, so
+      against the 0.70 of it that `add_fluxes` gives to H + LE the energy balance closes to about
+      90 % in summer, and the winter months fall below the available energy the closure ratio
+      needs and are withheld;
+    - `SW_OUT` is missing through one whole summer month, so that month's net radiation is too
+      sparse to form a closure ratio from however much energy it had;
+    - `USTAR` carries no QC column and is missing in about 15 % of records and through the whole
+      of one month, which is what a sonic outage looks like.
+    """
+    rng = np.random.default_rng(seed)
+    index = frame.index
+    n = len(index)
+    ta = frame["TA_F"].to_numpy()
+    sw = frame["SW_IN_F"].to_numpy()
+    first = int(index.year.min())
+
+    def flags(p_measured):
+        return np.where(rng.random(n) < p_measured, 0, rng.choice([1, 2, 3], n))
+
+    out = frame.copy()
+    out["TS_F_MDS_1"] = (0.6 * ta + 4.0 + rng.normal(0, 0.5, n)).round(2)
+    out["TS_F_MDS_1_QC"] = flags(0.85)
+    ws = rng.gamma(2.0, 1.2, n)
+    out["WS_F"] = ws.round(2)
+    out["WS_F_QC"] = flags(0.95)
+    out["PA_F"] = (96.0 + rng.normal(0, 0.6, n)).round(3)
+    out["PA_F_QC"] = np.where(rng.random(n) < 0.4, 0, 2)
+    lw_in = 300.0 + 3.0 * (ta - 10.0) + rng.normal(0, 15, n)
+    out["LW_IN_F"] = lw_in.round(1)
+    out["LW_IN_F_QC"] = flags(0.95)
+    out["PPFD_IN"] = (2.05 * sw).round(1)
+    out["VPD_F"] = np.clip(0.6 * np.exp(0.06 * ta) + rng.normal(0, 0.5, n), 0, None).round(3)
+    out["VPD_F_QC"] = flags(0.95)
+    out["SWC_F_MDS_1"] = (30.0 + 5.0 * np.cos(2 * np.pi * index.dayofyear.to_numpy() / 365.25)
+                          + rng.normal(0, 1.0, n)).round(2)
+    out["SWC_F_MDS_1_QC"] = flags(0.95)
+
+    # Outgoing longwave 10 W m-2 above incoming, and a fixed albedo: net radiation is then
+    # 0.88 SW_IN - 10, and the soil takes 5 % of it.
+    sw_out = 0.12 * sw
+    outage = (index.year == first + 5) & (index.month == 7)
+    out["SW_OUT"] = np.where(outage, np.nan, sw_out.round(2))
+    out["LW_OUT"] = (lw_in + 10.0).round(1)
+    netrad = sw - sw_out + lw_in - (lw_in + 10.0)
+    out["G_F_MDS"] = (0.05 * netrad + rng.normal(0, 2.0, n)).round(2)
+    out["G_F_MDS_QC"] = flags(0.9)
+
+    ustar = np.clip(0.08 * ws + rng.normal(0, 0.05, n), 0.01, None)
+    gone = (rng.random(n) < 0.15) | ((index.year == first + 2) & (index.month == 3))
+    out["USTAR"] = np.where(gone, np.nan, ustar.round(3))
+    return out

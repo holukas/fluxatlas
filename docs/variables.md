@@ -98,6 +98,17 @@ the *smallest release*. The record badges are therefore **Best carbon balance on
 **Worst carbon balance on record**, and the departure badges are **Shifted toward uptake** and
 **Shifted toward release**, which hold whichever side of zero the month sits on.
 
+## Friction velocity
+
+`USTAR` is measured by the sonic anemometer of the eddy covariance system and lost in the same
+outages as the fluxes, so the page groups it with them. Its coverage lines are its own. A FULLSET
+file publishes it with no quality flag and no gap-filling, so its measured share and its available
+share are the same number, and it is not removed by the u\* filter, which acts on the fluxes of calm
+nights and not on u\* itself. It therefore warns under the meteorological 50 % rather than the flux
+20 %, and its statistics are formed where a span is at least 75 % available rather than 90 %: on the
+CH-Oe2 record the median month is 85 % available, and at 90 % only 46 of 252 months would carry a
+normal.
+
 ## Adding a variable
 
 Add an entry to `VARIABLES` in {mod}`fluxatlas.variables`. To be colourable on the grid it also

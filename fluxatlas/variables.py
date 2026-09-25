@@ -352,6 +352,164 @@ VARIABLES = {
     ),
 
     # ------------------------------------------------------------------------------------------
+    # The rest of the FULLSET meteorology. Each limit below is set outside the span the CH-Oe2
+    # FULLSET record reaches, and far enough outside it to hold at other sites, because a limit
+    # here is a unit check rather than a quality filter.
+    # ------------------------------------------------------------------------------------------
+
+    # The shallowest reported layer, as `SWC` takes layer 1: it is the layer that follows the
+    # weather, and the one a reader relates to air temperature and the surface energy balance.
+    "TS": dict(
+        title="Soil temperature",
+        short="Soil temperature",
+        units="°C",
+        columns=[("TS_F_MDS_1", 1.0), ("TS_1", 1.0), ("TS_1_1_1", 1.0), ("TS", 1.0)],
+        qc=["TS_F_MDS_1_QC", "TS_1_QC", "TS_QC"],
+        # CH-Oe2 layer 1 spans -11.5 to 42.8 °C. A column in kelvin would sit at 260 to 320 and
+        # fail the upper bound; a bare soil surface in a hot desert still stays inside it.
+        limits=(-60.0, 80.0),
+        agg="mean",
+        daily_stats=("min", "mean", "max"),
+        ship=("mean",),
+        digits=1,
+        hourly=False,
+        scale=10,
+        about="Soil temperature of the shallowest reported layer. It follows air temperature "
+              "with a damped and delayed cycle, and it is the temperature the soil respiration "
+              "that makes up much of ecosystem respiration responds to.",
+        extremes=dict(high="warmest soil", low="coldest soil"),
+    ),
+
+    "WS": dict(
+        title="Wind speed",
+        short="Wind speed",
+        units="m s⁻¹",
+        columns=[("WS_F", 1.0), ("WS", 1.0), ("WS_1_1_1", 1.0), ("WS_ERA", 1.0)],
+        qc=["WS_F_QC", "WS_QC"],
+        # CH-Oe2 reaches 14.5 m s-1, and no half-hourly mean at a flux tower comes near 60. The
+        # bound refuses a column that is not wind speed; it cannot refuse the same record in
+        # km h-1, which reaches 52 here, without also refusing a storm at an exposed site.
+        limits=(0.0, 60.0),
+        agg="mean",
+        daily_stats=("mean", "max"),
+        ship=("mean", "max"),
+        digits=1,
+        hourly=False,
+        scale=10,
+        about="Horizontal wind speed. Read beside the friction velocity, it separates a calm "
+              "month from one whose turbulence was weak for the wind it had.",
+        # Calm half-hours are common and their minimum is the instrument's floor, not a
+        # statistic of the record.
+        extremes=dict(high="windiest", low="calmest", low_halfhour=False),
+    ),
+
+    "PA": dict(
+        title="Atmospheric pressure",
+        short="Air pressure",
+        units="kPa",
+        # FULLSET publishes kPa. `PA_ERA` is last because it is the reanalysis series the
+        # gap-filled `PA_F` is filled from, and a file that carries nothing else is still a
+        # pressure record, only not a measured one.
+        columns=[("PA_F", 1.0), ("PA", 1.0), ("PA_1_1_1", 1.0), ("PA_ERA", 1.0)],
+        qc=["PA_F_QC", "PA_QC"],
+        # CH-Oe2 at 452 m spans 92.3 to 98.7 kPa. The bounds admit a site at 5000 m and a deep
+        # low at sea level, and refuse the same column in hPa or Pa by an order of magnitude.
+        limits=(40.0, 110.0),
+        agg="mean",
+        daily_stats=("min", "mean", "max"),
+        ship=("mean",),
+        digits=2,
+        hourly=False,
+        scale=100,
+        about="Atmospheric pressure at the station. Its level is set by the site's elevation and "
+              "its departures by the passage of pressure systems; it is needed to convert "
+              "between the concentration and the mixing ratio of a gas.",
+        extremes=dict(high="highest pressure", low="lowest pressure"),
+    ),
+
+    "LW_IN": dict(
+        title="Incoming longwave radiation",
+        short="Longwave in",
+        units="W m⁻²",
+        # `LW_IN_JSB*` is not a candidate: it is longwave computed from temperature and humidity
+        # rather than measured, so it would stand in for the radiometer without saying so.
+        columns=[("LW_IN_F", 1.0), ("LW_IN_F_MDS", 1.0), ("LW_IN", 1.0), ("LW_IN_1_1_1", 1.0),
+                 ("LW_IN_ERA", 1.0)],
+        qc=["LW_IN_F_QC", "LW_IN_F_MDS_QC", "LW_IN_QC"],
+        # CH-Oe2 spans 157 to 471 W m-2.
+        limits=(0.0, 800.0),
+        agg="mean",
+        daily_stats=("mean",),
+        ship=("mean",),
+        digits=0,
+        hourly=False,
+        scale=1,
+        about="Incoming longwave radiation, emitted by the atmosphere and by cloud. It rises "
+              "with the temperature and humidity of the air above the site and with cloud "
+              "cover, so an overcast night keeps it high while a clear one lets it fall.",
+        extremes=dict(high="most incoming longwave", low="least incoming longwave"),
+    ),
+
+    "PPFD_IN": dict(
+        title="Incoming photosynthetic photon flux density",
+        short="Incoming PPFD",
+        units="µmol m⁻² s⁻¹",
+        columns=[("PPFD_IN", 1.0), ("PPFD_IN_1_1_1", 1.0)],
+        qc=["PPFD_IN_QC"],
+        # CH-Oe2 spans -14 to 2332 µmol m-2 s-1; the small negative values are a quantum sensor's
+        # offset at night and are kept, as the shortwave bound keeps them.
+        limits=(-100.0, 3500.0),
+        agg="mean",
+        daily_stats=("mean", "max"),
+        ship=("mean", "max"),
+        digits=0,
+        hourly=False,
+        scale=1,
+        about="Incoming photosynthetically active radiation as a photon flux: the part of the "
+              "solar spectrum, 400 to 700 nm, that photosynthesis uses. It tracks incoming "
+              "shortwave closely, and is measured by a separate quantum sensor.",
+        extremes=dict(high="brightest", low="dullest", low_halfhour=False),
+    ),
+
+    # Friction velocity is the square root of the kinematic momentum flux, measured by the same
+    # sonic anemometer as the turbulent fluxes and lost in the same outages, so it belongs with the
+    # fluxes on the page. It is also the quantity the u* filter is applied to.
+    #
+    # Its coverage is its own, for two reasons. It is not gap-filled - FULLSET publishes `USTAR`
+    # with no QC column - so its measured share is its available share, and the gate and the
+    # warning read the same number. And it is not night-filtered: u* filtering removes the fluxes
+    # of calm nights, not u* itself. So the flux warning line of 20 %, which exists because half of
+    # every flux record is rejected by design, does not apply, and the meteorological 50 % does.
+    #
+    # The gate is 75 % rather than 90 %. On CH-Oe2 `USTAR` is present in 83.6 % of half-hours and
+    # the median month is 85 % available, so at 90 % only 46 of 252 months would carry a normal, a
+    # rank or a badge and the variable would be silent through most of the record. At 75 % there
+    # are 226, and the months left out are those missing a quarter or more of their records.
+    "USTAR": dict(
+        title="Friction velocity",
+        short="Friction velocity",
+        units="m s⁻¹",
+        columns=[("USTAR", 1.0), ("USTAR_1_1_1", 1.0)],
+        qc=["USTAR_QC"],
+        # CH-Oe2 reaches 3.9 m s-1.
+        limits=(0.0, 10.0),
+        coverage=Coverage(badge=75.0, normal=75.0, warn=50.0),
+        family=FLUX,
+        agg="mean",
+        daily_stats=("mean", "max"),
+        ship=("mean",),
+        digits=2,
+        hourly=False,
+        scale=100,
+        about="Friction velocity, the square root of the kinematic momentum flux measured by the "
+              "sonic anemometer: how turbulent the air over the surface was. It is the quantity "
+              "the u* filter is applied to, so a month of low friction velocity is a month whose "
+              "fluxes lean more heavily on gap-filling. Not gap-filled, so its gaps are missing "
+              "records.",
+        extremes=dict(high="most turbulent", low="least turbulent", low_halfhour=False),
+    ),
+
+    # ------------------------------------------------------------------------------------------
     # The carbon fluxes.
     #
     # All three sum rather than average. A monthly mean in µmol m-2 s-1 is a mean of an
