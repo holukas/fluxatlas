@@ -3075,7 +3075,9 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
 
 def render(payload, out_path, title=None):
     """Inline the assets and the payload into one self-contained HTML file."""
-    template = (ASSETS / "template.html").read_text(encoding="utf-8")
+    from html import escape as html_escape
+
+    template =(ASSETS / "template.html").read_text(encoding="utf-8")
     css = ((ASSETS / "base.css").read_text(encoding="utf-8") + "\n"
            + (ASSETS / "calendar.css").read_text(encoding="utf-8"))
     js = (ASSETS / "calendar.js").read_text(encoding="utf-8")
@@ -3087,19 +3089,24 @@ def render(payload, out_path, title=None):
     favicon = ("data:image/svg+xml;base64,"
                + base64.b64encode(logo.encode("utf-8")).decode("ascii"))
 
-    # `</script>` inside the JSON would end the tag early, and `<!--` would open a comment.
-    data = (json.dumps(payload, allow_nan=False, separators=(",", ":"))
-            .replace("</", "<\\/").replace("<!--", "<\\!--"))
+    # `</script>` inside the JSON would end the tag early, and `<!--` would open a comment. A `<`
+    # can only occur inside a JSON string, so writing every one as `<` closes both and stays
+    # valid JSON. The earlier `<\!--` did not: `\!` is no JSON escape, and `JSON.parse` threw on
+    # any payload whose site name or column carried `<!--`, blanking the page.
+    data = json.dumps(payload, allow_nan=False, separators=(",", ":")).replace("<", "\\u003c")
     m = payload["meta"]
+    # The title is the caller's text and lands in markup, so it is escaped like any other.
+    page_title = html_escape(title or f"{m['site']} — atlas {m['first_year']}–{m['last_year']}",
+                             quote=False)
 
-    html = (template
-            .replace("/*__CSS__*/", css)
-            .replace("/*__DATA__*/", data)
-            .replace("/*__JS__*/", js)
-            .replace("<!--__LOGO__-->", logo)
-            .replace("__FAVICON__", favicon)
-            .replace("__TITLE__", title or f"{m['site']} — atlas "
-                                           f"{m['first_year']}–{m['last_year']}"))
+    # One pass over the template, not one `.replace` per placeholder. Chained, every replacement
+    # after the payload scanned text that already held it, so a site name or a column name
+    # containing `__TITLE__` was rewritten inside the JSON. Here a placeholder is only ever found
+    # in the template itself, and nothing substituted is read again.
+    parts = {"/*__CSS__*/": css, "/*__DATA__*/": data, "/*__JS__*/": js,
+             "<!--__LOGO__-->": logo, "__FAVICON__": favicon, "__TITLE__": page_title}
+    html = re.sub("|".join(re.escape(k) for k in parts), lambda hit: parts[hit.group(0)],
+                  template)
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
