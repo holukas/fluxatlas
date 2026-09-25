@@ -195,7 +195,7 @@ def test_the_account_places_the_year_among_the_others(full_atlas):
     lines = [item["v"] for row in full_atlas.payload["years"] for item in row["stood"]]
     assert any("of 12 years" in line for line in lines)
     warmest = max(full_atlas.payload["years"], key=lambda row: row["TA"]["v"])
-    assert any("1st of 12 years" in item["v"] for item in warmest["stood"])
+    assert any(item["v"].startswith("Warmest of 12 years") for item in warmest["stood"])
 
 
 def test_the_carbon_balance_leads_the_account_whatever_it_placed(flux_atlas):
@@ -285,3 +285,84 @@ def test_a_year_that_lost_carbon_states_its_placing(tmp_path):
     assert "Net release of" in text
     assert "largest release of" in text, text
     assert "None" not in text, text
+
+
+# -- Placings from either end --------------------------------------------------------------------
+#
+# Ranks are taken with `method="min"`, so tied values share the lower rank. Counting the far end as
+# `n - rank + 1` then puts a year tied for last one place away from the end it is at; the far end has
+# its own rank for that reason, and the account of a year has to read it.
+
+def _year(value, rank, rank_far, n=12, key="TA", gslen=None, peers_gslen=None, nrec=0):
+    """The statistics of one year, as far as `year_standout` reads them."""
+    return {key: value, f"{key}_z": 0.5, f"{key}_rank": rank, f"{key}_rank_far": rank_far,
+            f"{key}_n": n, f"{key}_anom": 0.1, f"{key}_unc": None, "worst_month": None,
+            "ev_gslen": None if gslen is None else dict(days=gslen, delta=None, normal=None),
+            "ev_frostfree": None, "x": dict(nx=0, nrec=nrec, gslen=gslen, frostfree=None)}
+
+
+def _loaded(*keys):
+    from fluxatlas import variables
+    return {key: {"v": variables.make(key)} for key in keys}
+
+
+def test_a_year_tied_for_the_far_end_is_placed_at_it():
+    """Two years share the lowest mean; each is the coldest, not the second coldest."""
+    tied = _year(8.0, rank=11, rank_far=1)
+    peers = [_year(9.0 + i / 10, rank=i + 1, rank_far=12 - i) for i in range(10)]
+    peers += [tied, _year(8.0, rank=11, rank_far=1)]
+    stood = build.year_standout(tied, peers, ["TA"], _loaded("TA"))
+    line = next(item["v"] for item in stood if item["k"] == "Air temperature")
+    assert line.startswith("Coldest of 12 years"), line
+
+
+def test_a_placing_near_the_top_names_the_top():
+    year = _year(10.0, rank=2, rank_far=11)
+    stood = build.year_standout(year, [year], ["TA"], _loaded("TA"))
+    line = next(item["v"] for item in stood if item["k"] == "Air temperature")
+    assert line.startswith("2nd warmest of 12 years"), line
+
+
+def test_a_growing_season_tied_for_shortest_is_the_shortest():
+    lengths = [250, 245, 240, 235, 230, 225, 220, 215, 210, 205, 200, 200]
+    peers = [_year(9.0, rank=None, rank_far=None, gslen=days) for days in lengths]
+    stood = build.year_standout(peers[-1], peers, [], {})
+    line = next(item["v"] for item in stood if item["k"] == "Growing season")
+    assert "Shortest of 12 years" in line, line
+
+
+def test_record_days_near_the_bottom_are_called_the_fewest():
+    counts = [120, 110, 100, 95, 90, 85, 80, 75, 70, 65, 60, 60]
+    peers = [_year(9.0, rank=None, rank_far=None, nrec=c) for c in counts]
+    stood = build.year_standout(peers[-1], peers, [], {})
+    line = next(item["v"] for item in stood if item["k"] == "Record days")
+    assert line.endswith("the fewest of 12 years."), line
+
+
+def test_a_sink_year_at_the_top_of_the_nee_ranking_is_the_smallest_uptake(flux_atlas):
+    """Every synthetic year is a sink, so the top of the ranking releases nothing.
+
+    The registry's word for that end is "largest net release", which describes no year of this
+    record. The placing follows the side of zero the year is on instead.
+    """
+    years = [row for row in flux_atlas.payload["years"] if row["NEE"]["v"] is not None]
+    assert all(row["NEE"]["v"] < 0 for row in years), "the fixture is meant to be all sinks"
+    weakest = max(years, key=lambda row: row["NEE"]["v"])
+    strongest = min(years, key=lambda row: row["NEE"]["v"])
+    lines = {row["y"]: next(item["v"] for item in row["stood"] if item["k"] == "Carbon balance")
+             for row in years}
+    assert lines[weakest["y"]].endswith(f"smallest net uptake of {len(years)} years."),         lines[weakest["y"]]
+    assert lines[strongest["y"]].endswith(f"largest net uptake of {len(years)} years."),         lines[strongest["y"]]
+    assert not any("release" in line for line in lines.values())
+
+
+def test_a_nee_placing_that_crosses_zero_names_neither_side():
+    """A weak sink with two sources above it is not the third-smallest uptake of anything."""
+    values = [-120.0, -100.0, -80.0, -60.0, -50.0, -40.0, -30.0, -20.0, -10.0, -5.0, 10.0, 30.0]
+    peers = [_year(v, rank=i + 1, rank_far=12 - i, key="NEE") for i, v in enumerate(values)]
+    stood = build.year_standout(peers[9], peers, ["NEE"], _loaded("NEE"))
+    line = next(item["v"] for item in stood if item["k"] == "Carbon balance")
+    assert line.endswith("3rd highest of 12 years."), line
+    source = build.year_standout(peers[11], peers, ["NEE"], _loaded("NEE"))
+    line = next(item["v"] for item in source if item["k"] == "Carbon balance")
+    assert line.endswith("largest net release of 12 years."), line

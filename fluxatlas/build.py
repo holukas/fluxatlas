@@ -1650,10 +1650,60 @@ def year_standout(st, peers, keys, loaded):
     badge and still be the third warmest of twenty-one, and a reader looking for what made a year
     special is owed both.
 
+    A placing is stated from whichever end of the ranking the year is nearer, in the words for that
+    end: "3rd coldest of 21 years" rather than "19th of 21 years". The far end is read from its own
+    ranking, not taken as `n - rank + 1`, because ties share the lower rank and the arithmetic then
+    moves every year below a tie one place away from the end it is at.
+
     Each entry is ranked by how far the year stood from the rest, so the list opens with the
     strongest statement the record supports rather than with whichever variable happens to be first
     in the registry.
     """
+    def placing(rank, far, n, near_word, far_word):
+        """The nearer end of a ranking and how it reads: `(3, "3rd coldest of 21 years")`.
+
+        `rank` counts from the end `near_word` names and `far` from the other. The first place is
+        written as the word alone, "warmest of 21 years", since "1st warmest" is not how it is said.
+        """
+        if rank is not None and (far is None or rank <= far):
+            place, word = rank, near_word
+        elif far is not None:
+            place, word = far, far_word
+        else:
+            return None, ""
+        return place, (word if place == 1 else f"{ordinal(place)} {word}") + f" of {n} years"
+
+    def capital(text):
+        return text[:1].upper() + text[1:]
+
+    def end_words(key):
+        """The words for the end rank 1 counts from and for the other end, as they fit this year.
+
+        Taken from the registry's `extremes`, except for a variable whose sign means something.
+        There the word has to follow the side of zero the year sits on: in a record where every
+        year is a sink, the top of the NEE ranking is the smallest uptake, not the largest release.
+        "Smallest net uptake" is written only where every year counted ahead of this one is a sink
+        as well; where the ranking crosses zero on the way, neither noun holds, and the placing is
+        stated as the plain lowest or highest, with the direction written out beside it.
+        """
+        v = loaded[key]["v"]
+        first, other = v.rank_first, "high" if v.rank_first == "low" else "low"
+        if not v.sign:
+            return v.extremes[first], v.extremes[other]
+        value = st[key]
+        side = "low" if value < 0 else "high"
+        ranked = [p[key] for p in peers if p[f"{key}_rank"] is not None and p[key] is not None]
+
+        def word(end):
+            if end == side:
+                return f"largest net {v.sign[side]}"
+            ahead = [x for x in ranked if (x < value if end == "low" else x > value)]
+            if all((x < 0) == (value < 0) for x in ahead):
+                return f"smallest net {v.sign[side]}"
+            return "lowest" if end == "low" else "highest"
+
+        return word(first), word(other)
+
     out = []
 
     for key in keys:
@@ -1662,16 +1712,13 @@ def year_standout(st, peers, keys, loaded):
         if value is None or rank is None or n is None:
             continue
         # Distance from whichever end of the ranking is nearer: 2nd of 21 and 20th of 21 are both
-        # remarkable, and the middle of the ranking is what is not.
-        place = min(rank, n - rank + 1)
+        # remarkable, and the middle of the ranking is what is not. Rank 1 is the end the variable
+        # ranks from first - for NEE the most negative - and `end_words` names both ends, so the
+        # placing says which end it was counted from and needs no key beside it.
+        place, note = placing(rank, st[f"{key}_rank_far"], n, *end_words(key))
         strength = abs(z) if z is not None else 0.0
         if strength < 1 and place > 3:
             continue
-        note = f"{ordinal(rank)} of {n} years"
-        if v.rank_first == "low":
-            # NEE is ranked from the negative end, so "1st" means the largest uptake rather than
-            # the largest number, and a list of placings has to say so where it is not obvious.
-            note += f" ({ordinal(1)} = {v.rank_note})"
         detail = f"{value:.{v.digits}f} {v.units}"
         anomaly = st[f"{key}_anom"]
         if anomaly is not None and v.sign:
@@ -1689,7 +1736,8 @@ def year_standout(st, peers, keys, loaded):
                        f"the record")
         elif anomaly is not None:
             detail += f", {anomaly:+.{v.digits}f} against the record"
-        out.append(dict(k=v.short, v=f"{note}. {detail}", tone="rank", s=strength + 3.0 / place))
+        out.append(dict(k=v.short, v=f"{capital(note)}. {detail}", tone="rank",
+                        s=strength + 3.0 / place))
 
     # The carbon balance leads whatever its placing, because the sign of the annual figure is the
     # headline statement of a flux year and is true of no shorter span.
@@ -1701,7 +1749,9 @@ def year_standout(st, peers, keys, loaded):
         if st["NEE_unc"] is not None:
             line += f" ± {st['NEE_unc']:.0f}"
         if st["NEE_rank"] is not None:
-            line += f", {ordinal(st['NEE_rank'])} of {st['NEE_n']} years"
+            _, where = placing(st["NEE_rank"], st["NEE_rank_far"], st["NEE_n"],
+                               *end_words("NEE"))
+            line += f", {where}"
         out.append(dict(k="Carbon balance", v=line + ".", tone="carbon", s=99.0))
 
     if st["worst_month"] is not None and st["worst_month"]["n"]:
@@ -1724,13 +1774,18 @@ def year_standout(st, peers, keys, loaded):
     # of 225 days and 58 record days are numbers; the longest of twenty-one and 4th of twenty-one
     # are statements, and which of the two a reader gets is the difference between a page that
     # reports and a page that says something.
+    #
+    # Both ends are counted by `place_among`, each from its own side, for the same reason the
+    # variables read their far-end rank: two tied shortest seasons are both the shortest.
     for name, label, unit in (("gslen", "Growing season", "days long"),
                               ("frostfree", "Frost-free period", "days")):
         found = st[f"ev_{name}"]
         if not found:
             continue
-        rank, n = place_among(found["days"], [p["x"][name] for p in peers])
-        place = min(rank, n - rank + 1) if rank else None
+        values = [p["x"][name] for p in peers]
+        rank, n = place_among(found["days"], values)
+        far, _ = place_among(found["days"], values, first="low")
+        place, where = placing(rank, far, n, "longest", "shortest")
         line = f"{found['days']} {unit}"
         if found["delta"]:
             line += (f", {abs(found['delta'])} days "
@@ -1738,9 +1793,8 @@ def year_standout(st, peers, keys, loaded):
                      f"({found['normal']:.0f})")
         elif found["delta"] == 0:
             line += ", the usual length"
-        if rank and place <= 3:
-            line += (f". {ordinal(rank)} longest of {n} years" if rank <= place
-                     else f". {ordinal(n - rank + 1)} shortest of {n} years")
+        if place and place <= 3:
+            line += f". {capital(where)}"
         out.append(dict(k=label, v=line + ".", tone="season",
                         s=abs(found["delta"] or 0) / 10.0 + (3.0 / place if place else 0)))
 
@@ -1751,11 +1805,14 @@ def year_standout(st, peers, keys, loaded):
             f"least {EXTREME_MONTH_Z:g} standard deviations from its own normal for that calendar "
             f"month."), tone="rank", s=0.8 * n_extreme))
 
-    rank, n = place_among(st["x"]["nrec"], [p["x"]["nrec"] for p in peers])
-    if st["x"]["nrec"] and rank and min(rank, n - rank + 1) <= 3:
+    nrec = [p["x"]["nrec"] for p in peers]
+    rank, n = place_among(st["x"]["nrec"], nrec)
+    far, _ = place_among(st["x"]["nrec"], nrec, first="low")
+    place, where = placing(rank, far, n, "most", "fewest")
+    if st["x"]["nrec"] and place and place <= 3:
         out.append(dict(k="Record days", v=(
             f"{st['x']['nrec']} days were the warmest, coldest or wettest occurrence of their own "
-            f"calendar date, {ordinal(rank)} of {n} years."), tone="rank", s=3.0 / rank))
+            f"calendar date, the {where}."), tone="rank", s=3.0 / place))
 
     out.sort(key=lambda item: -item["s"])
     return [dict(k=item["k"], v=item["v"], tone=item["tone"]) for item in out]
