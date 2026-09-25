@@ -64,7 +64,7 @@ The thresholds on the last one are set against a real record rather than picked.
 marked most of the years, which is a badge that says nothing; these mark a handful, which is the
 rate the record badges run at.
 
-### What stood out in a year
+### Rank of a year among the record
 
 Opening a year gives everything a month gives, and one thing more: a ranked list of what set the
 year apart from the others.
@@ -74,12 +74,13 @@ warmest of twenty-one. So the list states placings, and each entry is ranked by 
 stood from the rest:
 
 ```text
-Carbon balance      The site was a net sink of 158 g C m⁻² ± 16, 8th of 12 years.
-Growing season      325 days long, 66 days longer than usual (259). 1st longest of 21 years.
-Air temperature     2nd of 21 years. 10.6 °C, +1.0 against the record
-Most unusual month  November: precipitation stood +2.5 standard deviations from its November
-                    normal, and 3 of the 5 variables that could be judged stood at least 1 from
-                    theirs.
+Carbon balance        The site was a net sink of 158 ± 16 g C m⁻², 8th of 12 years.
+Growing season        325 days long, 66 days longer than the record median (259). 1st longest of
+                      21 years.
+Air temperature       2nd of 21 years. 10.6 °C, +1.0 relative to the record mean
+Most anomalous month  November: precipitation +2.5 standard deviations from its November normal;
+                      3 of the 5 variables judged were at least 1 standard deviation from their
+                      normal.
 ```
 
 The carbon balance leads whatever it placed, because the sign of the annual figure is the headline
@@ -119,7 +120,7 @@ The rest of the page:
   file gives one; where it does not, a mean-aggregated variable gets one standard deviation of that
   year's own months instead, and the chart says which of the two it drew. A total with neither gets
   no band, because the spread of twelve monthly totals is not an uncertainty of their sum;
-- the shape of the year: each calendar month's normal, one standard deviation either side, and the
+- the mean annual cycle: each calendar month's normal, one standard deviation either side, and the
   full range it has covered, with the year of each extreme;
 - for a variable that sums (precipitation and the carbon fluxes), the total accumulated through the
   year, as described for the year panel above, with the last year of the record drawn over the
@@ -142,7 +143,7 @@ The rest of the page:
 - the five highest and five lowest months, each linking to its own panel, named from the registry's
   words for each end so that the highest five months of `NEE` are labelled as its largest releases;
 - **through the day**: the record's mean for each hour of each calendar month as one twelve-by-
-  twenty-four surface, and the mean day of each calendar month over the 10th to 90th percentile of
+  twenty-four surface, and the mean diurnal cycle of each calendar month over the 10th to 90th percentile of
   the years. A variable that sums - precipitation and the carbon fluxes - is stated as its mean
   total per hour, so the twenty-four values of a month add up to its mean daily total. Hours are
   the file's own timestamps, which FLUXNET states in local standard time. A year's cell stands where

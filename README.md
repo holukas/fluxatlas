@@ -118,7 +118,7 @@ Each tile carries badges for what was remarkable about that span, and opens to a
 of that span day by day, against the normal, and ranked among the others.
 
 Each variable also has a page of its own: the slope of each calendar month taken
-separately, every year of the record, the shape of the year, and how much of it was
+separately, every year of the record, the mean annual cycle, and how much of it was
 measured.
 
 **The variables you pass in are the whole build.** A metric whose variable is absent is
