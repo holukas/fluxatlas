@@ -2058,6 +2058,20 @@
      Level 2: one month
      ------------------------------------------------------------------------------------------ */
 
+  /* The measured share of a span, and how the rest of it was filled in the words of the flag it
+     was read from. A code means different things in different columns - 2 is medium-quality fill
+     beside a flux and reanalysis beside consolidated meteorology - so the words are the
+     variable's own (`v.fill.levels`), and the flag and its convention sit in the title. This
+     qualifies the figure above it; it gates nothing. */
+  function fillPhrase(v, rec) {
+    let text = nf(rec.meas, 0) + ' % measured';
+    if (!v.fill || !rec.f) return text;
+    rec.f.forEach((p, i) => {
+      if (p > 0 && v.fill.levels[i]) text += ', ' + nf(p, 0) + ' % ' + v.fill.levels[i];
+    });
+    return '<span title="' + v.fill.flag + ' follows ' + v.fill.note + '">' + text + '</span>';
+  }
+
   /* The meteorology first and the fluxes on a row of their own, in their own colour. They are
      measured differently, held to different warning lines and read for different reasons, and a
      reader after the carbon balance should not have to pick it out of the thermometers. */
@@ -2082,7 +2096,7 @@
           + (state.scale === 'year' ? ' years' : ' such ' + spanNoun() + 's')
           + (v.rank_note ? ' (1st = ' + v.rank_note + ')' : ''));
       }
-      if (isNum(rec.meas) && rec.meas < 99.5) bits.push(nf(rec.meas, 0) + ' % measured');
+      if (isNum(rec.meas) && rec.meas < 99.5) bits.push(fillPhrase(v, rec));
       const accent = v.key === 'TA' && isNum(rec.a) ? (rec.a > 0 ? 'warm' : 'cold') : null;
       /* The interval, where the file publishes one. Its components are named rather than left to
          be assumed: a "+/-" covering the u* threshold choice is a far larger claim than one
@@ -3429,6 +3443,14 @@
     };
   }
 
+  /* How strongly each fill level is drawn: one hue, fading a step for each level further from the
+     instrument, so the measured part stays the one that reads and the fill sits quietly above it.
+     The same steps serve the bars (as an opacity) and the legend and tooltip swatches (as a mix). */
+  const FILL_OPACITY = [0.55, 0.36, 0.22, 0.12];
+  const fillOpacity = i => FILL_OPACITY[Math.min(i, FILL_OPACITY.length - 1)];
+  const fillSwatch = i => 'color-mix(in srgb, var(--series-1) ' + Math.round(fillOpacity(i) * 100)
+    + '%, transparent)';
+
   /** What share of each year was measured rather than modelled, which qualifies everything above. */
   function drawVarCoverage(key) {
     const v = VARS[key];
@@ -3436,6 +3458,10 @@
       const years = YEAR_ROWS.map(r => r.y);
       const meas = YEAR_ROWS.map(r => (r[key] && isNum(r[key].meas) ? r[key].meas : null));
       const avail = YEAR_ROWS.map(r => (r[key] && isNum(r[key].avail) ? r[key].avail : null));
+      /* How the rest of each year was filled, one share per level of the variable's flag, stacked
+         on the measured bar. A variable read without a flag has none, and its bars are as before. */
+      const levels = v.fill ? v.fill.levels : [];
+      const fills = YEAR_ROWS.map(r => (r[key] && r[key].f) || []);
       const f = frame(host, { aspect: 0.3, ariaLabel: v.short + ' measured share by year' });
       const sx = linear(years[0] - 0.5, years[years.length - 1] + 0.5, f.m.left, f.m.left + f.iw);
       const sy = linear(0, 100, f.m.top + f.ih, f.m.top);
@@ -3454,16 +3480,30 @@
           el('rect', { x: sx(y) - bw / 2, y: sy(meas[i]), width: bw,
             height: Math.max(1, sy(0) - sy(meas[i])), rx: 2, fill: f.p.series[0], opacity: 0.85 },
           f.svg);
+          // Each share is rounded on its own, so the stack is capped at the top of the axis.
+          let base = meas[i];
+          fills[i].forEach((p, j) => {
+            if (!(p > 0) || !levels[j] || base >= 100) return;
+            const top = Math.min(100, base + p);
+            el('rect', { x: sx(y) - bw / 2, y: sy(top), width: bw,
+              height: Math.max(1, sy(base) - sy(top)), fill: f.p.series[0],
+              opacity: fillOpacity(j) }, f.svg);
+            base = top;
+          });
         }
       });
       el('line', { x1: f.m.left, x2: f.m.left + f.iw, y1: sy(v.cov.warn), y2: sy(v.cov.warn),
         stroke: f.p.warm, 'stroke-width': 1.4, 'stroke-dasharray': '5 3' }, f.svg);
       hover(f, sx, years, y => {
         const i = years.indexOf(y);
-        return tipRows(String(y), [
+        const rows = [
           { k: 'Available', v: isNum(avail[i]) ? nf(avail[i], 0) + ' %' : '—', color: f.p.bandOuter },
           { k: 'Measured', v: isNum(meas[i]) ? nf(meas[i], 0) + ' %' : '—', color: f.p.series[0] }
-        ]);
+        ];
+        levels.forEach((label, j) => {
+          rows.push({ k: cap(label), v: nf(fills[i][j] || 0, 0) + ' %', color: fillSwatch(j) });
+        });
+        return tipRows(String(y), rows);
       });
     };
   }
@@ -3781,14 +3821,20 @@
       });
     }
 
+    /* Where the variable has a flag, the part of each bar above the measured share is split by how
+       it was filled, in that flag's own convention, which the sub names. */
+    const fillLegend = v.fill
+      ? v.fill.levels.map((label, j) => ({ color: fillSwatch(j), label: label })) : [];
     chartCard(document.getElementById('var-cov'), {
       title: 'How much of each year was measured', width: 'w-12',
       sub: 'The share of each year the product covers, and the share that came from the instrument '
         + 'rather than from the gap-filling model. The dashed line is this variable’s warning '
-        + 'threshold.',
+        + 'threshold.'
+        + (v.fill ? ' Above the measured share, the rest is split by how ' + v.fill.flag
+          + ' says it was filled; the flag follows ' + v.fill.note + '.' : ''),
       legend: [{ color: 'var(--band-outer)', label: 'available' },
-        { color: 'var(--series-1)', label: 'measured' },
-        { color: 'var(--pole-warm)', label: 'warning line', line: true }],
+        { color: 'var(--series-1)', label: 'measured' }].concat(fillLegend,
+        [{ color: 'var(--pole-warm)', label: 'warning line', line: true }]),
       foot: 'Every statistic on this page is gated on availability and only warned on by the '
         + 'measured share. Where the measured share itself trends through the record, part of a '
         + 'slope above may be that trend rather than the ecosystem.',
