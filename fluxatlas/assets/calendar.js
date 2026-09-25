@@ -2022,25 +2022,49 @@
       : '';
     document.getElementById('tiles').innerHTML = tiles.join('') + heroFluxes;
 
+    /* Three paragraphs, in the order a reader checking the page needs them: what it was built from,
+       how its figures were taken, and what made it and when. */
     const P = provenance();
     const file = P && P.file ? P.file : M.source;
-    document.getElementById('footer-text').innerHTML =
+    const nVars = DATA.variables.length;
+    document.getElementById('footer-text').innerHTML = '<b>Data.</b> '
       // The description is optional, and without one the line read "XX-Syn — . Built".
-      esc(M.site) + (M.site_long ? ' — ' + esc(M.site_long) : '') + '. Built ' + esc(M.generated)
-      + (file ? ' from <code>' + esc(file) + '</code>' : '')
-      + (P ? fileFingerprint(P) : '') + '. Normals use the months at '
-      + 'least ' + M.cov_normal_text + ' covered, and need at least ' + M.min_normal_years
-      + ' such years; daily normals pool a ±' + M.clim_window + ' day window across all years.';
+      + esc(M.site) + (M.site_long ? ', ' + esc(M.site_long) : '') + ': '
+      + (file ? 'the half-hourly FLUXNET-standardized file <code>' + esc(file) + '</code>' : 'a half-hourly record')
+      + (P ? fileFingerprint(P) : '') + ', ' + M.first_year + ' to ' + M.last_year + ', '
+      + nVars + ' variable' + (nVars === 1 ? '' : 's') + '. Every value is the file\'s own, '
+      + 'converted onto its canonical unit and aggregated; nothing is corrected.';
     renderProvenance(P);
 
-    /* Who made the page and what made it, on its own line. This file travels away from whatever
+    document.getElementById('footer-methods').innerHTML = '<b>Methods.</b> '
+      + 'Anomalies, ranks and badges are taken against normals of the same calendar month, season '
+      + 'or year across the record. A normal uses the spans at least ' + M.cov_normal_text
+      + ' covered, gap-filled values included, and needs at least ' + M.min_normal_years
+      + ' such years; the measured share is stated and hatched rather than gated on. Daily normals '
+      + 'pool a ±' + M.clim_window + ' day window across all years. Trends are Theil–Sen slopes '
+      + 'with Kendall’s τ, fitted through complete years only.';
+
+    /* Who made the tool and when it made this page, last. The page travels away from whatever
        produced it, and by the time someone opens it from a share or a memory stick there may be
-       nothing else around it to say where the definitions behind its figures are written down. */
+       nothing else around it to say where the definitions behind its figures are written down.
+       It names the tool's author, not the page's: whoever ran the build made the page. */
     document.getElementById('footer-credit').innerHTML =
-      'Built with <span class="wordmark">flux<b>atlas</b></span>'
-      + (M.version ? ' ' + M.version : '') + ' by ' + M.author
-      + (M.affiliation ? ', <a href="' + M.affiliation_url + '">' + M.affiliation + '</a>' : '')
-      + ' · <a href="' + M.repository + '">' + M.repository.replace(/^https?:\/\//, '') + '</a>';
+      '<b>Created with <span class="wordmark">flux<b>atlas</b></span>'
+      + (M.version ? ' ' + esc(M.version) : '') + '</b>, ' + esc(builtAt(M.generated)) + '. '
+      + 'fluxatlas is by ' + esc(M.author)
+      + (M.affiliation ? ', <a href="' + M.affiliation_url + '">' + esc(M.affiliation) + '</a>' : '')
+      + ' · <a href="' + M.repository + '">' + esc(M.repository.replace(/^https?:\/\//, ''))
+      + '</a>.';
+  }
+
+  /* `2026-09-25 17:07 +02:00` as `25 September 2026, 17:07 (UTC+02:00)`. The payload keeps the
+     sortable form; this is the one a reader is given. A stamp in any other shape - a page built
+     before the offset was recorded - is shown as it stands. */
+  function builtAt(stamp) {
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})(?: ([+-]\d{2}:?\d{2}))?$/.exec(String(stamp || ''));
+    if (!m) return String(stamp || '');
+    const off = m[5] ? ' (UTC' + (m[5].includes(':') ? m[5] : m[5].slice(0, 3) + ':' + m[5].slice(3)) + ')' : '';
+    return (+m[3]) + ' ' + MONTH_NAME[+m[2] - 1] + ' ' + m[1] + ', ' + m[4] + off;
   }
 
   /* The way into the per-variable pages. One card each, carrying the figure that most reader will

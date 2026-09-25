@@ -50,6 +50,7 @@ the complete payload of three builds before and after.
 
 - **A build that names no variables takes the same eleven as before;** the eight added here are built only when named. Taking every variable a FULLSET file supplies put the sparse badge on 216 of 252 CH-Oe2 months against 103, `PA`, which is mostly reanalysis there, accounting for 159 of them.
 - **The "In cloud" badge is now "Near-saturated air"**, which is what a daily mean relative humidity of 95 % establishes at any site.
+- **The footer is laid out in three paragraphs:** a *Data* paragraph with the site, the file, its size and digest, the years and the number of variables, then the columns that were read, a *Methods* paragraph stating how the normals, coverage, daily normals and trends are taken, and the tool with the build time written as a date with its UTC offset. It credits the tool and who wrote it, not who built the page, since that is whoever ran the build. Its prose keeps a reading measure instead of running across the full page width.
 - **The build time is stated with its UTC offset.**
 - **The examples say what the default build takes and show what is new.** `examples/README.md` opens with the current `--list` output and its marks, adds the energy-balance build with what decides whether net radiation and each ratio appear, and shows `Atlas.table()` and `Atlas.provenance`; `build_fluxnet_atlas.py` marks the variables built only when named and prints the table's size and the input's digest.
 

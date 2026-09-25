@@ -148,7 +148,7 @@ function visibleViews() {
  * its description, the file name and, where the build records it, the file's provenance - are
  * printed; so it is read with the view rather than left out as chrome. */
 function visibleText() {
-  const extras = ['crumbs', 'footer-text', 'footer-prov'].map(id => doc.getElementById(id))
+  const extras = ['crumbs', 'footer-text', 'footer-prov', 'footer-methods', 'footer-credit'].map(id => doc.getElementById(id))
     .filter(Boolean);
   return visibleViews().concat(extras)
     .map(node => node.textContent || '').join('\n');
