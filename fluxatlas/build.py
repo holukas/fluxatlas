@@ -2228,7 +2228,13 @@ def span_stats(sp, keys, table, day_values, dates, events, loaded):
         if value is not None and nm:
             s[f"{key}_anom"] = value - nm["mean"]
             s[f"{key}_z"] = (value - nm["mean"]) / nm["sd"] if nm["sd"] else None
-            s[f"{key}_pctn"] = 100 * value / nm["mean"] if nm["mean"] > 0 else None
+            # A percentage of normal needs a true zero and no values below it. For precipitation
+            # "60 % of normal" is a statement; for air temperature in degrees Celsius it is an
+            # artefact of where the scale puts its zero, and one winter came out at -76 %. The
+            # registry's lower limit is what says whether a quantity can go negative.
+            ratio_scale = v.limits[0] >= 0
+            s[f"{key}_pctn"] = (100 * value / nm["mean"]
+                                if ratio_scale and nm["mean"] > 0 else None)
         else:
             s[f"{key}_anom"] = s[f"{key}_z"] = s[f"{key}_pctn"] = None
 
@@ -2457,6 +2463,7 @@ def thin_spans(loaded, frames_by_var, months):
         meas = frames_by_var[key]["meas"].reindex(months)
         thin = meas[meas < warn].dropna()
         out[key] = dict(warn=warn, n=int(len(thin)), n_total=int(meas.notna().sum()),
+                        flagged=loaded[key]["v"].qc_column is not None,
                         lowest=None if thin.empty else float(thin.min()),
                         worst=None if thin.empty else f"{thin.idxmin():%B %Y}")
     return out
@@ -2469,9 +2476,13 @@ def report_thin_spans(thin, quiet=False):
     for key, d in thin.items():
         if not d["n"]:
             continue
+        # A variable with no quality flag is "measured" wherever it is present, so its thin months
+        # are gaps rather than filling, and there are no gap-filled values to have used.
+        used = ("the gap-filled values are used" if d.get("flagged", True)
+                else "the values present are used")
         say(f"  warning: {key} is under {d['warn']:.0f} % measured in {d['n']} of "
-            f"{d['n_total']} months (lowest {d['lowest']:.0f} % in {d['worst']}); the gap-filled "
-            f"values are used and those months are marked on the grid")
+            f"{d['n_total']} months (lowest {d['lowest']:.0f} % in {d['worst']}); {used} and "
+            f"those months are marked on the grid")
 
 
 def row_qualifies(metric, row):

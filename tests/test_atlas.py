@@ -294,3 +294,22 @@ def test_the_hourly_layer_is_a_whole_number_of_days(tmp_path):
 
     without = fa.Atlas(path, ["TA"], hourly=False, quiet=True)
     assert without.payload["hourly"] is None
+
+
+def test_a_percentage_of_normal_is_stated_only_for_a_quantity_with_a_true_zero(full_atlas):
+    """Sixty percent of normal is a statement about rain and an artefact for degrees Celsius."""
+    months = full_atlas.payload["months"]
+    assert any(row["PREC"]["p"] is not None for row in months)
+    assert all(row["TA"]["p"] is None for row in months)
+
+
+def test_the_thin_span_warning_says_what_was_used(capsys):
+    """A variable with no flag has gaps, not filling, and the warning must not say otherwise."""
+    thin = {"RH": dict(warn=50.0, n=3, n_total=24, lowest=12.0, worst="March 2011", flagged=False),
+            "TA": dict(warn=50.0, n=1, n_total=24, lowest=40.0, worst="May 2012", flagged=True)}
+    build.report_thin_spans(thin)
+    out = capsys.readouterr().out
+    rh = next(line for line in out.splitlines() if "RH" in line)
+    ta = next(line for line in out.splitlines() if "TA" in line)
+    assert "values present are used" in rh and "gap-filled" not in rh
+    assert "gap-filled values are used" in ta
