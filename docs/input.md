@@ -17,6 +17,12 @@ into the next day. A file carrying only `TIMESTAMP_END` has one window subtracte
 frame arriving on its own `DatetimeIndex` is floored onto the window, which maps a start-stamped and
 a middle-stamped file onto the same index.
 
+**Rows without a timestamp.** A row whose stamp is empty cannot be placed on the grid, so it is
+dropped and the reader reports how many. The usual source is a CSV saved from a spreadsheet, which
+often ends in a row of empty fields. A file in which no row carries a stamp is refused. A stamp that
+is present but is not a number is not treated as empty: it indicates a column in another format,
+and the read stops naming the column and the value.
+
 **Missing values.** `-9999` is FLUXNET's missing value and becomes `NaN` before anything is
 computed.
 

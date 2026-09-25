@@ -38,8 +38,10 @@ out of scope and are not planned.
 | a parquet file already on a `DatetimeIndex` | floored onto the window |
 
 The stamp columns are parsed as the integer `YYYYMMDDHHMM` that FLUXNET writes. An ISO string
-column such as `2016-01-01 00:00` will not parse: convert it, or write the file as parquet with a
-`DatetimeIndex` instead. See [timestamps](#timestamps).
+column such as `2016-01-01 00:00` will not parse, and is refused naming the column and the value:
+convert it, or write the file as parquet with a `DatetimeIndex` instead. The stamps are local
+standard time with no time zone attached; an index that carries one is refused. See
+[timestamps](#timestamps).
 
 **3. One column per variable, numeric.** Text is coerced to numbers and anything that fails becomes
 missing.
@@ -63,9 +65,12 @@ and the reader says which.
 
 `qc`
 : The quality flag beside it, in the FLUXNET convention: **0 measured, anything above 0 modelled**.
-  Optional. Without it, a record counts as measured wherever it is present, which is the most that
-  can be concluded from a file that does not say. If your flag runs the other way, invert it before
-  reading.
+  Optional. Left out, the flag is inherited where the file carries one the registry can name: the
+  `<column>_QC` beside the column; for `GPP` and `RECO`, which are partitioned rather than measured,
+  the flag of the `NEE` of the same u\* selection, so that `GPP_NT_CUT_REF` takes `NEE_CUT_REF_QC`;
+  and failing both, the first of the variable's registry flags the file carries. Where there is none,
+  a record counts as measured wherever it is present, which is the most that can be concluded from
+  a file that does not say. If your flag runs the other way, invert it before reading.
 
 `factor`
 : What the column is multiplied by to reach the canonical unit. The unit each variable expects is on
@@ -140,6 +145,26 @@ The end stamp is the exception, and the reason the reader never uses it as it st
 ending at `00:00` belongs to the previous day, so a reader taking that stamp at face value moves a
 day's last half-hour into the next day. Where a file carries only `TIMESTAMP_END`, one window is
 subtracted from it.
+
+### Time zones
+
+FLUXNET timestamps are **local standard time**: the clock of the site's own time zone, with no
+daylight saving, and no zone recorded beside them. The reader works in the same terms, so an index
+that carries a time zone is refused, with the zone named.
+
+It is not converted for you, because the offset that is standard at the site is not something the
+file states. A pipeline that works in UTC writes a UTC index whatever the site's longitude, and a
+guess would shift every diurnal cycle on the page by the difference. Convert the index to the site's
+standard time and drop the zone before reading:
+
+```python
+df.index = df.index.tz_convert("Etc/GMT-1").tz_localize(None)   # a site on UTC+1
+```
+
+The sign of an `Etc/GMT` zone is **inverted** relative to the offset it describes, following the
+POSIX convention: UTC+1 is `Etc/GMT-1`, and UTC-5 is `Etc/GMT+5`. A fixed zone of this kind is the
+one to use. A regional zone such as `Europe/Zurich` observes daylight saving, so converting into it
+would move one hour of every summer day onto the wrong half-hour.
 
 ## What you give up
 

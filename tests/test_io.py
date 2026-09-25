@@ -113,6 +113,91 @@ def test_a_file_without_any_timestamp_is_refused():
         io._timestamp_index(pd.DataFrame({"TA_F": [1.0, 2.0]}))
 
 
+def test_a_zoned_index_is_refused_naming_the_zone(tmp_path):
+    """FLUXNET time is local standard time with no zone, and the site's offset is not guessed.
+
+    A zoned index cannot meet the zone-free grid, and used to be refused as a file none of whose
+    stamps land on it - quoting a first stamp of 2010-01-01 00:00, which plainly does. The message
+    has to name the zone and the conversion instead, and not be the grid message.
+    """
+    frame = synthetic_frame(years=2)
+    frame.index = frame.index.tz_localize("UTC")
+    path = tmp_path / "utc.parquet"
+    frame.to_parquet(path)
+    with pytest.raises(ValueError, match="time zone UTC") as refused:
+        io.read_fluxnet(path, ["TA"], quiet=True)
+    assert "Etc/GMT-1" in str(refused.value)
+    assert "land on the half-hourly grid" not in str(refused.value)
+
+
+def test_a_zoned_index_reads_once_converted_as_the_message_says(tmp_path):
+    """The advice in the refusal is itself checked, including the inverted sign of `Etc/GMT`.
+
+    The synthetic frame stands for a site on UTC+1; stored in UTC it is an hour behind. The
+    conversion the message quotes has to bring back exactly the stamps the site recorded.
+    """
+    frame = synthetic_frame(years=2)
+    in_utc = frame.index.tz_localize("Etc/GMT-1").tz_convert("UTC")
+    assert in_utc[0].hour == 23, "UTC+1 midnight is 23:00 the day before in UTC"
+
+    converted = frame.copy()
+    converted.index = in_utc.tz_convert("Etc/GMT-1").tz_localize(None)
+    assert converted.index.equals(frame.index)
+    path = tmp_path / "converted.parquet"
+    converted.to_parquet(path)
+    loaded = io.read_fluxnet(path, ["TA"], quiet=True)
+    assert loaded["TA"]["series"].notna().sum() == len(frame)
+
+
+def _with_trailing_row(path, fields):
+    """Append one row to a CSV, the way a spreadsheet leaves an empty one at the end of a file."""
+    width = len(path.read_text().splitlines()[0].split(","))
+    with path.open("a") as handle:
+        handle.write(",".join(fields + [""] * (width - len(fields))) + "\n")
+    return path
+
+
+def test_a_blank_trailing_row_is_dropped_and_counted(tmp_path, capsys):
+    """A row of empty fields has no timestamp, so it cannot be placed; it must not fail the read.
+
+    It used to stop the read with pandas' own "Cannot convert non-finite values to integer", which
+    names neither the file nor the column.
+    """
+    frame = synthetic_frame(years=2)
+    path = _with_trailing_row(to_fluxnet_csv(frame, tmp_path / "blank.csv"), [])
+    loaded = io.read_fluxnet(path, ["TA"])
+    assert loaded["TA"]["series"].notna().sum() == len(frame)
+    assert "row(s) without a timestamp dropped: 1" in capsys.readouterr().out
+
+    io.read_fluxnet(path, ["TA"], quiet=True)
+    assert "without a timestamp" not in capsys.readouterr().out
+
+
+def test_a_file_with_no_timestamp_in_any_row_is_refused(tmp_path):
+    path = tmp_path / "undated.csv"
+    path.write_text("TIMESTAMP_START,TIMESTAMP_END,TA_F\n,,1.0\n,,2.0\n")
+    with pytest.raises(ValueError, match="none of its 2 rows carries a timestamp"):
+        io.read_fluxnet(path, ["TA"], quiet=True)
+
+
+def test_a_stamp_that_is_not_a_number_is_refused_naming_the_column_and_value(tmp_path):
+    """Text in the stamp column is a different format, not an empty row, and is not dropped."""
+    path = _with_trailing_row(to_fluxnet_csv(synthetic_frame(years=2), tmp_path / "iso.csv"),
+                              ["2011-12-31 23:30"])
+    with pytest.raises(ValueError, match="TIMESTAMP_START holds '2011-12-31 23:30'"):
+        io.read_fluxnet(path, ["TA"], quiet=True)
+
+
+def test_missing_stamps_parse_to_nat_in_place():
+    """The rows around an empty stamp keep their own stamps; only the empty one has none."""
+    parsed = io._parse_stamps(pd.Series([202001010000, None, 202001010100]))
+    assert parsed[0] == pd.Timestamp("2020-01-01 00:00")
+    assert pd.isna(parsed[1])
+    assert parsed[2] == pd.Timestamp("2020-01-01 01:00")
+    as_text = io._parse_stamps(pd.Series(["202001010000", " ", "202001010100"]))
+    assert as_text[1:2].isna().all() and as_text[[0, 2]].equals(parsed[[0, 2]])
+
+
 # -- Missing values ------------------------------------------------------------------------------
 
 def test_the_fluxnet_missing_value_becomes_nan(tmp_path):
@@ -256,6 +341,54 @@ def test_a_column_the_registry_does_not_know_still_defaults_to_one(frame):
     assert io.resolve(renamed, {"TA": "my_temperature"})["TA"]["factor"] == 1.0
 
 
+# Every u* selection of NEE's flag a FULLSET file carries, as the CH-Oe2 header lists them.
+BOTH_SELECTIONS = ["NEE_VUT_REF_QC", "NEE_CUT_REF_QC", "NEE_VUT_USTAR50_QC", "NEE_CUT_USTAR50_QC",
+                   "NEE_VUT_MEAN_QC", "NEE_CUT_MEAN_QC", "NEE_VUT_25_QC", "NEE_CUT_25_QC"]
+
+
+@pytest.mark.parametrize("column, flag", [
+    ("GPP_NT_CUT_REF", "NEE_CUT_REF_QC"),
+    ("GPP_DT_CUT_REF", "NEE_CUT_REF_QC"),
+    ("GPP_NT_VUT_USTAR50", "NEE_VUT_USTAR50_QC"),
+    ("GPP_DT_CUT_USTAR50", "NEE_CUT_USTAR50_QC"),
+    ("RECO_NT_CUT_REF", "NEE_CUT_REF_QC"),
+    ("RECO_DT_VUT_USTAR50", "NEE_VUT_USTAR50_QC"),
+    ("RECO_NT_CUT_MEAN", "NEE_CUT_MEAN_QC"),
+    ("GPP_DT_VUT_25", "NEE_VUT_25_QC"),
+    ("GPP_NT_VUT_REF", "NEE_VUT_REF_QC"),
+])
+def test_a_named_partitioning_product_takes_the_flag_of_its_own_nee(column, flag):
+    """GPP and RECO take NEE's flag, and it has to be the NEE of the same u* selection.
+
+    The registry's list starts with `NEE_VUT_REF_QC`, so taking the first present entry gave
+    `GPP_NT_CUT_REF` the gap-filling record of the other threshold on any file carrying both.
+    """
+    key = column.split("_")[0]
+    names = [column] + BOTH_SELECTIONS
+    assert io.resolve(names, {key: column})[key]["qc"] == flag
+
+
+def test_a_partitioning_product_without_its_partner_falls_back_to_the_list():
+    """Where the file lacks the paired flag, the registry's order still decides."""
+    names = ["GPP_NT_CUT_REF", "NEE_VUT_REF_QC"]
+    assert io.resolve(names, {"GPP": "GPP_NT_CUT_REF"})["GPP"]["qc"] == "NEE_VUT_REF_QC"
+    # And a stated flag still wins over the pairing.
+    stated = io.resolve(["GPP_NT_CUT_REF"] + BOTH_SELECTIONS,
+                        {"GPP": dict(column="GPP_NT_CUT_REF", qc="NEE_VUT_REF_QC")})
+    assert stated["GPP"]["qc"] == "NEE_VUT_REF_QC"
+
+
+def test_the_default_resolution_of_the_partitioning_products_is_unchanged():
+    """The pairing applies to a named column; the unaided resolution is the registry's, as before."""
+    names = (["GPP_NT_VUT_REF", "GPP_NT_CUT_REF", "RECO_NT_VUT_REF", "RECO_NT_CUT_REF"]
+             + BOTH_SELECTIONS)
+    specs = io.resolve(names, ["GPP", "RECO"])
+    for key in ("GPP", "RECO"):
+        assert specs[key]["column"] == f"{key}_NT_VUT_REF"
+        assert specs[key]["qc"] == "NEE_VUT_REF_QC"
+        assert specs[key] == io.available(names)[key]
+
+
 def test_a_mapping_makes_a_non_fluxnet_file_readable(tmp_path):
     """The point of the mapping: columns that were never named for FLUXNET."""
     frame = synthetic_frame(years=10).rename(columns={"TA_F": "air_temp"})
@@ -335,6 +468,39 @@ def test_a_projected_read_gives_the_same_series_as_reading_everything(csv_path):
     pd.testing.assert_series_equal(
         projected.dropna(), expected.reindex(projected.index).dropna(),
         check_names=False, check_freq=False)
+
+
+def test_a_file_the_fast_reader_refuses_as_malformed_still_reads(tmp_path):
+    """A row wider than the header is refused by pyarrow and tolerated by the C parser."""
+    frame = synthetic_frame(years=2)
+    path = to_fluxnet_csv(frame, tmp_path / "ragged.csv")
+    lines = path.read_text().splitlines()
+    lines[100] += ",surplus"
+    path.write_text("\n".join(lines) + "\n")
+    with pytest.raises(ValueError):
+        pd.read_csv(path, usecols=["TA_F"], engine="pyarrow")
+    loaded = io.read_fluxnet(path, ["TA"], quiet=True)
+    assert loaded["TA"]["series"].notna().sum() == len(frame)
+
+
+def test_running_out_of_memory_is_not_retried_with_the_slower_parser(csv_path, monkeypatch):
+    """The fallback is for a file pyarrow finds malformed, not for every failure it meets.
+
+    Retrying a `MemoryError` with the C parser asks for more memory than the attempt that ran out.
+    """
+    calls = []
+    real = pd.read_csv
+
+    def read_csv(*args, **kwargs):
+        calls.append(kwargs.get("engine"))
+        if kwargs.get("engine") == "pyarrow":
+            raise MemoryError("out of memory")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(io.pd, "read_csv", read_csv)
+    with pytest.raises(MemoryError):
+        io._read_frame(csv_path, usecols=["TIMESTAMP_START", "TA_F"])
+    assert calls == ["pyarrow"]
 
 
 def test_a_qc_column_named_by_a_mapping_is_read_too(tmp_path):

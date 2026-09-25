@@ -38,6 +38,7 @@ usable on a series that is already in memory.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import numpy as np
@@ -55,6 +56,17 @@ PARQUET_SUFFIXES = (".parquet", ".pq")
 # The stamps `_timestamp_index` knows how to build an index from. Kept beside the reader because a
 # projected read has to ask for them before it knows which one it will use.
 TIMESTAMP_COLUMNS = ("TIMESTAMP_START", "TIMESTAMP_END", "TIMESTAMP")
+
+# A FULLSET partitioning product, named for its method and for the u* selection of the NEE it was
+# partitioned from: `GPP_NT_CUT_REF` comes out of `NEE_CUT_REF`, `RECO_DT_VUT_USTAR50` out of
+# `NEE_VUT_USTAR50`, `GPP_NT_VUT_25` out of `NEE_VUT_25`.
+_PARTITIONED = re.compile(r"(?:GPP|RECO)_(?:NT|DT)_((?:VUT|CUT)_[A-Z0-9]+)")
+
+
+def _partitioned_from(column):
+    """The quality flag of the NEE a partitioned column came from, or None for any other column."""
+    match = _PARTITIONED.fullmatch(column)
+    return f"NEE_{match.group(1)}_QC" if match else None
 
 
 def columns_of(source):
@@ -97,11 +109,19 @@ def _read_frame(path, usecols=None):
 
     if usecols is not None:
         # pyarrow's CSV reader is multithreaded and roughly six times faster than the C parser on
-        # a file this wide. It is stricter, so anything it refuses falls back rather than failing
-        # the read.
+        # a file this wide. It is stricter, so a file it refuses as malformed - a row with more
+        # fields than the header, say, which the C parser tolerates - falls back rather than
+        # failing the read.
+        #
+        # Only that refusal falls back. pyarrow reports it as `ArrowInvalid`, which pandas re-raises
+        # as a `ParserError`; which of the two arrives depends on the pandas version. Anything else
+        # is a failure the C parser would meet as well, and one of them is worse than a wasted
+        # second read: a `MemoryError` retried with a slower parser that holds more per column
+        # asks for more memory than the attempt that just ran out of it.
+        import pyarrow as pa
         try:
             return pd.read_csv(path, usecols=usecols, engine="pyarrow")
-        except Exception:
+        except (pd.errors.ParserError, pa.ArrowInvalid):
             pass
     return pd.read_csv(path, usecols=usecols, low_memory=False)
 
@@ -130,27 +150,54 @@ def _window_starts(stamps, on_grid):
     return stamps if on_grid else stamps.floor(FREQ)
 
 
-def _parse_stamps(column):
-    """A FLUXNET `YYYYMMDDHHMM` column as a DatetimeIndex.
+def _parse_stamps(column, label="the file"):
+    """A FLUXNET `YYYYMMDDHHMM` column as a DatetimeIndex, with `NaT` where a row has no stamp.
 
     Split arithmetically rather than through strings: formatting 368,000 integers as text and
     parsing them back with a format string took half a second per column on a 21-year record, and
     this takes a fraction of that. A column that is not twelve digits throughout goes the old way,
     so whatever that path refused, and the error it gave, is unchanged.
+
+    An empty stamp is not an error here. A CSV saved from a spreadsheet routinely ends in a row of
+    empty fields, and a row that cannot be dated cannot be placed on the grid either, so it comes
+    back as `NaT` for `read_fluxnet` to drop and count. A stamp that is present but is not a number
+    is different - it says the column is in some other format, not that one row is empty - and is
+    refused naming the column and the value, since nothing below could say which of the two it was.
     """
-    values = column.astype("int64").to_numpy()
+    name = column.name if column.name is not None else "the timestamp column"
+    stated = column.notna().to_numpy()
+    if not pd.api.types.is_numeric_dtype(column):
+        # Read as text, an empty field may arrive as "" or as whitespace rather than as missing.
+        stated = stated & column.astype("string").fillna("").str.strip().ne("").to_numpy(bool)
+    numbers = pd.to_numeric(column.where(stated), errors="coerce")
+    unreadable = stated & numbers.isna().to_numpy()
+    if unreadable.any():
+        raise ValueError(
+            f"{label}: {name} holds {column[unreadable].iloc[0]!r}, which is not a number. Stamps "
+            f"are read as the integer YYYYMMDDHHMM that FLUXNET writes, 201601010030 for "
+            f"2016-01-01 00:30; convert the column to that form, or write the file as parquet on a "
+            f"DatetimeIndex.")
+
+    present = numbers.notna().to_numpy()
+    values = numbers.to_numpy()[present].astype("int64")
     if values.size and (values.min() < 10**11 or values.max() >= 10**12):
-        return pd.DatetimeIndex(pd.to_datetime(column.astype("int64").astype(str),
-                                               format="%Y%m%d%H%M"))
-    year, rest = np.divmod(values, 10**8)
-    month, rest = np.divmod(rest, 10**6)
-    day, rest = np.divmod(rest, 10**4)
-    hour, minute = np.divmod(rest, 100)
-    return pd.DatetimeIndex(pd.to_datetime(dict(year=year, month=month, day=day, hour=hour,
-                                                minute=minute)))
+        parsed = pd.DatetimeIndex(pd.to_datetime(pd.Series(values).astype(str),
+                                                 format="%Y%m%d%H%M"))
+    else:
+        year, rest = np.divmod(values, 10**8)
+        month, rest = np.divmod(rest, 10**6)
+        day, rest = np.divmod(rest, 10**4)
+        hour, minute = np.divmod(rest, 100)
+        parsed = pd.DatetimeIndex(pd.to_datetime(dict(year=year, month=month, day=day, hour=hour,
+                                                      minute=minute)))
+    if present.all():
+        return parsed
+    out = np.full(len(column), np.datetime64("NaT", np.datetime_data(parsed.dtype)[0]))
+    out[present] = parsed.to_numpy()
+    return pd.DatetimeIndex(out)
 
 
-def _raw_stamps(df):
+def _raw_stamps(df, label="the file"):
     """The timestamps as the file states them, and whether they already name the window start.
 
     Kept apart from `_timestamp_index` because the **spacing** of a file is a fact about these and
@@ -160,10 +207,25 @@ def _raw_stamps(df):
     ten-minute file is indistinguishable from a half-hourly one, so it is measured before.
     """
     if isinstance(df.index, pd.DatetimeIndex):
+        # FLUXNET timestamps are local standard time: no zone, and no daylight saving. An index
+        # that carries a zone - which any pipeline working in UTC writes - cannot be compared with
+        # the zone-free grid at all, and used to fail much later as a file none of whose stamps
+        # land on the grid, quoting a first stamp that visibly does. Converting it is not done
+        # here, because the offset that is standard at the site is not something the file states:
+        # UTC and a site on UTC+1 differ by a whole hour, and a guess would move every diurnal
+        # cycle on the page by that much without a word.
+        if df.index.tz is not None:
+            raise ValueError(
+                f"{label}: its timestamps carry the time zone {df.index.tz}, and this reads the "
+                f"local standard time FLUXNET uses, with no zone and no daylight saving. Convert "
+                f"the index to the site's standard time and drop the zone before reading, e.g. "
+                f'df.index = df.index.tz_convert("Etc/GMT-1").tz_localize(None) for a site on '
+                f"UTC+1. The sign of an Etc/GMT zone is inverted: UTC+1 is Etc/GMT-1. A regional "
+                f"zone such as Europe/Zurich observes daylight saving and is not standard time.")
         return df.index, False
 
     def parse(col):
-        return _parse_stamps(df[col])
+        return _parse_stamps(df[col], label)
 
     if "TIMESTAMP_START" in df.columns:
         return parse("TIMESTAMP_START"), True
@@ -291,14 +353,25 @@ def resolve(source, keys, label="the file"):
         # coverage warning falls silent on a record that is half gap-filled by design.
         #
         # `<column>_QC` is preferred so the flag stays with the variant it describes; an ordered
-        # candidate list cannot do that once the caller has picked a column out of order. The list
-        # is the fallback, and is what GPP and RECO need: neither is measured, so both take the
-        # flag of the NEE they were partitioned from.
+        # candidate list cannot do that once the caller has picked a column out of order.
+        #
+        # GPP and RECO carry no flag of their own: neither is measured, so both take the flag of
+        # the NEE they were partitioned from, and the name of the column says which NEE that was.
+        # Taking the first flag the list finds instead gave `GPP_NT_CUT_REF` the flag of
+        # `NEE_VUT_REF` on any file carrying both u* selections - the gap-filling record of a
+        # different threshold. On CH-Oe2 the two flags disagree on 1.1 % of records, which is small
+        # there and need not be elsewhere. The list is the fallback for a column whose partner the
+        # file does not carry.
         if "qc" not in spec:
             candidates = varreg.make(key).qc_candidates
             direct = f"{spec['column']}_QC"
-            qc = (direct if direct in candidates and direct in columns
-                  else next((q for q in candidates if q in columns), None))
+            paired = _partitioned_from(spec["column"])
+            if direct in candidates and direct in columns:
+                qc = direct
+            elif paired and paired in columns:
+                qc = paired
+            else:
+                qc = next((q for q in candidates if q in columns), None)
         # The unit conversion follows the column, not the form the caller used to name it. Naming
         # one of the registry's own candidates - `--var NEE=NEE_CUT_REF`, to take the variant the
         # file carries rather than the one the registry prefers - is a choice of column and not a
@@ -374,7 +447,20 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
     # make zero the commonest step; and the mode rather than the mean, because a record with
     # genuine gaps still has 30 minutes as its commonest step.
     # Parsed once and used twice: for the spacing here, and floored into the index below.
-    stamps, on_grid = _raw_stamps(df)
+    stamps, on_grid = _raw_stamps(df, label=path.name)
+
+    # A row without a timestamp cannot be placed on the grid, and a file saved from a spreadsheet
+    # routinely ends in one, a row of empty fields. Dropped and counted, as an incomplete year is,
+    # rather than failing a read that has nothing else wrong with it. Done before the spacing is
+    # measured, which an undated row would otherwise enter as a missing step.
+    undated = np.asarray(stamps.isna())
+    if len(undated) and undated.all():
+        raise ValueError(f"{path.name}: none of its {len(undated):,} rows carries a timestamp")
+    if undated.any():
+        df, stamps = df[~undated], stamps[~undated]
+        if not quiet:
+            say(f"  row(s) without a timestamp dropped: {int(undated.sum()):,}")
+
     if len(stamps) > 1:
         steps = pd.Series(stamps.drop_duplicates().sort_values()).diff().dropna()
         common = steps.mode()
