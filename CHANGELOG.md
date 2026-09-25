@@ -73,6 +73,11 @@
   not name who built the page, since that is whoever ran the build. The text keeps a readable line length instead of
   running across the full page width.
 - **The build time is stated with its UTC offset.**
+- **GPP and RECO are no longer said to be measured.** Both are modelled in every half-hour by partitioning the net
+  exchange, so the share the page states for them is the share of the NEE they came from that was measured, and it
+  names that NEE column. Their coverage chart is titled "How much of each year was partitioned from measured net
+  exchange", a month tile reads "42 % from measured NEE_VUT_REF", and the build's warning says which NEE a thin month
+  rests on.
 - **The examples state what the default build takes and show the new features.** `examples/README.md` opens with the
   current `--list` output and its marks, adds the energy-balance build with what decides whether net radiation and each
   ratio appear, and shows `Atlas.table()` and `Atlas.provenance`. `build_fluxnet_atlas.py` marks the variables built

@@ -612,6 +612,7 @@ VARIABLES = {
                  ("GPP_NT_VUT_USTAR50", UMOL_TO_GC), ("GPP_DT_VUT_USTAR50", UMOL_TO_GC),
                  ("GPP_F", UMOL_TO_GC), ("GPP", UMOL_TO_GC)],
         qc=["NEE_VUT_REF_QC", "NEE_CUT_REF_QC", "NEE_VUT_USTAR50_QC", "NEE_QC"],
+        partitioned=True,
         # Gross uptake is positive by construction, but the nighttime partitioning returns negative
         # values wherever its respiration model overshoots the measured net flux - on the CH-Oe2
         # record `GPP_NT_VUT_REF` reaches -49 µmol m-2 s-1, against a `GPP_DT_VUT_REF` that never
@@ -655,6 +656,7 @@ VARIABLES = {
                  ("RECO_NT_VUT_USTAR50", UMOL_TO_GC), ("RECO_DT_VUT_USTAR50", UMOL_TO_GC),
                  ("RECO", UMOL_TO_GC)],
         qc=["NEE_VUT_REF_QC", "NEE_CUT_REF_QC", "NEE_VUT_USTAR50_QC", "NEE_QC"],
+        partitioned=True,
         # Respiration is a modelled positive quantity and never approaches the low end; the
         # asymmetry is what records that, rather than a bound the data comes near.
         limits=(-1.0, 4.0),
@@ -857,6 +859,9 @@ class Variable:
         # 103 for the page as it stood, `PA` alone (mostly reanalysis-filled) accounting for 159.
         # A mark on nearly every tile distinguishes none of them.
         self.default = cfg.get("default", True)
+        # A partitioning product (GPP, RECO): every value is modelled from the net flux, and its
+        # "measured" share is the share of that net flux that was measured.
+        self.partitioned = cfg.get("partitioned", False)
         self.family = family(key)
 
         self.extremes = dict(high="highest", low="lowest", low_halfhour=True, low_day=True)

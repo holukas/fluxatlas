@@ -2393,10 +2393,16 @@
      variable's own (`v.fill.levels`), and the flag and its convention sit in the title. This
      qualifies the figure above it; it gates nothing. */
   function fillPhrase(v, rec) {
-    let text = nf(rec.meas, 0) + ' % measured';
+    /* A partitioning product is modelled in every half-hour, so its shares are those of the net
+       flux it was partitioned from, and they are worded as such. */
+    if (v.partitioned && !v.fill) return 'modelled by partitioning the net exchange';
+    const nee = partitionedFrom(v);
+    let text = nf(rec.meas, 0) + (nee ? ' % from measured ' + nee : ' % measured');
     if (!v.fill || !rec.f) return text;
     rec.f.forEach((p, i) => {
-      if (p > 0 && v.fill.levels[i]) text += ', ' + nf(p, 0) + ' % ' + v.fill.levels[i];
+      if (p > 0 && v.fill.levels[i]) {
+        text += ', ' + nf(p, 0) + ' % ' + (nee ? 'from its ' : '') + v.fill.levels[i];
+      }
     });
     return '<span title="' + v.fill.flag + ' follows ' + v.fill.note + '">' + text + '</span>';
   }
@@ -3782,18 +3788,35 @@
   const fillSwatch = i => 'color-mix(in srgb, var(--series-1) ' + Math.round(fillOpacity(i) * 100)
     + '%, transparent)';
 
+  /**
+   * The net flux a partitioning product (GPP, RECO) was modelled from, named by its flag: the
+   * column where the flag is an NEE one, and null where the build carries no such flag, in which
+   * case nothing about the product's hours can be called measured.
+   */
+  function partitionedFrom(v) {
+    if (!v.partitioned || !v.fill || !/^NEE.*_QC$/.test(v.fill.flag)) return null;
+    return v.fill.flag.replace(/_QC$/, '');
+  }
+
   /** What share of each year was measured rather than modelled, which qualifies everything above. */
   function drawVarCoverage(key) {
     const v = VARS[key];
+    const nee = partitionedFrom(v);
+    // A partitioning product read without any flag has no measured share to draw.
+    const noMeas = v.partitioned && !v.fill;
+    const measLabel = nee ? nee + ' measured' : 'Measured';
     return function (host) {
       const years = YEAR_ROWS.map(r => r.y);
-      const meas = YEAR_ROWS.map(r => (r[key] && isNum(r[key].meas) ? r[key].meas : null));
+      const meas = YEAR_ROWS.map(r => (!noMeas && r[key] && isNum(r[key].meas) ? r[key].meas
+        : null));
       const avail = YEAR_ROWS.map(r => (r[key] && isNum(r[key].avail) ? r[key].avail : null));
       /* How the rest of each year was filled, one share per level of the variable's flag, stacked
          on the measured bar. A variable read without a flag has none, and its bars are as before. */
       const levels = v.fill ? v.fill.levels : [];
       const fills = YEAR_ROWS.map(r => (r[key] && r[key].f) || []);
-      const f = frame(host, { aspect: 0.3, ariaLabel: v.short + ' measured share by year' });
+      const f = frame(host, { aspect: 0.3, ariaLabel: nee
+        ? v.short + ': share of each year for which ' + nee + ' was measured'
+        : v.short + (noMeas ? ' available share by year' : ' measured share by year') });
       const sx = linear(years[0] - 0.5, years[years.length - 1] + 0.5, f.m.left, f.m.left + f.iw);
       const sy = linear(0, 100, f.m.top + f.ih, f.m.top);
       const every = Math.max(1, Math.ceil(years.length / Math.max(3, Math.floor(f.iw / 54))));
@@ -3828,11 +3851,15 @@
       hover(f, sx, years, y => {
         const i = years.indexOf(y);
         const rows = [
-          { k: 'Available', v: isNum(avail[i]) ? nf(avail[i], 0) + ' %' : '—', color: f.p.bandOuter },
-          { k: 'Measured', v: isNum(meas[i]) ? nf(meas[i], 0) + ' %' : '—', color: f.p.series[0] }
+          { k: 'Available', v: isNum(avail[i]) ? nf(avail[i], 0) + ' %' : '—', color: f.p.bandOuter }
         ];
+        if (!noMeas) {
+          rows.push({ k: measLabel, v: isNum(meas[i]) ? nf(meas[i], 0) + ' %' : '—',
+            color: f.p.series[0] });
+        }
         levels.forEach((label, j) => {
-          rows.push({ k: cap(label), v: nf(fills[i][j] || 0, 0) + ' %', color: fillSwatch(j) });
+          rows.push({ k: nee ? nee + ' ' + label : cap(label), v: nf(fills[i][j] || 0, 0) + ' %',
+            color: fillSwatch(j) });
         });
         return tipRows(String(y), rows);
       });
@@ -4348,18 +4375,38 @@
 
     /* Where the variable has a flag, the part of each bar above the measured share is split by how
        it was filled, in that flag's own convention, which the sub names. */
-    const fillLegend = v.fill
-      ? v.fill.levels.map((label, j) => ({ color: fillSwatch(j), label: label })) : [];
+    const nee = partitionedFrom(v);
+    const fillLegend = v.fill ? v.fill.levels.map((label, j) => ({ color: fillSwatch(j),
+      label: nee ? nee + ' ' + label : label })) : [];
+    /* A partitioning product is modelled in every half-hour, so its bars are not a measured share
+       of its own: they are the share of the net flux it was partitioned from that was measured,
+       and the card says so in its title, its text and its legend. */
+    const covSub = nee
+      ? v.short + ' is not measured: every value is modelled by partitioning the net ecosystem '
+        + 'exchange ' + nee + '. The bars show the share of each year the product covers, and the '
+        + 'share for which ' + nee + ' was measured rather than gap-filled. Above that, the rest is '
+        + 'split by how ' + v.fill.flag + ' says ' + nee + ' was filled; the flag follows '
+        + v.fill.note + '. The dashed line is this variable’s warning threshold.'
+      : v.partitioned && !v.fill
+        ? v.short + ' is not measured. Every value of it is modelled, by partitioning the net '
+          + 'ecosystem exchange, and this build carries no flag of that net flux, so the bars show '
+          + 'only the share of each year the product covers.'
+        : 'The share of each year the product covers, and the share that came from the instrument '
+          + 'rather than from the gap-filling model. The dashed line is this variable’s warning '
+          + 'threshold.'
+          + (v.fill ? ' Above the measured share, the rest is split by how ' + v.fill.flag
+            + ' says it was filled; the flag follows ' + v.fill.note + '.' : '');
+    const covLegend = [{ color: 'var(--band-outer)', label: 'available' }]
+      .concat(v.partitioned && !v.fill ? []
+        : [{ color: 'var(--series-1)', label: nee ? nee + ' measured' : 'measured' }])
+      .concat(fillLegend, [{ color: 'var(--pole-warm)', label: 'warning line', line: true }]);
     chartCard(document.getElementById('var-cov'), {
-      title: 'How much of each year was measured', width: 'w-12',
-      sub: 'The share of each year the product covers, and the share that came from the instrument '
-        + 'rather than from the gap-filling model. The dashed line is this variable’s warning '
-        + 'threshold.'
-        + (v.fill ? ' Above the measured share, the rest is split by how ' + v.fill.flag
-          + ' says it was filled; the flag follows ' + v.fill.note + '.' : ''),
-      legend: [{ color: 'var(--band-outer)', label: 'available' },
-        { color: 'var(--series-1)', label: 'measured' }].concat(fillLegend,
-        [{ color: 'var(--pole-warm)', label: 'warning line', line: true }]),
+      title: nee ? 'How much of each year was partitioned from measured net exchange'
+        : v.partitioned ? 'How much of each year the product covers'
+          : 'How much of each year was measured',
+      width: 'w-12',
+      sub: covSub,
+      legend: covLegend,
       foot: 'Every statistic on this page is gated on availability and only warned on by the '
         + 'measured share. Where the measured share itself trends through the record, part of a '
         + 'slope above may be that trend rather than the ecosystem.',
@@ -6141,8 +6188,10 @@
         kv += '<dt>' + label + '</dt><dd>' + line + '</dd>';
       });
       const meas = DAYS.meas[v.key] ? DAYS.meas[v.key][i] : null;
-      if (isNum(meas) && meas < 99.5) {
-        kv += '<dt>' + v.short + ' measured</dt><dd>' + nf(meas, 0) + ' %</dd>';
+      const nee = partitionedFrom(v);
+      if (isNum(meas) && meas < 99.5 && !(v.partitioned && !v.fill)) {
+        kv += '<dt>' + v.short + (nee ? ' from measured ' + nee : ' measured') + '</dt><dd>'
+          + nf(meas, 0) + ' %</dd>';
       }
     });
     kv += '</dl>';

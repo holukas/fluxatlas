@@ -675,7 +675,9 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
             share = measured.mean() * 100
             flag = v.qc_column or "no QC column"
             say(f"  {key:<7} {v.column:<16} {flag:<18} {len(series):>8,} records  "
-                f"{share:5.1f} % measured")
+                f"{share:5.1f} % measured"
+                + (" (of the NEE it is partitioned from)" if v.partitioned and v.qc_column
+                   else ""))
     return out
 
 

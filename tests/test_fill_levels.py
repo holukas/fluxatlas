@@ -23,6 +23,7 @@ import pandas as pd
 import pytest
 
 import fluxatlas as fa
+from fluxatlas import build as _build
 from fluxatlas import io as fio
 from fluxatlas import variables as varreg
 from conftest import add_fluxes, synthetic_frame
@@ -289,6 +290,55 @@ def test_the_variable_page_splits_the_coverage_chart_by_fill_level(atlas, tmp_pa
     for label in ("good-quality fill", "medium-quality fill", "poor-quality fill"):
         assert label in nee
     assert "reanalysis" not in nee
+
+
+def test_only_the_partitioning_products_are_marked_partitioned(flagged):
+    built = fa.Atlas(flagged[1], ["NEE", "GPP", "RECO"], site="XX-Fil", hourly=False, quiet=True)
+    assert {v["key"]: v["partitioned"] for v in built.payload["variables"]} == dict(
+        NEE=False, GPP=True, RECO=True)
+
+
+@needs_jsdom
+def test_a_partitioned_flux_says_its_bars_are_the_net_flux_it_came_from(flagged, tmp_path):
+    """GPP is modelled in every half-hour, so its coverage card must not call any of its own hours
+    measured: the bars are the share of the NEE it was partitioned from that was measured."""
+    built = fa.Atlas(flagged[1], ["NEE", "GPP"], site="XX-Fil", hourly=False, quiet=True)
+    _, found = read_page(built, tmp_path, "#var-GPP", "#var-NEE")
+    gpp, nee = found["#var-GPP"]["cov"], found["#var-NEE"]["cov"]
+    assert "partitioned from measured net exchange" in gpp
+    assert "is not measured: every value is modelled" in gpp
+    assert "NEE_VUT_REF measured" in gpp and "NEE_VUT_REF good-quality fill" in gpp
+    assert "How much of each year was measured" not in gpp
+    assert "How much of each year was measured" in nee and "not measured" not in nee
+
+
+@needs_jsdom
+def test_a_partitioned_fluxs_month_tile_names_the_net_flux_it_came_from(flagged, tmp_path):
+    built = fa.Atlas(flagged[1], ["NEE", "GPP"], site="XX-Fil", hourly=False, quiet=True)
+    month = next(r for r in built.payload["months"] if r["y"] == 2011 and r["m"] == 3)
+    _, found = read_page(built, tmp_path, "#2011-03")
+    tiles = found["#2011-03"]["tiles"]
+    gpp, nee = month["GPP"], month["NEE"]
+    assert (f"{gpp['meas']:.0f} % from measured NEE_VUT_REF, {gpp['f'][0]} % from its "
+            f"good-quality fill") in tiles
+    assert f"{nee['meas']:.0f} % measured, {nee['f'][0]} % good-quality fill" in tiles
+
+
+def test_the_build_warning_says_a_partitioned_flux_rests_on_the_net_flux(flagged, capsys):
+    built = fa.Atlas(flagged[1], ["NEE", "GPP"], site="XX-Fil", hourly=False)
+    assert "(of the NEE it is partitioned from)" in capsys.readouterr().out
+    thin = built.payload["meta"]["thin"]
+    assert thin["GPP"]["partitioned_from"] == "NEE_VUT_REF"
+    assert thin["NEE"]["partitioned_from"] is None
+    # Three synthetic years hold no month under the flux line, so the words are driven directly.
+    common = dict(warn=20.0, n=2, n_total=36, flagged=True, lowest=5.0, worst="March 2011")
+    _build.report_thin_spans(dict(NEE=dict(common, partitioned_from=None),
+                                  GPP=dict(common, partitioned_from="NEE_VUT_REF")))
+    nee, gpp = capsys.readouterr().out.splitlines()
+    assert nee.strip().startswith("warning: NEE is under 20 % measured")
+    assert gpp.strip().startswith("warning: GPP is partitioned from NEE_VUT_REF, which is under "
+                                  "20 % measured")
+    assert "the partitioned values are used" in gpp
 
 
 @needs_jsdom

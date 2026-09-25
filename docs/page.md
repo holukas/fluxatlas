@@ -157,7 +157,8 @@ The rest of the page:
   rain, a night without sunshine, humidity at 100 % on hundreds of days - is stated as a bound
   instead of listed;
 - how much of each year was available and how much was measured, against the variable's warning
-  line;
+  line. GPP and RECO are modelled in every half-hour by partitioning the net exchange, so on their
+  pages the bars are the share of that NEE which was measured, and the card names the NEE column;
 - the record day by day, in the two forms the span panel uses for a month. Every year is drawn
   along the year over the normal band for each date, since at this length what a daily scale can
   answer is where in the year the variable varies and where it holds still. Beside it, every day's

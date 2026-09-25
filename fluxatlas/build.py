@@ -2463,8 +2463,13 @@ def thin_spans(loaded, frames_by_var, months):
         warn = varreg.coverage(key).warn
         meas = frames_by_var[key]["meas"].reindex(months)
         thin = meas[meas < warn].dropna()
+        v = loaded[key]["v"]
         out[key] = dict(warn=warn, n=int(len(thin)), n_total=int(meas.notna().sum()),
-                        flagged=loaded[key]["v"].qc_column is not None,
+                        flagged=v.qc_column is not None,
+                        # The net flux a partitioning product was modelled from, by its flag.
+                        partitioned_from=(v.qc_column[:-3] if v.partitioned and v.qc_column
+                                          and v.qc_column.startswith("NEE")
+                                          and v.qc_column.endswith("_QC") else None),
                         lowest=None if thin.empty else float(thin.min()),
                         worst=None if thin.empty else f"{thin.idxmin():%B %Y}")
     return out
@@ -2481,7 +2486,14 @@ def report_thin_spans(thin, quiet=False):
         # are gaps rather than filling, and there are no gap-filled values to have used.
         used = ("the gap-filled values are used" if d.get("flagged", True)
                 else "the values present are used")
-        say(f"  warning: {key} is under {d['warn']:.0f} % measured in {d['n']} of "
+        # A partitioning product is modelled throughout; its share is the net flux's.
+        nee = d.get("partitioned_from")
+        if nee:
+            subject = f"{key} is partitioned from {nee}, which is"
+            used = "the partitioned values are used"
+        else:
+            subject = f"{key} is"
+        say(f"  warning: {subject} under {d['warn']:.0f} % measured in {d['n']} of "
             f"{d['n_total']} months (lowest {d['lowest']:.0f} % in {d['worst']}); {used} and "
             f"those months are marked on the grid")
 
@@ -3264,7 +3276,8 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         own = next((m["key"] for m in metrics if m["var"] == key and m["field"] == "value"), None)
         variables.append(dict(key=key, title=v.title, short=v.short, units=v.units,
                               digits=v.digits, agg=v.agg, product=v.source,
-                              column=v.column, derived=bool(v.derived), ship=list(v.ship),
+                              column=v.column, derived=bool(v.derived),
+                              partitioned=bool(v.partitioned), ship=list(v.ship),
                               metric=own,
                               first_year=int(v.first_year), last_year=int(v.last_year),
                               # The page hatches sparse tiles and gates its own "best month"
