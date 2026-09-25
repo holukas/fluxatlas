@@ -8,13 +8,16 @@ hourly arrays a `--no-hourly` build leaves out.
 
 The payload tests hold the surface to the monthly figures the rest of the page states, since the two
 describe one record: a mean variable's twenty-four hours average to its monthly mean, and a summed
-one's add up to its mean daily total.
+one's add up to its mean daily total. The renderer tests read what the page draws from it.
 """
 
 from __future__ import annotations
 
 import calendar
 import json
+import shutil
+import subprocess
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -23,6 +26,13 @@ import pytest
 import fluxatlas as fa
 from fluxatlas import build
 from fluxatlas import variables as varreg
+
+NODE = shutil.which("node")
+TEXT = Path(__file__).parent / "diurnal_text.mjs"
+JSDOM = (Path(__file__).parent / "js" / "node_modules" / "jsdom").is_dir()
+needs_jsdom = pytest.mark.skipif(NODE is None or not JSDOM,
+                                 reason="node with jsdom is not available; run `npm install` in "
+                                        "tests/js")
 
 
 def surface(layer, key):
@@ -198,3 +208,87 @@ def test_the_departure_scale_is_what_most_of_the_record_stays_within(flux_atlas)
     spread = layer["vars"]["NEE"]["spread"]
     share = (departure <= spread + 1 / layer["vars"]["NEE"]["scale"]).mean()
     assert 0.93 <= share <= 0.97
+
+
+# -- The page -------------------------------------------------------------------------------------
+
+def read(page, *hashes):
+    result = subprocess.run([NODE, str(TEXT), str(page), *hashes], capture_output=True, text=True,
+                            encoding="utf-8", timeout=400)
+    assert result.returncode == 0, result.stderr
+    out = json.loads(result.stdout)
+    assert out["errors"] == []
+    return out["views"]
+
+
+def span_hashes(payload):
+    mid = lambda rows: rows[len(rows) // 2]
+    mo, se, yr = mid(payload["months"]), mid(payload["seasons"]), mid(payload["years"])
+    return dict(month=f"#{mo['y']}-{mo['m']:02d}", season=f"#{se['y']}-{se['s']}",
+                year=f"#{yr['y']}-{payload['meta']['year_slug']}")
+
+
+@pytest.fixture(scope="module")
+def flux_page(flux_atlas, tmp_path_factory):
+    return flux_atlas.write(tmp_path_factory.mktemp("diurnal") / "flux.html", quiet=True)
+
+
+@needs_jsdom
+def test_the_variable_page_draws_the_surface_and_twelve_mean_days(flux_page):
+    views = read(flux_page, "#var-NEE", "#var-PREC")
+    for key in ("NEE", "PREC"):
+        view = views[f"#var-{key}"]
+        assert view["heading"] == "Through the day"
+        surface_card, days_card = view["var"]
+        assert surface_card["title"] == "Every hour of every calendar month"
+        assert surface_card["rows"] == [12]
+        assert "mean total per hour" in surface_card["sub"]
+        assert len(days_card["facets"]) == 12 and days_card["svgs"] == 12
+        assert all("per hour" in f for f in days_card["facets"])
+        assert all(tip for tip in surface_card["tips"] + days_card["tips"])
+    # The net exchange states which way it ran, beside the figure.
+    assert "net release" in views["#var-NEE"]["var"][0]["tips"][0] \
+        or "net uptake" in views["#var-NEE"]["var"][0]["tips"][0]
+    assert "Green is net uptake and red net release" in views["#var-NEE"]["var"][0]["foot"]
+
+
+@needs_jsdom
+def test_a_page_whose_build_carries_no_surface_draws_nothing_in_its_place(flux_atlas, tmp_path):
+    payload = dict(flux_atlas.payload, diurnal=None)
+    page = build.render(payload, tmp_path / "none.html")
+    views = read(page, "#var-NEE", span_hashes(payload)["month"])
+    assert views["#var-NEE"]["heading"] is None and views["#var-NEE"]["var"] == []
+    titles = [c["title"] for c in views[span_hashes(payload)["month"]]["span"]]
+    assert not any(t.startswith("At what hour") for t in titles)
+
+
+@needs_jsdom
+def test_each_span_scale_differs_by_its_own_months(flux_atlas, flux_page):
+    """A month is one row of twenty-four hours, a season its months, a year the full twelve."""
+    hashes = span_hashes(flux_atlas.payload)
+    views = read(flux_page, *hashes.values())
+    n_vars = len(flux_atlas.payload["variables"])
+    months_in_season = len(flux_atlas.payload["season_defs"][0]["months"])
+    for scale, rows in (("month", 1), ("season", months_in_season), ("year", 12)):
+        card = next(c for c in views[hashes[scale]]["span"]
+                    if c["title"].startswith("At what hour"))
+        assert card["title"] == f"At what hour this {scale} differed"
+        assert card["rows"] == [rows] * n_vars
+        assert len(card["captions"]) == n_vars
+        assert all(tip and "Record mean" in tip for tip in card["tips"])
+    # The net exchange's departure is named by the way it moved, which holds either side of zero.
+    year = next(c for c in views[hashes["year"]]["span"] if c["title"].startswith("At what hour"))
+    nee = year["captions"][[v["key"] for v in flux_atlas.payload["variables"]].index("NEE")]
+    assert "toward uptake" in nee or "toward release" in nee
+
+
+@needs_jsdom
+def test_the_mean_day_survives_a_build_without_the_hourly_arrays(flux_atlas, flux_page):
+    """Where the hourly arrays are left out, the mean day is drawn from the surface instead."""
+    for scale, h in span_hashes(flux_atlas.payload).items():
+        card = read(flux_page, h)[h]["span"][0]
+        assert card["title"].startswith("The mean day of"), scale
+        assert "built without the hourly arrays" in card["foot"]
+        # The variables the hourly arrays would have carried, each stated per hour where it sums.
+        assert card["svgs"] == 3
+        assert any(f.startswith("Net CO₂ exchange") and "per hour" in f for f in card["facets"])

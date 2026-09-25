@@ -4387,7 +4387,436 @@
 
   /* ---- Through the day: the month-by-hour surface and the mean day of each calendar month. ----
      Fills #var-diurnal from DATA.diurnal. */
-  function renderVarDiurnal() {}
+
+  /* The month-by-hour surfaces, built in Python for every variable whatever the hourly arrays
+     carry: for each year, the mean of each hour of the day in each calendar month, with the
+     record's own surface and the 10th to 90th percentile of the years beside it. A variable that
+     sums is stated as its mean total per hour. Stored as integers at a per-variable scale, flat in
+     the order year, month, hour. Read through these accessors and nothing else, so the layout is
+     decided in one place. */
+  const surfaceOf = key => (DATA.diurnal && DATA.diurnal.vars[key]) || null;
+  const surfaceKeys = () => DATA.variables.map(v => v.key).filter(k => surfaceOf(k));
+  const surfaceDigits = s => Math.max(0, Math.round(Math.log10(s.scale)));
+  const surfaceAt = (s, arr, i) => (arr[i] === null || arr[i] === undefined ? null
+    : arr[i] / s.scale);
+
+  /** One calendar month of the record's surface - `mean`, `lo` or `hi` - as twenty-four values. */
+  function surfaceRecord(s, which, m) {
+    const out = [];
+    for (let h = 0; h < 24; h++) out.push(surfaceAt(s, s[which], (m - 1) * 24 + h));
+    return out;
+  }
+
+  /** One month of one year, as twenty-four values; all missing outside the record. */
+  function surfaceYear(s, y, m) {
+    const i = y - DATA.diurnal.first_year;
+    const out = [];
+    for (let h = 0; h < 24; h++) {
+      out.push(i < 0 || i >= DATA.diurnal.n_years ? null
+        : surfaceAt(s, s.values, (i * 12 + m - 1) * 24 + h));
+    }
+    return out;
+  }
+
+  /** How many years carry a value for one hour of one calendar month. */
+  function surfaceYears(s, m, h) {
+    let n = 0;
+    for (let i = 0; i < DATA.diurnal.n_years; i++) {
+      if (isNum(surfaceAt(s, s.values, (i * 12 + m - 1) * 24 + h))) n += 1;
+    }
+    return n;
+  }
+
+  /** The calendar months a span is made of, as [year, month]; a season's may start a year early. */
+  function spanMonths(mo) {
+    if (state.scale === 'season') return mo.months;
+    if (state.scale === 'year') return MONTH_NAME.map((name, i) => [mo.y, i + 1]);
+    return [[mo.y, mo.m]];
+  }
+  const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+  /**
+   * A span's mean day and the record's, from the surfaces: each hour is the mean over the span's
+   * months weighted by their days, which is the mean over every day of the span. A month enters an
+   * hour only where both it and the record carry that hour, so the two lines are always averages
+   * over the same months.
+   */
+  function spanSurface(key, mo) {
+    const s = surfaceOf(key);
+    if (!s) return null;
+    const months = spanMonths(mo);
+    const values = [], record = [];
+    for (let h = 0; h < 24; h++) {
+      let sv = 0, sr = 0, w = 0;
+      months.forEach(ym => {
+        const x = surfaceYear(s, ym[0], ym[1])[h];
+        const r = surfaceAt(s, s.mean, (ym[1] - 1) * 24 + h);
+        if (!isNum(x) || !isNum(r)) return;
+        const d = daysIn(ym[0], ym[1]);
+        sv += x * d; sr += r * d; w += d;
+      });
+      values.push(w ? sv / w : null);
+      record.push(w ? sr / w : null);
+    }
+    return values.some(isNum) ? { values: values, record: record } : null;
+  }
+
+  const hourSpan = h => String(h).padStart(2, '0') + ':00–' + String(h + 1).padStart(2, '0')
+    + ':00';
+  const clampIndex = (x, n) => (Number.isFinite(x) ? Math.min(n - 1, Math.max(0, Math.floor(x)))
+    : (x > 0 ? n - 1 : 0));
+
+  /**
+   * The colour of the record's surface. Where the variable's own metric diverges about zero - the
+   * net exchange - the surface does too, green uptake and red release as everywhere on the page;
+   * everything else runs from the low end of the surface to the high end on its own metric's
+   * ramp, so a surface reads in the colours the grid gives the same variable.
+   */
+  function surfaceColour(key, lo, hi) {
+    const met = ownMetric(VARS[key]);
+    const neutral = hex2rgb(token('--neutral-mid'));
+    if (met && met.scale === 'div' && met.center === 0) {
+      const absmax = Math.max(Math.abs(lo), Math.abs(hi)) || 1;
+      const neg = hex2rgb(token(met.poles[0])), pos = hex2rgb(token(met.poles[1]));
+      return { lo: -absmax, hi: absmax, center: 0,
+        fill: x => css(rampRGB([neutral, x < 0 ? neg : pos], Math.abs(x) / absmax)) };
+    }
+    const stops = (met && met.scale === 'div' ? [met.poles[0], '--neutral-mid', met.poles[1]]
+      : met && met.stops && met.stops.length ? met.stops : ['--neutral-mid', '--series-1'])
+      .map(t => hex2rgb(token(t)));
+    return { lo: lo, hi: hi, center: null,
+      fill: x => css(rampRGB(stops, (x - lo) / ((hi - lo) || 1))) };
+  }
+
+  /* The two poles of a departure. A variable's own anomaly metric is where the page has already
+     said what its departures look like - cold and warm, dry and wet, uptake and release - and a
+     variable without one takes the page's two generic series colours rather than borrowing the
+     temperature poles for a quantity that has no warm side. */
+  function departurePoles(key) {
+    const anom = DATA.metrics.find(x => x.var === key && x.scale === 'div'
+      && (x.field === 'anom' || x.field === 'pctn'));
+    if (anom) return anom.poles;
+    const met = ownMetric(VARS[key]);
+    if (met && met.scale === 'div') return met.poles;
+    return ['--series-1', '--series-2'];
+  }
+
+  function departureColour(key, spread) {
+    const absmax = spread || 1;
+    const poles = departurePoles(key).map(t => hex2rgb(token(t)));
+    const neutral = hex2rgb(token('--neutral-mid'));
+    return { lo: -absmax, hi: absmax, center: 0,
+      fill: x => css(rampRGB([neutral, poles[x < 0 ? 0 : 1]], Math.abs(x) / absmax)) };
+  }
+
+  /** Which way a departure of a signed variable moved: toward uptake, or toward release. */
+  const departureSense = (v, d) => (v.sign && isNum(d) && d !== 0
+    ? 'toward ' + (d < 0 ? v.sign.low : v.sign.high) : null);
+
+  /**
+   * Rows of twenty-four hours, one coloured cell per hour, with a colour key beneath.
+   *
+   * `rows` is [{label, values}], `colour` what `surfaceColour` or `departureColour` returns, and
+   * `tip(row, hour)` the tooltip of one cell. The cell under the cursor is outlined, and a missing
+   * value is drawn as a faint empty cell rather than left out, so a gap reads as a gap.
+   */
+  function drawHeat(spec) {
+    return function (host) {
+      const rows = spec.rows;
+      const width = Math.max(260, host.clientWidth || 640);
+      const left = textWidth(rows.map(r => r.label), 'ax-text') + 12;
+      const m = { top: 6, right: 14, bottom: 62, left: left };
+      const cw = (width - m.left - m.right) / 24;
+      const rh = spec.rowHeight || Math.max(14, Math.min(26, cw * 0.62));
+      const f = frame(host, { height: Math.round(m.top + m.bottom + rh * rows.length), margin: m,
+        ariaLabel: spec.ariaLabel });
+      // How many rows the surface holds, stated on the element so a reader of the page - and the
+      // tests - can tell a month's single row from a year's twelve without counting cells.
+      f.svg.setAttribute('data-rows', rows.length);
+      const gap = cw > 10 ? 1 : 0;
+      rows.forEach((row, i) => {
+        const y = m.top + i * rh;
+        svgText(f.svg, m.left - 8, y + rh / 2 + 4, row.label, 'ax-text', { 'text-anchor': 'end' });
+        row.values.forEach((x, h) => {
+          el('rect', { x: m.left + h * cw, y: y, width: Math.max(1, cw - gap),
+            height: Math.max(1, rh - gap), fill: isNum(x) ? spec.colour.fill(x) : f.p.grid,
+            opacity: isNum(x) ? 1 : 0.45 }, f.svg);
+        });
+      });
+      const base = m.top + rh * rows.length;
+      [0, 3, 6, 9, 12, 15, 18, 21, 24].forEach(h => {
+        const x = m.left + h * cw;
+        el('line', { x1: x, x2: x, y1: base, y2: base + 4, class: 'ax-line' }, f.svg);
+        if (h % 6 === 0) {
+          svgText(f.svg, x, base + 16, String(h).padStart(2, '0') + ':00', 'ax-text',
+            { 'text-anchor': 'middle' });
+        }
+      });
+
+      // The key: the ramp from one end of the scale to the other, with its ends and its centre.
+      const c = spec.colour;
+      const kw = Math.min(260, 24 * cw), kx = m.left, ky = base + 28, steps = 48;
+      for (let k = 0; k < steps; k++) {
+        const x = c.lo + (c.hi - c.lo) * (k + 0.5) / steps;
+        el('rect', { x: kx + k * kw / steps, y: ky, width: kw / steps + 0.5, height: 8,
+          fill: c.fill(x) }, f.svg);
+      }
+      const label = x => spec.format(x);
+      svgText(f.svg, kx, ky + 21, label(c.lo), 'ax-text', { 'text-anchor': 'start' });
+      svgText(f.svg, kx + kw, ky + 21, label(c.hi), 'ax-text', { 'text-anchor': 'end' });
+      if (isNum(c.center)) {
+        svgText(f.svg, kx + kw / 2, ky + 21, label(c.center), 'ax-text',
+          { 'text-anchor': 'middle' });
+      }
+      // The unit beside the key, where there is room for it; a facet states it in its own title.
+      if (spec.keyLabel) {
+        const room = f.width - (kx + kw + 10) - 4;
+        if (room > 40) {
+          trimText(svgText(f.svg, kx + kw + 10, ky + 8, spec.keyLabel, 'ax-text',
+            { 'text-anchor': 'start' }), room, spec.keyLabel);
+        }
+      }
+
+      const mark = el('rect', { fill: 'none', stroke: f.p.ink, 'stroke-width': 1.5, opacity: 0,
+        width: cw, height: rh, 'pointer-events': 'none' }, f.svg);
+      const hit = el('rect', { class: 'hit', x: m.left, y: m.top, width: 24 * cw,
+        height: rh * rows.length }, f.svg);
+      hit.addEventListener('mousemove', ev => {
+        const box = f.svg.getBoundingClientRect();
+        const k = f.width / box.width;
+        const r = clampIndex(((ev.clientY - box.top) * k - m.top) / rh, rows.length);
+        const h = clampIndex(((ev.clientX - box.left) * k - m.left) / cw, 24);
+        mark.setAttribute('x', m.left + h * cw);
+        mark.setAttribute('y', m.top + r * rh);
+        mark.setAttribute('opacity', 1);
+        tip.show(spec.tip(r, h), ev.clientX, ev.clientY);
+      });
+      hit.addEventListener('mouseleave', () => { mark.setAttribute('opacity', 0); tip.hide(); });
+    };
+  }
+
+  /** The record's surface of one variable: calendar months down, hours of the day across. */
+  function drawVarSurface(key) {
+    const v = VARS[key], s = surfaceOf(key);
+    const digits = surfaceDigits(s);
+    const rows = MONTH_ABBR.map((label, i) => ({ label: label,
+      values: surfaceRecord(s, 'mean', i + 1) }));
+    const ext = extent(rows.map(r => r.values));
+    const colour = () => surfaceColour(key, ext[0], ext[1]);
+    return function (host) {
+      drawHeat({
+        rows: rows, colour: colour(), keyLabel: s.units,
+        ariaLabel: v.short + ' by calendar month and hour of day, the record’s mean',
+        format: x => nf(x, digits),
+        tip: (r, h) => {
+          const x = rows[r].values[h];
+          const lines = [{ k: 'Record mean', v: isNum(x) ? nf(x, digits) + ' ' + s.units
+            : 'fewer than ' + M.min_normal_years + ' years cover this hour' }];
+          const sense = senseOf(v, x);
+          if (sense) lines.push({ k: 'Direction', v: sense });
+          const lo = surfaceAt(s, s.lo, r * 24 + h), hi = surfaceAt(s, s.hi, r * 24 + h);
+          if (isNum(lo) && isNum(hi)) {
+            lines.push({ k: 'Years, 10th–90th percentile', v: nf(lo, digits) + ' to '
+              + nf(hi, digits) });
+          }
+          lines.push({ k: 'Years covering it', v: String(surfaceYears(s, r + 1, h)) });
+          return tipRows(MONTH_NAME[r] + ', ' + hourSpan(h), lines);
+        }
+      })(host);
+    };
+  }
+
+  /** One calendar month's mean day, over the spread of the years' own means for each hour. */
+  function drawMonthDay(key, m, ext) {
+    const v = VARS[key], s = surfaceOf(key);
+    const digits = surfaceDigits(s);
+    const mean = surfaceRecord(s, 'mean', m);
+    const lo = surfaceRecord(s, 'lo', m), hi = surfaceRecord(s, 'hi', m);
+    const hours = mean.map((x, h) => h + 0.5);
+    return function (host) {
+      const f = frame(host, { aspect: 0.62, margin: { top: 8, right: 10, bottom: 26, left: 42 },
+        ariaLabel: 'Mean day of ' + MONTH_NAME[m - 1] + ', ' + v.short });
+      const sx = linear(0, 24, f.m.left, f.m.left + f.iw);
+      const sy = linear(ext[0], ext[1], f.m.top + f.ih, f.m.top);
+      drawAxes(f, sx, sy, { yDigits: Math.min(digits, 2), yTickCount: 3,
+        xTicks: [0, 6, 12, 18, 24].map(h => ({ v: h, label: h + 'h' })) });
+      if (v.sign && ext[0] < 0 && ext[1] > 0) {
+        el('line', { x1: f.m.left, x2: f.m.left + f.iw, y1: sy(0), y2: sy(0), stroke: f.p.muted,
+          'stroke-width': 1, 'stroke-dasharray': '3 3' }, f.svg);
+      }
+      el('path', { d: areaFrom(hours, lo, hi, sx, sy), fill: f.p.bandOuter, opacity: 0.9 },
+        f.svg);
+      el('path', { d: pathFrom(hours, mean, sx, sy), fill: 'none', stroke: f.p.series[0],
+        'stroke-width': 2, 'stroke-linejoin': 'round' }, f.svg);
+      hover(f, sx, hours, x => {
+        const h = Math.floor(x);
+        const lines = [{ k: 'Record mean', v: isNum(mean[h]) ? nf(mean[h], digits) + ' '
+          + s.units : 'too few years', color: f.p.series[0] }];
+        const sense = senseOf(v, mean[h]);
+        if (sense) lines.push({ k: 'Direction', v: sense });
+        if (isNum(lo[h]) && isNum(hi[h])) {
+          lines.push({ k: 'Years, 10th–90th percentile', v: nf(lo[h], digits) + ' to '
+            + nf(hi[h], digits), color: 'var(--band-outer)' });
+        }
+        return tipRows(MONTH_NAME[m - 1] + ', ' + hourSpan(h), lines);
+      });
+    };
+  }
+
+  function renderVarDiurnal(key) {
+    const host = document.getElementById('var-diurnal');
+    const s = surfaceOf(key);
+    if (!host || !s || !s.mean.some(isNum)) return;
+    const v = VARS[key];
+    const per = s.total ? ', stated as the mean total per hour' : '';
+    host.innerHTML = '<h2 class="section">Through the day</h2><div class="grid"></div>';
+    const grid = host.querySelector('.grid');
+
+    chartCard(grid, {
+      title: 'Every hour of every calendar month', width: 'w-12',
+      sub: 'The record’s mean for each hour of the day in each calendar month' + per + '. Hours '
+        + 'are the file’s own timestamps, which FLUXNET states in local standard time, and each '
+        + 'is the two half-hours that begin in it.',
+      foot: (v.sign ? 'Green is net ' + v.sign.low + ' and red net ' + v.sign.high + ', '
+        + 'diverging about zero as everywhere on the page. ' : '')
+        + (s.total ? 'The twenty-four values of a row add up to that calendar month’s mean '
+          + 'daily total. They are means over every day, not the rate during the hours in '
+          + 'which anything happened. ' : '')
+        + 'A year enters a cell where the product covers at least '
+        + nf(cov(key).normal, 0) + ' % of its half-hours, gap-filled values included, and a cell '
+        + 'is drawn where at least ' + M.min_normal_years + ' years do.',
+      draw: drawVarSurface(key)
+    });
+
+    const all = [];
+    for (let m = 1; m <= 12; m++) {
+      all.push(surfaceRecord(s, 'lo', m), surfaceRecord(s, 'hi', m),
+        surfaceRecord(s, 'mean', m));
+    }
+    const ext = extent(all);
+    const pad = (ext[1] - ext[0]) * 0.06;
+    const shared = [ext[0] - pad, ext[1] + pad];
+    const body = cardEl(grid, {
+      title: 'The mean day of each calendar month', width: 'w-12',
+      sub: 'The record’s mean for each hour' + per + ', over the 10th to 90th percentile of the '
+        + 'years’ own means for that hour. The twelve panels share one axis.',
+      foot: 'The band is the spread between years, not between the days of one month: a wide '
+        + 'band is an hour of the day that one year does differently from the next.'
+    });
+    const wrap = document.createElement('div');
+    wrap.className = 'dayfacets tight';
+    body.appendChild(wrap);
+    for (let m = 1; m <= 12; m++) {
+      if (!surfaceRecord(s, 'mean', m).some(isNum)) continue;
+      const box = document.createElement('div');
+      box.innerHTML = '<p class="facet-title">' + MONTH_NAME[m - 1]
+        + ' <span class="unit">(' + s.units + ')</span></p><div class="chart"></div>';
+      wrap.appendChild(box);
+      mountChart(box.querySelector('.chart'), drawMonthDay(key, m, shared));
+    }
+    body.insertAdjacentHTML('beforeend', legendHTML([
+      { color: 'var(--series-1)', label: 'record mean, ' + M.first_year + '–' + M.last_year,
+        line: true },
+      { color: 'var(--band-outer)', label: '10th–90th percentile of the years' }
+    ]));
+  }
+
+  /**
+   * At what hour a span departed from the record: each hour of each of its months minus the
+   * record's mean for that hour and month. One row for a month, a row per month for a season, the
+   * full twelve for a year. Every span of a variable is coloured on one scale, saturating at the
+   * departure the build found 95 % of the record's cells to stay within, so a strong colour is a
+   * strong departure whichever span is open.
+   */
+  function departureCard(parent, mo) {
+    const keys = surfaceKeys();
+    if (!keys.length) return;
+    const months = spanMonths(mo);
+    const label = ym => MONTH_ABBR[ym[1] - 1]
+      + (state.scale === 'season' ? ' ' + ym[0] : '');
+    const facets = [];
+    keys.forEach(key => {
+      const s = surfaceOf(key);
+      const rows = months.map(ym => {
+        const own = surfaceYear(s, ym[0], ym[1]);
+        const rec = surfaceRecord(s, 'mean', ym[1]);
+        return { ym: ym, label: label(ym), own: own, rec: rec,
+          values: own.map((x, h) => (isNum(x) && isNum(rec[h]) ? x - rec[h] : null)) };
+      });
+      if (rows.some(r => r.values.some(isNum))) facets.push({ key: key, s: s, rows: rows });
+    });
+    const whole = state.scale === 'month' ? 'one row of twenty-four hours'
+      : state.scale === 'season' ? 'a row for each of its months'
+        : 'a row for each of its twelve months';
+    const body = cardEl(parent, {
+      title: 'At what hour this ' + spanNoun() + ' differed', width: 'w-12',
+      sub: (state.scale === 'month'
+        ? 'Each hour of ' + scale().title(mo) + ' minus the mean of that hour over every '
+          + peerWord(mo) + ' of the record'
+        : 'Each hour of each month of ' + scale().title(mo) + ' minus the mean of that hour in '
+          + 'the same calendar month over the record') + ', ' + whole
+        + ' per variable. Summed variables are stated as mean totals per hour.',
+      foot: 'A monthly anomaly is one number for the whole month. This separates a month that '
+        + 'was warm by night from one warm by day, and a dry summer that lost its uptake at '
+        + 'midday from one that lost it across the whole day. Each variable keeps one colour '
+        + 'scale across every span, saturating at the departure 95 % of the record’s hours stay '
+        + 'within.'
+    });
+    if (!facets.length) {
+      body.innerHTML = '<p class="card-sub">No hour of this ' + spanNoun() + ' has both a value '
+        + 'and a record mean to set it against.</p>';
+      return;
+    }
+    const wrap = document.createElement('div');
+    wrap.className = state.scale === 'month' ? 'dayfacets tight' : 'dayfacets';
+    body.appendChild(wrap);
+    facets.forEach(fc => {
+      const v = VARS[fc.key], s = fc.s;
+      const digits = surfaceDigits(s);
+      // The largest departure in words, because a colour says where and not by how much.
+      let best = null;
+      fc.rows.forEach(r => r.values.forEach((d, h) => {
+        if (isNum(d) && (!best || Math.abs(d) > Math.abs(best.d))) best = { d: d, h: h, ym: r.ym };
+      }));
+      const sense = best ? departureSense(v, best.d) : null;
+      const where = best ? hourSpan(best.h)
+        + (months.length > 1 ? ' in ' + MONTH_NAME[best.ym[1] - 1] : '') : '';
+      const box = document.createElement('div');
+      box.innerHTML = '<p class="facet-title">' + v.short + ' <span class="unit">(' + s.units
+        + ')</span></p><div class="chart"></div>'
+        + (best ? '<p class="card-sub" style="margin:2px 0 0">' + (+best.d.toFixed(digits) === 0
+          ? 'No hour departed from the record by as much as ' + nf(1 / s.scale, digits) + ' '
+            + s.units + '.'
+          : 'Largest departure ' + nfs(best.d, digits) + ' ' + s.units
+            + (sense ? ', ' + sense : '') + ', at ' + where + '.') + '</p>' : '');
+      wrap.appendChild(box);
+      mountChart(box.querySelector('.chart'), function (host) {
+        drawHeat({
+          rows: fc.rows, colour: departureColour(fc.key, s.spread), keyLabel: null,
+          rowHeight: fc.rows.length === 1 ? 30 : null,
+          ariaLabel: v.short + ', ' + scale().title(mo) + ' minus the record, by hour of day',
+          format: x => nfs(x, digits),
+          tip: (r, h) => {
+            const row = fc.rows[r];
+            const d = row.values[h];
+            const lines = [
+              { k: MONTH_NAME[row.ym[1] - 1] + ' ' + row.ym[0], v: isNum(row.own[h])
+                ? nf(row.own[h], digits) + ' ' + s.units : 'no value' },
+              { k: 'Record mean', v: isNum(row.rec[h]) ? nf(row.rec[h], digits) + ' ' + s.units
+                : 'too few years' }
+            ];
+            if (isNum(d)) {
+              const ds = departureSense(v, d);
+              lines.push({ k: 'Departure', v: nfs(d, digits) + ' ' + s.units
+                + (ds ? ', ' + ds : '') });
+            }
+            return tipRows(MONTH_NAME[row.ym[1] - 1] + ' ' + row.ym[0] + ', ' + hourSpan(h),
+              lines);
+          }
+        })(host);
+      });
+    });
+  }
 
   /* ---- Every hour of the record, as date against time of day. --------------------------------
      Fills #var-hourly from HOURLY. */
@@ -4568,7 +4997,16 @@
 
     // -- The average day ---------------------------------------------------------------------
     const diurnal = document.getElementById('month-diurnal');
-    if (!HOURLY) {
+    /* Without the hourly arrays the mean day is drawn from the month-by-hour surfaces instead,
+       which every build carries: a month's row of its surface is exactly the mean of each hour
+       over its days, and a longer span's is the same weighted by the days of its months. The
+       variables are the ones the hourly arrays would have carried, so the card reads the same
+       either way. */
+    const fromSurface = !HOURLY;
+    const meanDayKeys = HOURLY ? diurnalVars()
+      : DIURNAL_ORDER.filter(k => surfaceOf(k) && surfaceOf(k).hourly)
+        .concat(surfaceKeys().filter(k => surfaceOf(k).hourly && DIURNAL_ORDER.indexOf(k) < 0));
+    if (!HOURLY && !meanDayKeys.length) {
       cardEl(diurnal, { title: 'The average day', width: 'w-12' }).innerHTML =
         '<p class="card-sub" style="max-width:none">This page was built without the hourly '
         + 'arrays, so no diurnal composite can be drawn. Rebuild without <code>--no-hourly</code>.'
@@ -4582,25 +5020,30 @@
         foot: 'A monthly mean cannot show whether a warm month was warm at night or by day, and '
           + 'the two have different causes: cloud and humidity hold the night up, radiation lifts '
           + 'the afternoon.'
+          + (fromSurface ? ' This page was built without the hourly arrays, so the mean day is '
+            + 'drawn from the mean of each hour of each month, weighted by the days of the '
+            + 'months.' : '')
       });
       const wrap = document.createElement('div');
       wrap.className = 'dayfacets';
       body.appendChild(wrap);
       let drawn = 0;
-      diurnalVars().forEach(key => {
-        const values = composite(key, mo.i0, mo.n);
+      meanDayKeys.forEach(key => {
+        const own = fromSurface ? spanSurface(key, mo) : null;
+        const values = fromSurface ? (own && own.values) : composite(key, mo.i0, mo.n);
         if (!values) return;
         drawn += 1;
         const v = VARS[key];
         const box = document.createElement('div');
+        // Both layers state a summed variable as its total per hour, the fluxes as well as rain.
         box.innerHTML = '<p class="facet-title">' + v.short
-          + ' <span class="unit">(' + v.units + (key === 'PREC' ? ' per hour' : '')
+          + ' <span class="unit">(' + v.units + (v.agg === 'sum' ? ' per hour' : '')
           + ')</span></p><div class="chart"></div>';
         wrap.appendChild(box);
         const kind = key === 'PREC' ? 'bars' : (key === 'SW_IN' ? 'area' : 'line');
-        mountChart(box.querySelector('.chart'),
-          drawComposite(key, values,
-            state.scale === 'month' ? climComposite(key, mo.m) : null, kind));
+        const normal = fromSurface ? own.record
+          : (state.scale === 'month' ? climComposite(key, mo.m) : null);
+        mountChart(box.querySelector('.chart'), drawComposite(key, values, normal, kind));
       });
       if (!drawn) {
         wrap.innerHTML = '<p class="card-sub">No hourly record survives for this '
@@ -4613,6 +5056,8 @@
         ]));
       }
     }
+    // At what hour the span differed from the record, from the same surfaces.
+    departureCard(diurnal, mo);
 
     // -- The month against every other year of the same month --------------------------------
     const context = document.getElementById('month-context');
