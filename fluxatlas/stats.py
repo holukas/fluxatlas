@@ -161,7 +161,8 @@ def _kendall(x, y):
     """`scipy.stats.kendalltau(x, y)` with its defaults (tau-b, method `auto`), for finite input.
 
     Returns None where the exact null distribution is needed and this SciPy does not offer it
-    where it is looked for, so the caller can hand the series to `kendalltau` itself.
+    where it is looked for, or offers it in a form the call does not fit, so the caller can hand
+    the series to `kendalltau` itself.
     """
     # A signed zero would count as its own group where rows are compared as bytes, and SciPy's
     # ranking treats -0.0 and 0.0 as one value. Adding zero makes them one here as well.
@@ -183,7 +184,14 @@ def _kendall(x, y):
     if xtie == 0 and ytie == 0 and (size <= 33 or min(dis, tot - dis) <= 1):
         if _kendall_p_exact is None:
             return None
-        pvalue = float(_kendall_p_exact(size, tot - dis, "two-sided"))
+        # Private, and SciPy is not capped, so the call itself is guarded as well as the import: a
+        # release that keeps the name but changes what it takes or returns sends the series to
+        # `kendalltau` rather than stopping the build. Whatever fails here, the public function
+        # still answers.
+        try:
+            pvalue = float(_kendall_p_exact(size, tot - dis, "two-sided"))
+        except Exception:
+            return None
     else:
         m = size * (size - 1.)
         var = ((m * (2 * size + 5) - x1 - y1) / 18 +

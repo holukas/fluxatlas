@@ -310,3 +310,33 @@ def test_ranking_leaves_out_what_does_not_qualify():
     mask = pd.Series([True, False, True, True])
     ranks = stats.rank_of(values, mask)
     assert [None if pd.isna(x) else int(x) for x in ranks] == [2, None, 1, 3]
+
+
+# -- The private SciPy function ------------------------------------------------------------------
+
+@pytest.mark.parametrize("failure", [TypeError("unexpected keyword"), ValueError("bad input"),
+                                     AttributeError("moved")])
+def test_a_changed_private_scipy_function_falls_back_to_kendalltau(monkeypatch, failure):
+    """`_kendall_p_exact` is private and SciPy is uncapped, so a call that fails is not fatal.
+
+    A series short enough and free enough of ties to take the exact p-value reaches the private
+    function. If a later SciPy keeps its name but changes what it accepts, the call must send the
+    series to the public `kendalltau` and give the same answer, not stop the build.
+    """
+    def broken(*args, **kwargs):
+        raise failure
+
+    series = pd.Series([3.1, 2.4, 5.0, 4.2, 6.3, 5.9, 7.7, 6.8, 9.1, 8.4],
+                       index=range(2000, 2010))
+    expected = stats._trend_scipy(series)
+    monkeypatch.setattr(stats, "_kendall_p_exact", broken)
+    got = stats.trend(series)
+    for field in ("slope", "low", "high", "tau", "pvalue"):
+        assert float(got[field]) == float(expected[field]), field
+    assert got["fit"].equals(expected["fit"])
+
+
+def test_a_private_scipy_function_that_returns_nonsense_falls_back_as_well(monkeypatch):
+    monkeypatch.setattr(stats, "_kendall_p_exact", lambda *args: "not a number")
+    series = pd.Series([1.0, 3.0, 2.0, 5.0, 4.0, 6.0], index=range(2000, 2006))
+    assert float(stats.trend(series)["pvalue"]) == float(stats._trend_scipy(series)["pvalue"])
