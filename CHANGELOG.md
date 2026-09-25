@@ -131,6 +131,10 @@ complete payloads of three builds were compared before and after, and no figure 
   file name, the column names and the title. A `<` in a site description used to break the page.
 - **Toggling the theme on a variable page threw**, and toggling it from a span panel left the grid's tiles in the old
   colours.
+- **Axis labels no longer run into each other.** A y axis states its ticks with only the decimals they need, so a
+  carbon total reads 1500 rather than 1500.00, and its unit stands beside the widest tick, with the margin widened where
+  there is no room. X-axis labels at either end are anchored at their tick, and on a narrow chart the labels thin out
+  instead of overlapping.
 - **Cards in two consecutive grids touched.** On the year panel, the card of what stood out sat directly on the cards
   below it. Two grids with no heading between them are now spaced as the cards inside a grid are.
 - **Page text that held for one site only.** The near-saturation badge described a tower 47 m up on a ridge, the

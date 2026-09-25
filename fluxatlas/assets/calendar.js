@@ -457,6 +457,8 @@
     const height = spec.height
       || Math.round(Math.max(170, Math.min(400, width * (spec.aspect || 0.42))));
     const m = Object.assign({ top: 12, right: 14, bottom: 30, left: 46 }, spec.margin || {});
+    // Room `drawAxes` found missing on an earlier pass for the y labels and their title.
+    m.left += host.axisPad || 0;
     const svg = el('svg', {
       viewBox: '0 0 ' + width + ' ' + height, width: width, height: height,
       role: 'img', 'aria-label': spec.ariaLabel || ''
@@ -467,28 +469,60 @@
       iw: width - m.left - m.right, ih: height - m.top - m.bottom };
   }
 
+  /** The fewest decimals, up to `most`, that state every tick exactly: 1500 rather than 1500.00. */
+  function tickDigits(ticks, most) {
+    for (let d = 0; d < most; d++) {
+      const k = Math.pow(10, d);
+      if (ticks.every(v => Math.abs(Math.round(v * k) - v * k) < 1e-6 * k)) return d;
+    }
+    return most;
+  }
+
   function drawAxes(f, sx, sy, spec) {
     const { svg, m, iw, ih } = f;
     const g = el('g', {}, svg);
     const yTicks = spec.yTicks || niceTicks(sy.domain[0], sy.domain[1], spec.yTickCount || 4);
+    const digits = tickDigits(yTicks, spec.yDigits === undefined ? 0 : spec.yDigits);
+    let widest = 0;
     yTicks.forEach(v => {
       const y = sy(v);
       if (y < m.top - 1 || y > m.top + ih + 1) return;
       el('line', { x1: m.left, x2: m.left + iw, y1: y, y2: y, class: 'gridline' }, g);
-      svgText(g, m.left - 8, y + 4, nf(v, spec.yDigits === undefined ? 0 : spec.yDigits),
-        'ax-text', { 'text-anchor': 'end' });
+      const t = svgText(g, m.left - 8, y + 4, nf(v, digits), 'ax-text', { 'text-anchor': 'end' });
+      widest = Math.max(widest, t.getComputedTextLength ? t.getComputedTextLength() : 0);
     });
     el('line', { x1: m.left, x2: m.left + iw, y1: m.top + ih, y2: m.top + ih, class: 'ax-line' }, g);
+    let lastRight = -Infinity;
     (spec.xTicks || []).forEach(t => {
       const x = sx(t.v);
       if (x < m.left - 1 || x > m.left + iw + 1) return;
       el('line', { x1: x, x2: x, y1: m.top + ih, y2: m.top + ih + 4, class: 'ax-line' }, g);
-      svgText(g, x, m.top + ih + 16, t.label, 'ax-text', { 'text-anchor': 'middle' });
+      const label = svgText(g, x, m.top + ih + 16, t.label, 'ax-text', { 'text-anchor': 'middle' });
+      /* A label centred on a tick at either end of the axis would reach into the y labels or past
+         the edge of the chart; it is anchored at its tick instead. */
+      const w = label.getComputedTextLength ? label.getComputedTextLength() : 0;
+      let x0 = x - w / 2;
+      if (x0 < m.left - 4) { label.setAttribute('text-anchor', 'start'); x0 = x; }
+      else if (x + w / 2 > f.width - 2) { label.setAttribute('text-anchor', 'end'); x0 = x - w; }
+      // On a narrow chart the labels thin out rather than run into each other; the ticks stay.
+      if (x0 < lastRight + 4) { label.remove(); return; }
+      lastRight = x0 + w;
     });
     if (spec.yLabel) {
+      /* The title stands beside the widest tick label, not at a fixed offset that a label such as
+         "-1500" reaches past. Where the margin has no room for both, the chart is drawn again with
+         the room added (`frame` reads `axisPad`), once, by `mountChart`. */
+      // Turned on its side, the title reaches about 13 px left of its baseline and 3 px right.
+      const ascent = 13, descent = 3, gap = 5;
+      const x = Math.min(m.left - 32, m.left - 8 - widest - gap - descent);
+      if (x < ascent + 1 && svg.parentNode) {
+        const host = svg.parentNode;
+        host.axisPad = (host.axisPad || 0) + Math.ceil(ascent + 1 - x);
+        host.axisRedraw = true;
+      }
       const t = svgText(g, 0, 0, spec.yLabel, 'ax-title', { 'text-anchor': 'middle' });
-      t.setAttribute('transform',
-        'translate(' + (m.left - 33) + ',' + (m.top + ih / 2) + ') rotate(-90)');
+      t.setAttribute('transform', 'translate(' + Math.max(ascent + 1, x) + ','
+        + (m.top + ih / 2) + ') rotate(-90)');
     }
     return g;
   }
@@ -501,11 +535,16 @@
   function mountChart(host, draw) {
     charts.push({ host: host, draw: draw });
     let last = 0;
+    const drawn = () => {
+      draw(host);
+      // The axis asked for more room for its labels: draw once more with it.
+      if (host.axisRedraw) { host.axisRedraw = false; draw(host); host.axisRedraw = false; }
+    };
     new ResizeObserver(() => {
       if (!host.isConnected || host.hidden) return;
-      if (Math.abs(host.clientWidth - last) > 6) { last = host.clientWidth; draw(host); }
+      if (Math.abs(host.clientWidth - last) > 6) { last = host.clientWidth; drawn(); }
     }).observe(host);
-    draw(host);
+    drawn();
   }
 
   function compactCharts() { charts = charts.filter(c => c.host.isConnected); }
