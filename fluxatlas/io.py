@@ -391,6 +391,26 @@ def resolve(source, keys, label="the file"):
     return specs
 
 
+def fill_levels(qc, series, convention, measured_codes=varreg.MEASURED_QC_CODES):
+    """Each record's level in its flag's convention, as one `int8` per record.
+
+    `0` is measured, `1..n` the convention's own levels in order, `n + 1` a record that has a value
+    but a flag the convention does not document, and `-1` a record with no value, which no coverage
+    figure counts. One byte a record, where a boolean per level would be four: on a twenty-one-year
+    record that is 0.4 MB a variable against 1.5 MB.
+    """
+    codes = qc.to_numpy(dtype=float, na_value=np.nan)
+    out = np.full(len(codes), len(convention.levels) + 1, dtype=np.int8)
+    for i, level in enumerate(convention.levels, start=1):
+        # A level with no codes of its own takes whatever flag is present and not measured, which
+        # is all the unstated convention can say.
+        hit = ~np.isnan(codes) if level.codes is None else np.isin(codes, level.codes)
+        out[hit] = i
+    out[np.isin(codes, list(measured_codes))] = 0
+    out[series.isna().to_numpy()] = -1
+    return pd.Series(out, index=series.index, name=series.name)
+
+
 def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=False):
     """Read the selected variables out of one half-hourly FLUXNET file.
 
@@ -399,7 +419,8 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
     to some other convention, or `None` for every registry variable the file can supply - which is
     a convenience for exploring a new file rather than the normal way to call this.
 
-    Returns the mapping the builder consumes: `{key: {v, df, series, measured}}`.
+    Returns the mapping the builder consumes: `{key: {v, df, series, measured, fill}}`, where
+    `fill` is `fill_levels` of the quality flag, or `None` for a variable read without one.
     """
     path = Path(path)
 
@@ -538,9 +559,19 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
         # More than one flag code can mean "measured", and a file may carry no flag at all, in
         # which case a record is measured exactly where it is present - the most that can be
         # concluded from it.
+        #
+        # Where there is a flag, what it says about the rest is kept as well: one small integer per
+        # record naming its level in the flag's convention, rather than a boolean per level. The
+        # measured split is read off the same array, so the two cannot disagree.
+        fill = None
         if v.qc_column and v.qc_column in df.columns:
             qc = pd.to_numeric(df[v.qc_column], errors="coerce")
-            measured = qc.isin(list(v.measured_codes)) & series.notna()
+            v.qc_convention = varreg.qc_convention(v.qc_column)
+            fill = fill_levels(qc, series, v.qc_convention, v.measured_codes)
+            v.fill_levels = [lv.label for lv in v.qc_convention.levels]
+            if (fill == len(v.fill_levels) + 1).any():
+                v.fill_levels.append(varreg.FILL_OTHER)
+            measured = fill == 0
         else:
             measured = series.notna()
 
@@ -557,7 +588,8 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
                                    columns=list(component["columns"]), series=cols))
         v.uncertainty_note = varreg.uncertainty_note(components)
 
-        out[key] = dict(v=v, df=df, series=series, measured=measured, uncertainty=components)
+        out[key] = dict(v=v, df=df, series=series, measured=measured, fill=fill,
+                        uncertainty=components)
         if not quiet:
             share = measured.mean() * 100
             flag = v.qc_column or "no QC column"

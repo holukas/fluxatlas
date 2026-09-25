@@ -26,6 +26,7 @@ still read, still shown in the day panel and still counted in coverage.
 
 from __future__ import annotations
 
+import re
 from collections import namedtuple
 from functools import lru_cache
 
@@ -113,14 +114,85 @@ ENSEMBLE = "ensemble"
 # widens every interval by about half again.
 USTAR_PERCENTILES = ("16", "25", "50", "75", "84")
 
-# Quality-flag conventions. In FLUXNET the `_QC` column beside a gap-filled variable is 0 where the
-# record is measured and 1..3 for successively poorer fill; anything above 0 is therefore modelled.
-# A file without a QC column is read as measured wherever it is not missing, which is the most a
-# reader can conclude from it.
+# Quality flags: what each code of a `_QC` column says about how a record was filled
+# ---------------------------------------------------------------------------------------------
+# Every FLUXNET flag agrees on one thing: 0 is measured, and anything above it is not. That is the
+# split the coverage figures are built on, and it is the same for every column. A file without a QC
+# column is read as measured wherever it is not missing, which is the most a reader can conclude.
+#
+# **What the codes above 0 mean is not the same in every column**, and a single legend would have
+# mislabelled half of them. The FULLSET documentation states two conventions, and the CH-Oe2 file
+# bears both out:
+#
+# - `*_F_MDS_QC`, `*_F_MDS_<n>_QC` and the flux flags (`NEE_VUT_REF_QC` and its siblings) grade the
+#   marginal distribution sampling fill: 1 good, 2 medium, 3 poor quality. `NEE_VUT_REF_QC` carries
+#   all four codes, 42.1 / 54.4 / 3.0 / 0.5 %.
+# - The consolidated meteorology (`TA_F_QC`, `SW_IN_F_QC`, `VPD_F_QC`, `P_F_QC` and the rest) keeps
+#   an MDS fill only where it is of good quality and replaces everything else with the ERA
+#   reanalysis downscaled to the site: 1 is that good-quality fill, 2 is reanalysis. `TA_F_QC`
+#   carries 96.75 / 1.14 / 2.11 %, and its 2.11 is exactly the medium and poor fill of `TA_F_MDS_QC`
+#   (1.02 + 1.09) - the records the consolidation replaced. Reading its 2 as "medium-quality fill"
+#   would call reanalysis a gap-fill.
+#
+# A flag named by the caller for a file of another convention has no known meaning beyond the one
+# every flag shares, so it is described as exactly that and no more.
+#
+# `FILL_OTHER` is where a record goes that has a value but whose flag the convention does not
+# document - a code it does not define, or no flag at all beside a value. It is kept apart rather
+# than folded into the nearest level, because a label is a claim about how the record was made.
 MEASURED_QC_CODES = frozenset({0})
 
-QC_LEGEND = {0: "measured", 1: "good-quality fill", 2: "medium-quality fill",
-             3: "poor-quality fill"}
+FillLevel = namedtuple("FillLevel", "codes label")
+QcConvention = namedtuple("QcConvention", "name levels note")
+
+QC_MDS = QcConvention(
+    "mds",
+    (FillLevel((1,), "good-quality fill"), FillLevel((2,), "medium-quality fill"),
+     FillLevel((3,), "poor-quality fill")),
+    "the FLUXNET convention for marginal distribution sampling: 0 measured, 1 gap-filled at good "
+    "quality, 2 at medium quality, 3 at poor quality")
+
+QC_CONSOLIDATED = QcConvention(
+    "consolidated",
+    (FillLevel((1,), "gap-filled"), FillLevel((2,), "from reanalysis")),
+    "the FLUXNET convention for consolidated meteorology: 0 measured, 1 gap-filled by marginal "
+    "distribution sampling at good quality, 2 downscaled from the ERA reanalysis")
+
+QC_UNSTATED = QcConvention(
+    "unstated",
+    (FillLevel(None, "otherwise flagged"),),
+    "no convention this package knows: 0 is read as measured and any other value as not")
+
+FILL_OTHER = "without a documented flag"
+
+# The consolidated meteorological flags, named rather than matched by pattern: FLUXNET gives no
+# rule that every `*_F_QC` follows, and a pattern broad enough to catch these would also catch a
+# flag the next product release defines differently.
+CONSOLIDATED_QC_COLUMNS = frozenset({
+    "TA_F_QC", "SW_IN_F_QC", "LW_IN_F_QC", "LW_IN_JSB_F_QC", "VPD_F_QC", "PA_F_QC", "P_F_QC",
+    "WS_F_QC"})
+
+# The MDS flags: any `*_F_MDS_QC` or position-indexed `*_F_MDS_<n>_QC`, and the flux flags of one
+# u* version - the reference, the median and each percentile. `NEE_*_MEAN_QC` is left out on
+# purpose: it is the share of the ensemble members that were filled, a fraction between 0 and 1
+# rather than a code.
+_MDS_QC = re.compile(r"^(?:[A-Z0-9_]+_F_MDS(?:_\d+)?|(?:NEE|GPP|RECO)_(?:VUT|CUT)"
+                     r"_(?:REF|USTAR50|\d\d))_QC$")
+
+
+def qc_convention(column):
+    """The convention a quality-flag column follows, from its name.
+
+    Answered from the name alone, like the rest of the resolution, so it is known before the data
+    is read. `None` for no column; `QC_UNSTATED` for any column FLUXNET does not document.
+    """
+    if not column:
+        return None
+    if column in CONSOLIDATED_QC_COLUMNS:
+        return QC_CONSOLIDATED
+    if _MDS_QC.match(column):
+        return QC_MDS
+    return QC_UNSTATED
 
 # Half-hourly CO2 fluxes are published in µmol CO2 m-2 s-1 and reported in g C m-2. One half-hour
 # at 1 µmol m-2 s-1 is 1e-6 mol * 1800 s * 12.011 g/mol of carbon, so a summed month arrives in the
@@ -586,6 +658,10 @@ class Variable:
         self.column = None
         self.factor = 1.0
         self.qc_column = None
+        # What the flag's codes above 0 mean, and the words for each level the build reports - the
+        # convention's own levels, and `FILL_OTHER` after them where the record needs it.
+        self.qc_convention = None
+        self.fill_levels = []
         self.source = None
         self.first_year = None
         self.last_year = None
