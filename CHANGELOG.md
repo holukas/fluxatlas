@@ -54,7 +54,8 @@
 - **Threshold days by year.** For each of a variable's day tests, the number of days per year that passed it, and beside
   it the longest run of such days where the test defines a run. A high count does not imply a long run.
 - **The days and half-hours at either end** of each variable's record: ten of each, from measured records only, each
-  linking to its day. Half-hours of a carbon flux are given in µmol m⁻² s⁻¹, the rate the file publishes.
+  linking to its day. Half-hours of a carbon flux are given in µmol m⁻² s⁻¹, the rate the file publishes. Each list is a
+  card of its own, and the cards sit side by side, as many as fit.
 - **Every hour of the record in one image**: one column per day and one row per hour for each variable in the hourly
   layer, so the daily cycle, the seasons and the years can be read together. It is drawn on a canvas, the first on the
   page, because its roughly 184,000 cells are too many for SVG. The net exchange is drawn on a red-yellow-blue scale

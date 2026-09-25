@@ -257,6 +257,16 @@ h2.section {
 
 .card { grid-column: span 12; }
 
+/* What applies to every card of a section, said once beneath them. */
+.section-note { max-width: 110ch; margin: 12px 0 0; font-size: 12.5px; color: var(--text-muted); }
+
+/* Cards that each hold one short list: as many columns of list width as the page has room for,
+   rather than a share of twelve that leaves a list a third of its card wide. */
+.grid.ranks { grid-template-columns: repeat(auto-fill, minmax(min(270px, 100%), 1fr)); }
+/* A signed variable writes its direction beside each value, and needs the room for it. */
+.grid.ranks.signed { grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr)); }
+.grid.ranks > .card { grid-column: auto; }
+
 @media (min-width: 760px) {
   .w-4 { grid-column: span 6; }
   .w-6 { grid-column: span 6; }

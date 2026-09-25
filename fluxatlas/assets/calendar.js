@@ -4989,26 +4989,29 @@
   }
 
   /**
-   * One end of a list: its entries under a heading, or the bound it rests on in their place.
+   * One end of a list as a card of its own: its entries, or the bound it rests on in their place.
    *
    * `end` is `{ items, word, tie }`, or null where the registry says this end of the variable is a
    * floor it rests on - zero rain, a night without sunshine - rather than anything a reader would
-   * look for.
+   * look for. Each list is a short column of short lines, so it gets a narrow card and the lists
+   * sit side by side rather than spanning the page half empty.
    */
-  function endColumn(side, noun, end, units, digits) {
-    if (!end) return '';
+  function endCard(grid, side, noun, end, units, digits, sub) {
+    if (!end) return;
     if (end.tie) {
       const value = nf(end.tie.value, digits) + ' ' + units;
       const days = end.tie.days.toLocaleString('en-GB') + ' days';
-      return '<div><h4>' + cap(side) + ' ' + noun + '</h4><p class="card-sub">'
+      cardEl(grid, { title: cap(side) + ' ' + noun, width: 'rank' }).innerHTML =
+        '<p class="card-sub">'
         + (noun === 'days' ? days + ' reach ' + value
           : 'On ' + days + ' at least one half-hour reaches ' + value)
         + ', more than a list has room for, so this end is a bound the variable rests on rather '
-        + 'than an event, and is not listed.</p></div>';
+        + 'than an event, and is not listed.</p>';
+      return;
     }
-    if (!end.items.length) return '';
-    return '<div><h4>' + endHead(side, end.items.length, noun, end.word)
-      + '</h4><ul class="ranklist">' + end.items.join('') + '</ul></div>';
+    if (!end.items.length) return;
+    cardEl(grid, { title: endHead(side, end.items.length, noun, end.word), width: 'rank',
+      sub: sub }).innerHTML = '<ul class="ranklist">' + end.items.join('') + '</ul>';
   }
 
   function renderVarExtremes(key) {
@@ -5023,29 +5026,28 @@
     if (!(days && days.n) && !halfhours) return;
 
     host.innerHTML = '<h2 class="section">Days and half-hours at either end</h2>'
-      + '<div class="grid" id="var-extremes-grid"></div>';
+      + '<div class="grid ranks' + (v.sign ? ' signed' : '')
+      + '" id="var-extremes-grid"></div><p class="section-note"></p>';
     const grid = document.getElementById('var-extremes-grid');
-    const floor = 'The low end is not listed: for this variable it is a floor much of the '
-      + 'record rests on rather than an event.';
     const rule = nf(EH.day_coverage, 0) + ' %';
+    // What applies to every list is said once, under them, so each card is only its list.
+    const notes = [];
+    const floors = [];
 
     if (days && days.n) {
       const words = endWords(v, days.high.list.map(i => days.values[i]),
         days.low ? days.low.list.map(i => days.values[i]) : []);
       const end = (side, found) => (found ? { tie: found.tie, word: words[side],
         items: found.list.map(i => dayItem(v, days.stat, days.values, i)) } : null);
-      cardEl(grid, {
-        title: 'The days at either end', width: 'w-12',
-        sub: 'The ' + (days.low ? 'highest and lowest days' : 'highest days') + ' of the '
-          + 'record by ' + DAILY_STAT_WORD[days.stat] + ', in ' + v.units + ', with the departure '
-          + 'from the normal for the date. Only days at least ' + rule + ' measured are ranked, '
-          + 'the share a day needs to set a record for its date, because a gap-filled value '
-          + 'cannot hold one: ' + days.n.toLocaleString('en-GB') + ' of the record’s '
-          + DAYS.n.toLocaleString('en-GB') + ' days qualify. Selecting one opens it.'
-          + (own && own.low_day === false ? ' ' + floor : '')
-      }).innerHTML = '<div class="twocol">'
-        + endColumn('highest', 'days', end('high', days.high), v.units, v.digits)
-        + endColumn('lowest', 'days', end('low', days.low), v.units, v.digits) + '</div>';
+      const sub = 'By ' + DAILY_STAT_WORD[days.stat] + ', in ' + v.units + ', with the departure '
+        + 'from the normal for the date.';
+      endCard(grid, 'highest', 'days', end('high', days.high), v.units, v.digits, sub);
+      endCard(grid, 'lowest', 'days', end('low', days.low), v.units, v.digits, sub);
+      notes.push('Only days at least ' + rule + ' measured are ranked, the share a day needs to set '
+        + 'a record for its date, because a gap-filled value cannot hold one: '
+        + days.n.toLocaleString('en-GB') + ' of the record’s ' + DAYS.n.toLocaleString('en-GB')
+        + ' days qualify.');
+      if (own && own.low_day === false) floors.push('days');
     }
 
     if (halfhours) {
@@ -5054,29 +5056,35 @@
       const words = endWords(v, high.map(row => row[1]), low.map(row => row[1]));
       const end = (side, rows) => (rows ? { tie: ties[side], word: words[side],
         items: rows.map(row => halfhourItem(v, halfhours, row)) } : null);
-      cardEl(grid, {
-        title: 'The half-hours at either end', width: 'w-12',
-        sub: 'The ' + (halfhours.low ? 'highest and lowest' : 'highest') + ' measured half-hours '
-          + 'of the record, at most one from any day, so that a single afternoon cannot fill the '
-          + 'list. Gap-filled half-hours are not ranked. Times are the file’s own: the start and '
-          + 'end of the averaging window. Selecting one opens its day.'
-          + (halfhours.rate ? ' Stated as the rate the file publishes, in ' + halfhours.units
-            + ', rather than as the ' + v.units + ' one half-hour contributes to a total; the '
-            + 'days and every longer span stay in ' + v.units + '.' : '')
-          + (halfhours.low ? '' : ' ' + floor)
-          + (days && days.n ? '' : ' No day of the record was ' + rule + ' measured, so no day '
-            + 'is ranked.'),
-        foot: [
-          halfhours.partitioned ? v.short + ' is not measured but partitioned out of the net '
-            + 'flux: a half-hour counts as measured where the net flux it came from was, so these '
-            + 'are the partitioning’s values at observed half-hours, not observations.' : ''
-        ].filter(Boolean).join(' ')
-      }).innerHTML = '<div class="twocol">'
-        + endColumn('highest', 'half-hours', end('high', halfhours.high), halfhours.units,
-          halfhours.digits)
-        + endColumn('lowest', 'half-hours', end('low', halfhours.low), halfhours.units,
-          halfhours.digits) + '</div>';
+      const sub = 'Measured half-hours, in ' + halfhours.units + ', at most one from any day.';
+      endCard(grid, 'highest', 'half-hours', end('high', halfhours.high), halfhours.units,
+        halfhours.digits, sub);
+      endCard(grid, 'lowest', 'half-hours', end('low', halfhours.low), halfhours.units,
+        halfhours.digits, sub);
+      notes.push('Gap-filled half-hours are not ranked, and one day gives at most one half-hour, so '
+        + 'that a single afternoon cannot fill a list. Times are the file’s own: the start and end '
+        + 'of the averaging window.');
+      if (halfhours.rate) {
+        notes.push('Half-hours are stated as the rate the file publishes, in ' + halfhours.units
+          + ', rather than as the ' + v.units + ' one half-hour contributes to a total; the days '
+          + 'and every longer span stay in ' + v.units + '.');
+      }
+      if (!halfhours.low) floors.push('half-hours');
+      if (!(days && days.n)) {
+        notes.push('No day of the record was ' + rule + ' measured, so no day is ranked.');
+      }
+      if (halfhours.partitioned) {
+        notes.push(v.short + ' is not measured but partitioned out of the net flux: a half-hour '
+          + 'counts as measured where the net flux it came from was, so these are the '
+          + 'partitioning’s values at observed half-hours, not observations.');
+      }
     }
+    if (floors.length) {
+      notes.push('The lowest ' + floors.join(' and ') + ' are not listed: for this variable the low '
+        + 'end is a floor much of the record rests on rather than an event.');
+    }
+    notes.push('Selecting an entry opens its day.');
+    host.querySelector('.section-note').innerHTML = notes.join(' ');
   }
 
   /* ---- Through the day: the month-by-hour surface and the mean day of each calendar month. ----

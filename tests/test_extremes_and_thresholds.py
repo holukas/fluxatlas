@@ -110,9 +110,20 @@ def read_page(atlas, tmp_path, *hashes):
     return found
 
 
+def card_of(part, title):
+    return next(c for c in part["cards"] if c["title"] == title)
+
+
 def hrefs(part, card_title):
-    card = next(c for c in part["cards"] if c["title"] == card_title)
-    return [[item["href"] for item in column] for column in card["items"]]
+    """The links of one list; each end of each list is a card of its own."""
+    (column,) = card_of(part, card_title)["items"]
+    return [item["href"] for item in column]
+
+
+def titles(part, noun):
+    """The titles of the cards listing one kind of entry, days or half-hours, in page order."""
+    pattern = re.compile(rf"(Highest|Lowest)( \w+)? {noun}( \(.*\))?")
+    return [c["title"] for c in part["cards"] if pattern.fullmatch(c["title"] or "")]
 
 
 # -- Which records may be ranked ------------------------------------------------------------------
@@ -204,14 +215,15 @@ def page(atlas, tmp_path_factory):
 def test_the_days_listed_are_the_substantially_measured_ones(page, atlas):
     ext = page["var-TA"]["extremes"]
     assert ext["heading"] == "Days and half-hours at either end"
-    high, low = hrefs(ext, "The days at either end")
+    high = hrefs(ext, "Highest ten days (warmest)")
+    low = hrefs(ext, "Lowest ten days (coldest)")
     assert len(high) == len(low) == build.EXTREME_ENTRIES
     # 21 July is 44 of 48 measured and heads the list; 20 July was warmer and is 43 of 48.
     assert high[0] == f"#{ENOUGH_DAY}"
     assert f"#{ALMOST_DAY}" not in ext["text"] and "20 July 2011" not in ext["text"]
-    card = next(c for c in ext["cards"] if c["title"] == "The days at either end")
-    assert card["heads"] == ["Highest ten days (warmest)", "Lowest ten days (coldest)"]
-    assert "by daily mean" in card["sub"] and "90 % measured" in card["sub"]
+    assert titles(ext, "days") == ["Highest ten days (warmest)", "Lowest ten days (coldest)"]
+    assert "By daily mean" in card_of(ext, "Highest ten days (warmest)")["sub"]
+    assert "90 % measured" in ext["text"]
     # Every listed day qualifies by the rule the build states.
     meas = atlas.payload["days"]["meas"]["TA"]
     start = pd.Timestamp(atlas.payload["days"]["start"])
@@ -224,43 +236,40 @@ def test_the_days_listed_are_the_substantially_measured_ones(page, atlas):
 @needs_jsdom
 def test_the_half_hours_listed_link_to_their_day(page):
     ext = page["var-TA"]["extremes"]
-    high, low = hrefs(ext, "The half-hours at either end")
+    high = hrefs(ext, "Highest ten half-hours (warmest)")
     assert high[0] == "#2011-04-10" and high.count("#2011-04-10") == 1
     assert "#2011-03-10" not in high
-    first = next(c for c in ext["cards"] if c["title"] == "The half-hours at either end")
+    first = card_of(ext, "Highest ten half-hours (warmest)")
     assert first["items"][0][0]["text"].startswith("10 Apr 2011, 12:00–12:30 45.0 °C")
 
 
 @needs_jsdom
 def test_the_ends_of_net_exchange_are_named_by_the_sign(page):
     ext = page["var-NEE"]["extremes"]
-    card = next(c for c in ext["cards"] if c["title"] == "The half-hours at either end")
-    assert card["heads"] == ["Highest ten half-hours (largest net release)",
-                             "Lowest ten half-hours (largest net uptake)"]
-    assert all("µmol m⁻² s⁻¹" in item["text"] for column in card["items"] for item in column)
-    assert all(item["text"].endswith(", net uptake") for item in card["items"][1])
+    high, low = ("Highest ten half-hours (largest net release)",
+                 "Lowest ten half-hours (largest net uptake)")
+    assert titles(ext, "half-hours") == [high, low]
+    for title in (high, low):
+        assert all("µmol m⁻² s⁻¹" in item["text"] for item in card_of(ext, title)["items"][0])
+    assert all(item["text"].endswith(", net uptake") for item in card_of(ext, low)["items"][0])
     # The page displays the dataset; it does not second-guess records the file calls measured.
-    # Without that note the net exchange's card has no footnote at all, which is the usual case.
-    foot = card["foot"] or ""
-    assert "spike" not in foot and "plausib" not in foot
+    assert "spike" not in ext["text"] and "plausib" not in ext["text"]
 
 
 @needs_jsdom
 def test_where_every_listed_value_is_an_uptake_the_highest_are_the_smallest(sink_atlas, tmp_path):
     """At a site that is a sink in every half-hour, the highest ten are not releases at all."""
     found = read_page(sink_atlas, tmp_path, "var-NEE")
-    card = next(c for c in found["var-NEE"]["extremes"]["cards"]
-                if c["title"] == "The half-hours at either end")
-    assert card["heads"][0] == "Highest ten half-hours (smallest net uptake)"
-    assert "release" not in card["heads"][0]
+    first = titles(found["var-NEE"]["extremes"], "half-hours")[0]
+    assert first == "Highest ten half-hours (smallest net uptake)"
 
 
 @needs_jsdom
 def test_a_partitioned_flux_says_its_half_hours_are_not_observations(page):
-    card = next(c for c in page["var-GPP"]["extremes"]["cards"]
-                if c["title"] == "The half-hours at either end")
-    assert "partitioned out of the net flux" in card["foot"]
-    assert len(card["heads"]) == 1 and "The low end is not listed" in card["sub"]
+    ext = page["var-GPP"]["extremes"]
+    assert "partitioned out of the net flux" in ext["text"]
+    assert len(titles(ext, "half-hours")) == 1
+    assert "The lowest half-hours are not listed" in ext["text"]
 
 
 # -- Threshold days, year by year -----------------------------------------------------------------
@@ -327,8 +336,7 @@ def test_a_bound_is_stated_on_the_page_in_place_of_a_list(tmp_path):
     tie = halfhours(capped, "TA")["ties"]["high"]
     assert tie["value"] == 20.0 and tie["days"] > build.EXTREME_ENTRIES
     ext = read_page(capped, tmp_path, "var-TA")["var-TA"]["extremes"]
-    card = next(c for c in ext["cards"] if c["title"] == "The half-hours at either end")
-    assert card["heads"] == ["Highest half-hours", "Lowest ten half-hours (coldest)"]
-    assert len(card["items"]) == 1, "the bound was listed as well as stated"
+    assert titles(ext, "half-hours") == ["Highest half-hours", "Lowest ten half-hours (coldest)"]
+    assert not card_of(ext, "Highest half-hours")["items"], "the bound was listed as well as stated"
     assert (f"On {tie['days']:,} days at least one half-hour reaches 20.0 °C, more than a list "
             "has room for") in ext["text"]
