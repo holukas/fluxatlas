@@ -363,6 +363,7 @@ VARIABLES = {
     # The shallowest reported layer, as `SWC` takes layer 1: it is the layer that follows the
     # weather, and the one a reader relates to air temperature and the surface energy balance.
     "TS": dict(
+        default=False,
         title="Soil temperature",
         short="Soil temperature",
         units="°C",
@@ -384,6 +385,7 @@ VARIABLES = {
     ),
 
     "WS": dict(
+        default=False,
         title="Wind speed",
         short="Wind speed",
         units="m s⁻¹",
@@ -407,6 +409,7 @@ VARIABLES = {
     ),
 
     "PA": dict(
+        default=False,
         title="Atmospheric pressure",
         short="Air pressure",
         units="kPa",
@@ -431,6 +434,7 @@ VARIABLES = {
     ),
 
     "LW_IN": dict(
+        default=False,
         title="Incoming longwave radiation",
         short="Longwave in",
         units="W m⁻²",
@@ -454,6 +458,7 @@ VARIABLES = {
     ),
 
     "PPFD_IN": dict(
+        default=False,
         title="Incoming photosynthetic photon flux density",
         short="Incoming PPFD",
         units="µmol m⁻² s⁻¹",
@@ -489,6 +494,7 @@ VARIABLES = {
     # rank or a badge and the variable would be silent through most of the record. At 75 % there
     # are 226, and the months left out are those missing a quarter or more of their records.
     "USTAR": dict(
+        default=False,
         title="Friction velocity",
         short="Friction velocity",
         units="m s⁻¹",
@@ -747,6 +753,7 @@ VARIABLES = {
     # ------------------------------------------------------------------------------------------
 
     "NETRAD": dict(
+        default=False,
         title="Net radiation",
         short="Net radiation",
         units="W m⁻²",
@@ -790,6 +797,7 @@ VARIABLES = {
     ),
 
     "G": dict(
+        default=False,
         title="Soil heat flux",
         short="Soil heat flux",
         units="W m⁻²",
@@ -839,6 +847,16 @@ class Variable:
         self.growing_season = cfg.get("growing_season")
         self.measured_codes = MEASURED_QC_CODES
         self.coverage = coverage(key)
+        # Whether a build that names no variables takes this one. The page a FLUXNET file gives
+        # with nothing configured is the front door, and it answers the questions it was built
+        # for - weather, carbon, water and the turbulent energy fluxes. The ancillary variables
+        # and the energy-balance terms are one `--vars` away and listed by `--list`, but not
+        # taken unasked: each is judged by the same coverage rule as everything else, and the
+        # sparse badge marks a month where *any* variable in the build is thin. On CH-Oe2,
+        # taking every variable the file supplies put that badge on 216 of 252 months against
+        # 103 for the page as it stood, `PA` alone (mostly reanalysis-filled) accounting for 159.
+        # A mark on nearly every tile distinguishes none of them.
+        self.default = cfg.get("default", True)
         self.family = family(key)
 
         self.extremes = dict(high="highest", low="lowest", low_halfhour=True, low_day=True)
@@ -1001,6 +1019,11 @@ def coverage(key):
     all, and the meteorological threshold is the conservative answer.
     """
     return Coverage(*VARIABLES.get(key, {}).get("coverage", COVERAGE_DEFAULT))
+
+
+def default(key):
+    """Whether a build that names no variables takes `key`; see `Variable.default`."""
+    return VARIABLES.get(key, {}).get("default", True)
 
 
 def known():

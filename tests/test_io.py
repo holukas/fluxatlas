@@ -561,3 +561,19 @@ def test_a_column_the_registry_does_not_know_inherits_no_flag(tmp_path):
     assert io.read_fluxnet(path, {"TA": "TA_F"}, quiet=True)["TA"]["v"].qc_column == "TA_F_QC"
     stated = io.read_fluxnet(path, {"TA": dict(column="air_temp", qc="TA_F_QC")}, quiet=True)
     assert stated["TA"]["v"].qc_column == "TA_F_QC"
+
+
+def test_a_build_that_names_nothing_takes_only_the_default_variables(tmp_path):
+    """The front-door page is the default selection, not every column the registry recognises.
+
+    Taking every variable a FULLSET file supplies put the sparse badge on 216 of 252 CH-Oe2 months
+    against 103, because the badge marks a month where any variable in the build is thin. The
+    on-request variables are still found by `available`, which is how a caller names them.
+    """
+    frame = synthetic_frame(years=2)
+    frame["TS_F_MDS_1"] = frame["TA_F"]
+    path = tmp_path / "ts.parquet"
+    frame.to_parquet(path)
+    assert "TS" in io.available(path)
+    assert "TS" not in io.read_fluxnet(path, None, quiet=True)
+    assert "TS" in io.read_fluxnet(path, ["TA", "TS"], quiet=True)

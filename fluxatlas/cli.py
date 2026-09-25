@@ -54,8 +54,8 @@ def _pairs(values, flag):
 def build_mapping(args):
     """The `variables` argument for `Atlas`, from the three flags that can contribute to it.
 
-    Returns None where the caller named nothing, which is the signal to build every variable the
-    file can supply.
+    Returns None where the caller named nothing, which is the signal to build the registry's
+    default variables the file can supply.
     """
     explicit = _pairs(args.var, "--var")
     flags = _pairs(args.qc, "--qc")
@@ -98,9 +98,17 @@ def show(path):
         return 0
     say(f"{Path(path).name}")
     say(f"  {'variable':<9} {'column':<22} {'quality flag':<22} unit")
+    asked = []
     for key, spec in found.items():
         factor = "" if spec["factor"] == 1.0 else f"  (x{spec['factor']:g})"
-        say(f"  {key:<9} {spec['column']:<22} {spec['qc'] or '-':<22} {spec['units']}{factor}")
+        mark = "" if _variables.default(key) else "  *"
+        if mark:
+            asked.append(key)
+        say(f"  {key:<9} {spec['column']:<22} {spec['qc'] or '-':<22} {spec['units']}{factor}{mark}")
+    if asked:
+        say()
+        say("  * built only when named with --vars, which then names the whole selection. The")
+        say("    energy-balance closure needs H, LE, NETRAD and G in the same build.")
     missing = [k for k in _variables.known() if k not in found]
     if missing:
         say(f"\n  not found: {', '.join(missing)}")

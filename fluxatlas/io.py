@@ -351,7 +351,8 @@ def resolve(source, keys, label="the file"):
     Three forms are accepted, and the third is what makes this usable on series that were never
     near a FLUXNET file:
 
-    - `None` - every registry variable the frame can supply, by the registry's own candidate names.
+    - `None` - the registry's default variables the frame can supply, by their candidate names.
+      The others (`Variable.default` is False) are taken only when named.
     - `["TA", "PREC"]` - these variables, resolved by candidate name as above.
     - `{"TA": "MY_TEMPERATURE", "PREC": {"column": "RAIN", "qc": "RAIN_FLAG", "factor": 1.0}}` -
       an explicit mapping from canonical key to column. The canonical key still has to be one the
@@ -370,7 +371,9 @@ def resolve(source, keys, label="the file"):
     columns = set(columns_of(source))
     present = available(columns)
     if keys is None:
-        keys = list(present)
+        # The default selection: what the file supplies of the variables a build takes unasked.
+        # `available` still reports everything, which is how the rest are found and named.
+        keys = [k for k in present if varreg.default(k)]
     if isinstance(keys, str):
         keys = [keys]
 

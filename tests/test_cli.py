@@ -159,6 +159,19 @@ def test_the_dropped_day_test_is_still_reported_when_not_quiet(parquet_path, tmp
     assert "day tests dropped" in capsys.readouterr().out
 
 
+def test_list_marks_the_variables_a_build_takes_only_when_named(tmp_path, capsys):
+    """`--list` is how the on-request variables are found, so it has to say which they are."""
+    frame = synthetic_frame(years=2)
+    frame["TS_F_MDS_1"] = frame["TA_F"]
+    path = tmp_path / "ts.parquet"
+    frame.to_parquet(path)
+    run([str(path), "--list"])
+    lines = {line.split()[0]: line for line in capsys.readouterr().out.splitlines()
+             if line.startswith("  ") and line.split()}
+    assert lines["TS"].rstrip().endswith("*")
+    assert not lines["TA"].rstrip().endswith("*")
+
+
 def test_the_module_entry_point_exists():
     import fluxatlas.__main__ as entry
     assert entry.main is cli.main
