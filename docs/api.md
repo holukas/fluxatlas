@@ -45,14 +45,15 @@ points to use:
 
 ```{eval-rst}
 .. automodule:: fluxatlas.io
-   :members: columns_of, available, resolve, read_fluxnet, span
+   :members: columns_of, available, resolve, read_fluxnet, fill_levels, span
 ```
 
 ## fluxatlas.variables
 
 ```{eval-rst}
 .. automodule:: fluxatlas.variables
-   :members: Variable, uncertainty, uncertainty_note, rank_first, family, coverage, known, make
+   :members: Variable, qc_convention, uncertainty, uncertainty_note, rank_first, family, coverage,
+             known, make
 ```
 
 The registry itself is on the [variables](variables.md) page, where the tables come from it

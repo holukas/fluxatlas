@@ -62,6 +62,49 @@ measured is a good one. Warning a flux at the meteorological line would flag eve
 flux record ever produced, which says nothing. The line sits instead where a month stops being a
 thin measurement and becomes very largely model.
 
+## How the rest was filled
+
+A measured share says how much of a span came from the instrument. It does not say what the rest
+is, and a FLUXNET quality flag says more than one bit about that. So where a variable has a flag,
+each span also carries the share of its records at each level of that flag, against the same
+denominator as the measured share. The month panel states them beside the measured share, and the
+variable page stacks them on the measured bar of its coverage chart. For March 2005 at CH-Oe2:
+
+- precipitation: *0 % measured, 100 % from reanalysis*
+- net ecosystem exchange: *31 % measured, 69 % good-quality fill*
+- latent heat: *61 % measured, 39 % good-quality fill, 1 % medium-quality fill*
+
+Each share is rounded on its own, so a line can add up to 99 or 101 %.
+
+Like the measured share, this describes a figure and gates nothing.
+
+### A code means what its column's convention says
+
+The codes above 0 do not mean the same thing in every column. The FULLSET documentation states two
+conventions, and a real file bears both out:
+
+| Flag | 1 | 2 | 3 |
+| --- | --- | --- | --- |
+| `*_F_MDS_QC`, `*_F_MDS_<n>_QC`, and the flux flags such as `NEE_VUT_REF_QC` | good-quality fill | medium-quality fill | poor-quality fill |
+| the consolidated meteorology: `TA_F_QC`, `SW_IN_F_QC`, `LW_IN_F_QC`, `VPD_F_QC`, `PA_F_QC`, `P_F_QC`, `WS_F_QC` | gap-filled | from reanalysis | — |
+
+The consolidated variables keep a marginal distribution sampling fill only where it is of good
+quality and replace everything else with the ERA reanalysis downscaled to the site. On the CH-Oe2
+record `TA_F_QC` is 96.75 % code 0, 1.14 % code 1 and 2.11 % code 2, and that 2.11 % is exactly the
+medium and poor fill of `TA_F_MDS_QC` (1.02 % + 1.09 %), the records the consolidation replaced. A
+single legend reading 2 as "medium-quality fill" would call the reanalysis a gap-fill. `NEE_VUT_REF_QC`
+carries all four codes: 42.1 % measured, 54.4 % good, 3.0 % medium and 0.5 % poor quality fill.
+
+The convention is chosen from the name of the flag column the variable was actually read from, by
+{func}`fluxatlas.variables.qc_convention`, so `GPP` and `RECO`, which take the flag of the `NEE` they
+were partitioned from, are described in that flag's terms.
+
+A flag named with `--qc` for a file of another convention has no known meaning beyond the one
+every flag shares, so its records are described as *otherwise flagged* and no more. A record that
+has a value but a code its convention does not define, or no flag beside it, is counted *without a
+documented flag* rather than folded into the nearest level. A variable read without any flag
+carries no levels at all: its unmeasured records are missing rather than filled.
+
 ## What this replaced
 
 Both gates used to read the measured share, at thresholds set for meteorology. That gave two
@@ -118,3 +161,8 @@ the fact that qualifies it.
 `thin_spans` computes the counts, `report_thin_spans` prints them, `meta.thin` carries them to the
 page, and `variables[].cov` carries the thresholds because the renderer reads them too.
 {func}`fluxatlas.variables.coverage` answers the thresholds for a key from the registry alone.
+
+The fill levels are read by {func}`fluxatlas.io.fill_levels`, one small integer per record, and
+aggregated per span by `fill_shares`. Each span carries them as `f`, whole percent with trailing
+zeros dropped, and `variables[].fill` names the flag, its convention and the words for each level.
+On the CH-Oe2 record they add 30 kB to a page of 2.5 MB.
