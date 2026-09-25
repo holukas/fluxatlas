@@ -28,9 +28,9 @@
  *     sentences too, and they are what a screen reader is given.
  *
  * Usage: node smoke.mjs <path to a built atlas.html>
- * Prints one JSON object on stdout: {problems: [{where, what}], visited: [...]}. Exit code is 0
- * whether or not problems were found - reporting them is the Python test's job; a non-zero exit
- * here means the driver itself failed.
+ * Prints one JSON object on stdout: {problems: [{where, what}], visited: [...], checks: {...}}.
+ * Exit code is 0 whether or not problems were found - reporting them is the Python test's job; a
+ * non-zero exit here means the driver itself failed.
  */
 
 import { readFileSync } from 'node:fs';
@@ -71,7 +71,21 @@ let stage = 'load';
  * plausible value keeps the code under test on the path a browser would take. `getComputedTextLength`
  * is the one that matters - it returns a real number so the measured chart margins and `trimText`
  * are exercised instead of being skipped by their own guards. */
+/* The CSV the page hands over, caught where a browser would start a download. jsdom has no object
+ * URLs and would try to navigate on an anchor's click, so both are replaced by a recorder: the Blob
+ * the renderer built and the file name it asked for are what the checks below read. */
+const downloads = [];
+
 function stub(window) {
+  window.URL.createObjectURL = blob => {
+    downloads.push({ blob, name: null });
+    return 'blob:fluxatlas-test/' + downloads.length;
+  };
+  window.URL.revokeObjectURL = () => {};
+  window.HTMLAnchorElement.prototype.click = function click() {
+    const last = downloads[downloads.length - 1];
+    if (last && this.href === 'blob:fluxatlas-test/' + downloads.length) last.name = this.download;
+  };
   window.scrollTo = () => {};
   window.scrollBy = () => {};
   window.matchMedia = query => ({
@@ -130,9 +144,13 @@ function visibleViews() {
     .filter(node => node && !node.hidden);
 }
 
+/* The footer is on screen under every view, and it is where the caller's own strings - the site,
+ * its description, the file name and, where the build records it, the file's provenance - are
+ * printed; so it is read with the view rather than left out as chrome. */
 function visibleText() {
-  const crumbs = doc.getElementById('crumbs');
-  return visibleViews().concat(crumbs ? [crumbs] : [])
+  const extras = ['crumbs', 'footer-text', 'footer-prov'].map(id => doc.getElementById(id))
+    .filter(Boolean);
+  return visibleViews().concat(extras)
     .map(node => node.textContent || '').join('\n');
 }
 
@@ -177,6 +195,20 @@ function inspect(where) {
   }
   scan(where, 'rendered text', text);
   labelledStrings().forEach(([what, value]) => scan(where, what, value));
+  planted(where);
+}
+
+/* The renderer never writes a <u> element, so one in the page can only have been parsed out of a
+ * string that was the caller's - a site name, a description, a column - and reached `innerHTML`
+ * unescaped. The escaping test plants `<u>` in every one of those it can reach, and this is where
+ * it is caught, on whichever view first prints it. */
+function planted(where) {
+  const hit = doc.querySelector('u');
+  if (!hit) return;
+  const host = hit.parentElement;
+  note(where, 'a <u> element was parsed out of text that should have arrived as text, inside <'
+    + (host ? host.nodeName.toLowerCase() + (host.id ? '#' + host.id : '') : '?') + '>: '
+    + (host ? host.textContent.slice(0, 160) : ''), `planted|${where}`);
 }
 
 /* The tooltip is a sibling of the views rather than inside one, so it is scanned where it is shown
@@ -308,9 +340,256 @@ async function openADay(where, hash) {
   }
 }
 
+/* What the three newest parts of the page did, for the Python side to assert on by name. A part
+ * that silently stopped being drawn would otherwise pass every scan above by producing nothing to
+ * scan, so each one records that it ran as well as reporting what went wrong. */
+const checks = { cumulative: [], csv: [], address: {} };
+
+const nYears = DATA => DATA.meta.last_year - DATA.meta.first_year + 1;
+
+/* The running total through the year: drawn with a line per year, and put under the cursor. The
+ * chart names itself in its accessible label, which is what finds it here - the same text a screen
+ * reader is given, so a chart that lost its label fails this as well as failing a reader. */
+function driveCumulative(where, required) {
+  const svgs = visibleViews().flatMap(root =>
+    Array.from(root.querySelectorAll('svg[aria-label*="accumulated through the year"]')));
+  if (!svgs.length) {
+    if (required) note(where, 'no chart of the total accumulated through the year was drawn');
+    return;
+  }
+  svgs.forEach(svg => {
+    const lines = svg.querySelectorAll('path[fill="none"]').length;
+    const hit = svg.querySelector('rect.hit');
+    tipNode.innerHTML = '';
+    if (hit) hit.dispatchEvent(mouse('mousemove'));
+    inspectTip(`${where}, the accumulated total under the cursor`);
+    checks.cumulative.push({ where, label: svg.getAttribute('aria-label'), lines,
+      tip: tipNode.textContent });
+    // A line per year, and the normal where there is one: fewer is a year that was not drawn.
+    if (lines < nYears(DATA)) {
+      note(where, `the accumulated chart drew ${lines} lines for ${nYears(DATA)} years`);
+    }
+  });
+}
+
+/* A Blob as its bytes, through the window's own FileReader since jsdom's Blob has no `text()`.
+ * Decoded with the byte-order mark kept, so whether the file carries one can be asserted. */
+function readBlob(win, blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new win.FileReader();
+    reader.onload = () => resolve(new TextDecoder('utf-8', { ignoreBOM: true })
+      .decode(new Uint8Array(reader.result)));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+/* The download button, at whatever scale and metric the grid is on. The file has to exist, be
+ * named for what it holds, carry a row per year under one header, and say nothing a spreadsheet
+ * would read as text where a number was missing. */
+async function driveCsv(where) {
+  const control = doc.getElementById('csv-control');
+  const button = doc.getElementById('csv-download');
+  if (!control || !button) {
+    note(where, 'no CSV download was offered on the grid');
+    return;
+  }
+  if (control.hidden) {
+    checks.csv.push({ where, hidden: true });
+    return;
+  }
+  const before = downloads.length;
+  button.dispatchEvent(mouse('click'));
+  const got = downloads[before];
+  if (!got || !got.name) {
+    note(where, 'the CSV button produced no file');
+    return;
+  }
+  const raw = await readBlob(window, got.blob);
+  const bom = raw.charCodeAt(0) === 0xFEFF;
+  const lines = raw.replace(/^﻿/, '').split('\r\n').filter(Boolean);
+  // No cell in these files is quoted - no header carries a comma - so a plain split is exact.
+  const rows = lines.map(line => line.split(','));
+  const header = rows[0] || [];
+  const record = { where, name: got.name, type: got.blob.type, bom, header,
+    rows: rows.length - 1, widths: Array.from(new Set(rows.map(r => r.length))),
+    sample: lines.slice(0, 3) };
+  checks.csv.push(record);
+  if (rows.length - 1 !== nYears(DATA)) {
+    note(where, `the CSV holds ${rows.length - 1} rows for ${nYears(DATA)} years`);
+  }
+  if (record.widths.length !== 1) note(where, 'the CSV rows are not all as wide as its header');
+  for (const bad of ['NaN', 'null', 'undefined', 'Infinity']) {
+    if (lines.slice(1).some(line => line.split(',').includes(bad))) {
+      note(where, `the CSV carries "${bad}" where a value was missing`);
+    }
+  }
+  if (header.some(h => h.includes('undefined'))) note(where, `a CSV header reads ${header}`);
+}
+
+/* The same page, opened afresh at an address: what a reload or a shared link does. A second DOM is
+ * the only way to run the renderer's start-up path again, and start-up is where an address has to
+ * be read before anything is drawn. */
+const HTML = readFileSync(htmlPath, 'utf-8');
+async function openAt(hash) {
+  const fresh = new JSDOM(HTML, {
+    url: 'https://fluxatlas.test/atlas.html' + hash,
+    runScripts: 'dangerously',
+    pretendToBeVisual: true,
+    virtualConsole,
+    beforeParse: stub,
+  });
+  fresh.window.addEventListener('error', ev => note('thrown during ' + stage,
+    ev.error ? (ev.error.stack || ev.error.message) : ev.message));
+  await new Promise(resolve => fresh.window.setTimeout(resolve, 0));
+  await new Promise(resolve => fresh.window.setTimeout(resolve, 0));
+  return fresh;
+}
+
+/* A history step settles on a task of its own in jsdom, as it does in a browser, so it is waited
+ * for by watching the address rather than by a fixed number of ticks. */
+async function settle(before) {
+  for (let k = 0; k < 40 && window.location.hash === before; k++) {
+    await new Promise(resolve => window.setTimeout(resolve, 5));
+  }
+  await tick();
+}
+
+/* The metric and the scale, through the address and back out of it.
+ *
+ * Chosen with the controls, as a reader chooses them; carried into a span and out again by the
+ * page's own links, which state neither; stepped back and forward through; and then opened afresh
+ * from the address alone, at the grid and at a span. Each of those is a separate way to lose the
+ * choice, and a page that lost it at any one would still draw a perfectly good grid - in the
+ * default metric. */
+async function driveAddress(monthHash) {
+  stage = 'the address';
+  await goto('#grid', 'the grid, before choosing through the address');
+  const metricPick = doc.getElementById('metric-pick');
+  const scalePick = doc.getElementById('scale-pick');
+  const options = Array.from(metricPick.options).map(o => o.value);
+  // The second metric, because the first is the default and an address leaves a default out.
+  const metricKey = options.length > 1 ? options[1] : options[0];
+  const offered = Array.from(scalePick.options).map(o => o.value);
+  const scaleValue = offered.includes('season') ? 'season' : 'year';
+  const out = checks.address;
+  out.metric = metricKey;
+  out.scale = scaleValue;
+
+  metricPick.value = metricKey;
+  metricPick.dispatchEvent(new window.Event('change', { bubbles: true }));
+  await tick();
+  scalePick.value = scaleValue;
+  scalePick.dispatchEvent(new window.Event('change', { bubbles: true }));
+  await tick();
+  await tick();
+  out.chosen = window.location.hash;
+  const says = hash => hash.includes('metric=' + encodeURIComponent(metricKey))
+    && hash.includes('scale=' + scaleValue);
+  if (options.length > 1 && !out.chosen.includes('metric=' + encodeURIComponent(metricKey))) {
+    note('the address', `choosing a metric left the address at ${out.chosen}`);
+  }
+  if (!out.chosen.includes('scale=' + scaleValue)) {
+    note('the address', `choosing a scale left the address at ${out.chosen}`);
+  }
+
+  /* Into a span by a tile, whose link states neither choice, then back by the page's own button.
+   * A tile of the grid as drawn, because the grid follows the scale of whatever span is opened -
+   * a link into a month from a season grid moves the grid to months, by design - and the reader's
+   * own path out of a season grid is into a season. */
+  const tile = doc.querySelector('#view-grid .cell:not(.empty)');
+  if (!tile) {
+    note('the address', 'the grid at the chosen scale drew no tile to open');
+    return;
+  }
+  tile.dispatchEvent(mouse('click'));
+  await tick();
+  await tick();
+  out.span = window.location.hash;
+  if (options.length > 1 && !out.span.includes('metric=')) {
+    note('the address', `opening a span dropped the metric from the address: ${out.span}`);
+  }
+  doc.getElementById('month-back').dispatchEvent(mouse('click'));
+  await tick();
+  await tick();
+  out.back = { hash: window.location.hash, metric: metricPick.value, scale: scalePick.value };
+  if (metricPick.value !== metricKey || scalePick.value !== scaleValue
+      || !says(window.location.hash)) {
+    note('the address', 'coming back from a span lost the choice: '
+      + JSON.stringify(out.back));
+  }
+
+  // Back and forward through the browser's history.
+  let before = window.location.hash;
+  window.history.back();
+  await settle(before);
+  out.historyBack = { hash: window.location.hash,
+    view: doc.getElementById('view-month').hidden ? 'grid' : 'span' };
+  if (out.historyBack.view !== 'span') {
+    note('the address', `Back from the grid did not return to the span: ${out.historyBack.hash}`);
+  }
+  before = window.location.hash;
+  window.history.forward();
+  await settle(before);
+  out.historyForward = { hash: window.location.hash, metric: metricPick.value,
+    view: doc.getElementById('view-grid').hidden ? 'span' : 'grid' };
+  if (out.historyForward.view !== 'grid' || metricPick.value !== metricKey) {
+    note('the address', 'Forward did not return to the grid in the chosen metric: '
+      + JSON.stringify(out.historyForward));
+  }
+  current = null;
+
+  // A reload of the grid, and a shared link into a span, each from the address alone.
+  stage = 'reopening the page at its address';
+  const atGrid = await openAt(out.back.hash);
+  const g = atGrid.window.document;
+  out.reload = { hash: out.back.hash, metric: g.getElementById('metric-pick').value,
+    scale: g.getElementById('scale-pick').value,
+    grid: g.getElementById('calgrid').className };
+  if (out.reload.metric !== metricKey || out.reload.scale !== scaleValue) {
+    note('the address', 'a reload did not restore the choice: ' + JSON.stringify(out.reload));
+  }
+  atGrid.window.close();
+
+  const shared = `${monthHash}?metric=${encodeURIComponent(metricKey)}`;
+  const atSpan = await openAt(shared);
+  const s = atSpan.window.document;
+  const label = DATA.metrics.find(m => m.key === metricKey).label;
+  out.shared = { hash: shared, view: s.getElementById('view-month').hidden ? 'grid' : 'span',
+    metric: s.getElementById('metric-pick').value,
+    colouredBy: (s.getElementById('month-body').textContent || '').includes(label + '.') };
+  if (out.shared.view !== 'span' || out.shared.metric !== metricKey || !out.shared.colouredBy) {
+    note('the address', 'a shared link into a span did not open it in the metric it named: '
+      + JSON.stringify(out.shared));
+  }
+  atSpan.window.close();
+  visited.push('the address, chosen, carried, stepped through and reopened');
+}
+
+/* Where the caller's own strings are printed, as the DOM holds them: the text a reader sees and the
+ * elements it was parsed into. A description reading "Plot <b>north</b>" that arrives as text
+ * leaves no element behind; one that reaches `innerHTML` unescaped leaves a <b>. */
+function recordMarkup() {
+  const elements = id => {
+    const node = doc.getElementById(id);
+    return node ? Array.from(node.querySelectorAll('*')).map(n => n.nodeName.toLowerCase()) : null;
+  };
+  const text = id => (doc.getElementById(id) || {}).textContent || '';
+  const prov = doc.getElementById('footer-prov');
+  checks.page = {
+    title: doc.title,
+    footer: { text: text('footer-text'), elements: elements('footer-text') },
+    provenance: { hidden: prov ? prov.hidden : null, text: text('footer-prov'),
+      elements: elements('footer-prov'),
+      hash: (doc.querySelector('#footer-text code.hash') || {}).textContent || null },
+    crumbs: { text: text('crumbs'), elements: elements('crumbs') },
+  };
+}
+
 async function run() {
   await tick();
   inspect('load');
+  recordMarkup();
 
   // 1. The grid, at each of the four scales the picker offers. This is a control rather than a
   //    route, so it is driven the way a reader drives it.
@@ -327,6 +606,7 @@ async function run() {
       await tick();
       inspect(`grid at the ${value} scale`);
       driveTiles(`grid at the ${value} scale`);
+      await driveCsv(`grid at the ${value} scale, downloading it as CSV`);
     }
     scalePick.value = 'month';
     scalePick.dispatchEvent(new window.Event('change', { bubbles: true }));
@@ -342,6 +622,8 @@ async function run() {
       metricPick.dispatchEvent(new window.Event('change', { bubbles: true }));
       await tick();
       inspect(`grid coloured by ${option.value}`);
+      // Every metric's table, since a metric that reads a field it does not carry fails here too.
+      await driveCsv(`grid coloured by ${option.value}, downloading it as CSV`);
     }
   }
 
@@ -371,11 +653,30 @@ async function run() {
   if (season) panels.push([`#${season.y}-${season.s}`, `the season panel (${season.y} ${season.s})`]);
   if (year) panels.push([`#${year.y}-${DATA.meta.year_slug}`, `the year panel (${year.y})`]);
 
+  // The year panel draws a signed total accumulated through the year, wherever there is one.
+  const sums = DATA.variables.filter(v => v.agg === 'sum' && DATA.days.series[`${v.key}_sum`]);
+  const signedSum = sums.some(v => v.sign);
   for (const [hash, where] of panels) {
     stage = where;
     await goto(hash, where);
     driveCharts(where);
+    const isYear = hash.endsWith(`-${DATA.meta.year_slug}`);
+    driveCumulative(where, isYear && signedSum);
     await openADay(where, hash);
+    /* The accumulated total on the year panel opens a day as well, by the date under the cursor;
+     * it is the one chart there whose x axis is a date of the year rather than a day of a span. */
+    if (isYear && signedSum) {
+      await goto(hash, `${where}, back for the accumulated total`);
+      const svg = doc.querySelector('#view-month svg[aria-label*="accumulated through the year"]');
+      const hit = svg && svg.querySelector('rect.hit');
+      if (hit) {
+        hit.dispatchEvent(mouse('click'));
+        await tick();
+        await tick();
+        landed(`${where}, selecting a day from the accumulated total`);
+        current = null;
+      }
+    }
   }
 
   // The day panel is also reached by its own address, which is the link a reader shares.
@@ -389,9 +690,29 @@ async function run() {
     stage = `the ${variable.key} page`;
     await goto(`#var-${variable.key}`, `the ${variable.key} page`);
     driveCharts(`the ${variable.key} page`);
+    driveCumulative(`the ${variable.key} page`, sums.includes(variable));
   }
 
-  // 6. Back to where a reader started, which is also the route that has to survive an unknown hash.
+  /* The theme toggle, on a view that is not the grid. It repaints the view on screen, and it used
+   * to repaint anything that was not the grid as a span panel: on a variable page that threw on
+   * the null span and left the page in its old colours. Toggled twice, so the walk goes on in the
+   * theme it began in. */
+  const toggle = doc.getElementById('theme-toggle');
+  for (const [hash, where] of [[`#var-${DATA.variables[0].key}`, 'a variable page'],
+    [monthHash, 'the month panel']]) {
+    stage = `the theme toggle on ${where}`;
+    await goto(hash, `${where}, before the theme toggle`);
+    for (let k = 0; k < 2; k++) {
+      toggle.dispatchEvent(mouse('click'));
+      await tick();
+      inspect(`${where}, after the theme toggle`);
+    }
+  }
+
+  // 6. The metric and the scale, through the address and back out of it.
+  await driveAddress(monthHash);
+
+  // 7. Back to where a reader started, which is also the route that has to survive an unknown hash.
   stage = 'an unknown hash';
   await goto('#nothing-addresses-this', 'an unknown hash, which has to fall back to the grid');
   landed('an unknown hash, which has to fall back to the grid', 'grid');
@@ -404,4 +725,4 @@ try {
 }
 await tick();
 
-process.stdout.write(JSON.stringify({ problems, visited }, null, 2));
+process.stdout.write(JSON.stringify({ problems, visited, checks }, null, 2));
