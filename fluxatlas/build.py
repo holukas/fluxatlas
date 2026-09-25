@@ -2580,6 +2580,26 @@ def epoch_split(metric, agg, span_rows, n_cols):
 # Payload
 # ----------------------------------------------------------------------------------------------
 
+# ----------------------------------------------------------------------------------------------
+# Payload for the variable page's own parts. Each takes the loaded series, the daily index and the
+# daily frame, and returns None where the build carries nothing it could say.
+# ----------------------------------------------------------------------------------------------
+
+def diurnal_layer(loaded, dates, day):
+    """The month-by-hour surface of every variable, per year."""
+    return None
+
+
+def season_timing_layer(loaded, dates, day):
+    """When the season ran each year: the growing season, and the carbon uptake period."""
+    return None
+
+
+def extreme_halfhours_layer(loaded, dates, day):
+    """The measured half-hours at either end of each variable's record."""
+    return None
+
+
 def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, quiet=False,
                   seasons=DEFAULT_SEASONS, fingerprint=None):
     """Everything the page is built from, as one JSON-serialisable mapping.
@@ -3064,6 +3084,9 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         # a dashed tick at the normal, and without this the year scale silently drew none.
         year_climatology={key: year_norm[key]["by_group"][1] for key in keys},
         hourly=hourly_layer(loaded, first_year, last_year) if with_hourly else None,
+        diurnal=diurnal_layer(loaded, dates, day),
+        season_timing=season_timing_layer(loaded, dates, day),
+        extreme_halfhours=extreme_halfhours_layer(loaded, dates, day),
     )
 
     # The grid is the page, so its shape is checked rather than assumed: one tile per month of

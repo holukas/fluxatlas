@@ -4246,10 +4246,15 @@
     host.innerHTML = '<p class="monthlede" id="var-lede"></p>'
       + '<div class="grid" id="var-summary"></div>'
       + '<h2 class="section">Over the record</h2><div class="grid" id="var-record"></div>'
+      // Each of these is filled by one part of the page below, and stays empty - no heading, no
+      // space - where the build carries nothing for it, so a page without them reads as before.
+      + '<div id="var-season"></div><div id="var-thresholds"></div>'
       + '<h2 class="section">Month by month</h2><div class="grid" id="var-months"></div>'
       + (hasDaily(v) ? '<h2 class="section">Day by day</h2>'
         + '<div class="grid" id="var-daily"></div>' : '')
-      + '<h2 class="section">What the record covers</h2><div class="grid" id="var-cov"></div>';
+      + '<div id="var-extremes"></div><div id="var-diurnal"></div>'
+      + '<h2 class="section">What the record covers</h2><div class="grid" id="var-cov"></div>'
+      + '<div id="var-hourly"></div>';
 
     document.getElementById('var-lede').innerHTML = v.about
       + ' ' + sourceOf(v) + ', ' + v.first_year + '–' + v.last_year + '.';
@@ -4360,7 +4365,34 @@
         + 'slope above may be that trend rather than the ecosystem.',
       draw: drawVarCoverage(key)
     });
+
+    renderVarSeason(key);
+    renderVarThresholds(key);
+    renderVarExtremes(key);
+    renderVarDiurnal(key);
+    renderVarHourly(key);
   }
+
+  /* ---- When the season runs: growing season on TA, carbon uptake period on NEE. -------------
+     Fills #var-season from DATA.season_timing. */
+  function renderVarSeason() {}
+
+  /* ---- Threshold days and the longest spell, year by year. ----------------------------------
+     Fills #var-thresholds from the year rows' counts and spells. */
+  function renderVarThresholds() {}
+
+  /* ---- The days and half-hours at either end. -------------------------------------------------
+     Fills #var-extremes from DAYS and DATA.extreme_halfhours. */
+  function renderVarExtremes() {}
+
+  /* ---- Through the day: the month-by-hour surface and the mean day of each calendar month. ----
+     Fills #var-diurnal from DATA.diurnal. */
+  function renderVarDiurnal() {}
+
+  /* ---- Every hour of the record, as date against time of day. --------------------------------
+     Fills #var-hourly from HOURLY. */
+  function renderVarHourly() {}
+
 
   /**
    * What set one year apart, as the build ranked it.
