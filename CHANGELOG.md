@@ -143,7 +143,8 @@ complete payloads of three builds were compared before and after, and no figure 
 - **Axis labels no longer run into each other.** A y axis states its ticks with only the decimals they need, so a
   carbon total reads 1500 rather than 1500.00, and its unit stands beside the widest tick, with the margin widened where
   there is no room. X-axis labels at either end are anchored at their tick, and on a narrow chart the labels thin out
-  instead of overlapping.
+  instead of overlapping. A chart redrawn while its view is hidden estimates its labels' widths rather than taking
+  them as zero, and the hour-of-day surfaces end their 24:00 label at its tick.
 - **Two charts crowded their own labels.** The trend-by-month chart put its scale among the variable names, overlapped
   its month names on a narrow page and clipped its caption; the scale is now on the right, narrow months are labelled
   by their initial, and a shorter caption is used where the full one does not fit. The season chart shortens its median

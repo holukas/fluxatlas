@@ -479,6 +479,12 @@
     return most;
   }
 
+  /* A label's width, measured where the chart is on screen and estimated from its length where it
+     is not: a chart redrawn inside a hidden view measures every label as zero wide, and a zero
+     would let an edge label or the axis title land on its neighbour. */
+  const labelWidth = node => (node.getComputedTextLength && node.getComputedTextLength())
+    || node.textContent.length * 6.4;
+
   function drawAxes(f, sx, sy, spec) {
     const { svg, m, iw, ih } = f;
     const g = el('g', {}, svg);
@@ -490,7 +496,7 @@
       if (y < m.top - 1 || y > m.top + ih + 1) return;
       el('line', { x1: m.left, x2: m.left + iw, y1: y, y2: y, class: 'gridline' }, g);
       const t = svgText(g, m.left - 8, y + 4, nf(v, digits), 'ax-text', { 'text-anchor': 'end' });
-      widest = Math.max(widest, t.getComputedTextLength ? t.getComputedTextLength() : 0);
+      widest = Math.max(widest, labelWidth(t));
     });
     el('line', { x1: m.left, x2: m.left + iw, y1: m.top + ih, y2: m.top + ih, class: 'ax-line' }, g);
     let lastRight = -Infinity;
@@ -501,7 +507,7 @@
       const label = svgText(g, x, m.top + ih + 16, t.label, 'ax-text', { 'text-anchor': 'middle' });
       /* A label centred on a tick at either end of the axis would reach into the y labels or past
          the edge of the chart; it is anchored at its tick instead. */
-      const w = label.getComputedTextLength ? label.getComputedTextLength() : 0;
+      const w = labelWidth(label);
       let x0 = x - w / 2;
       if (x0 < m.left - 4) { label.setAttribute('text-anchor', 'start'); x0 = x; }
       else if (x + w / 2 > f.width - 2) { label.setAttribute('text-anchor', 'end'); x0 = x - w; }
@@ -5321,9 +5327,11 @@
       [0, 3, 6, 9, 12, 15, 18, 21, 24].forEach(h => {
         const x = m.left + h * cw;
         el('line', { x1: x, x2: x, y1: base, y2: base + 4, class: 'ax-line' }, f.svg);
+        // The last label ends at its tick rather than centring on it, which would run it past the
+        // right edge of the chart in any face wider than the page's own.
         if (h % 6 === 0) {
           svgText(f.svg, x, base + 16, String(h).padStart(2, '0') + ':00', 'ax-text',
-            { 'text-anchor': 'middle' });
+            { 'text-anchor': h === 24 ? 'end' : 'middle' });
         }
       });
 
