@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from datetime import datetime
 
 import fluxatlas as fa
 from fluxatlas import build, io
@@ -102,4 +104,15 @@ def test_a_caller_of_build_payload_need_not_supply_a_fingerprint(parquet_path):
     assert prov["file"] == "x.parquet"
     assert prov["bytes"] is None and prov["sha256"] is None
     assert prov["columns"]["TA"]["column"] == "TA_F"
+
+
+# -- When it was built ---------------------------------------------------------------------------
+
+def test_the_build_time_carries_its_utc_offset(ta_atlas):
+    """A clock time without a zone cannot be placed by a reader in another one."""
+    stamp = ta_atlas.payload["meta"]["generated"]
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2} [+-]\d{2}:\d{2}", stamp), stamp
+    parsed = datetime.strptime(stamp, "%Y-%m-%d %H:%M %z")
+    assert parsed.utcoffset() == datetime.now().astimezone().utcoffset()
+    assert abs((datetime.now().astimezone() - parsed).total_seconds()) < 24 * 3600
 

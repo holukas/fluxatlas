@@ -2780,7 +2780,10 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
             n_months=len(rows), n_days=len(dates), n_years=len(year_rows),
             year_slug=YEAR_SLUG,
             extreme_month_z=EXTREME_MONTH_Z, extreme_months=EXTREME_MONTHS,
-            generated=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            # Local time with its offset from UTC. A page is opened far from where it was built,
+            # and a clock time without a zone cannot be placed; the offset keeps it exact while the
+            # local time keeps it readable in the footer.
+            generated=datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %:z"),
             min_badge_coverage=MIN_BADGE_COVERAGE, normal_min_coverage=NORMAL_MIN_COVERAGE,
             min_normal_years=MIN_NORMAL_YEARS, sparse_coverage=SPARSE_COVERAGE,
             # The thresholds as prose, since they are no longer one number each and the page states
