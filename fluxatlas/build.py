@@ -210,7 +210,8 @@ RECORD_DAY_COVERAGE = 90.0  # % of a day measured before it is allowed to set a 
 FLAG_SHORT = {
     "frost": "frost", "ice": "ice", "summer": "summer", "hot": "hot",
     "tropical": "tropical night", "wet": "wet", "heavy": "heavy rain", "verywet": "very wet",
-    "freezethaw": "freeze-thaw", "coldprec": "precipitation below 1 °C", "saturated": "in cloud",
+    "freezethaw": "freeze-thaw", "coldprec": "precipitation below 1 °C",
+    "saturated": "near-saturated",
     "clear": "clear", "overcast": "overcast", "recwarm": "warmest for its date",
     "reccold": "coldest for its date", "recwet": "wettest for its date",
     "vpdstress": "evaporative stress", "vpdsevere": "severe evaporative stress",
@@ -456,8 +457,9 @@ BADGES = [
 
     dict(key="vpd_stress", label="Evaporative stress days", group="Evaporative demand",
          icon="evaporation", tone="dry", priority=3, needs=("VPD",), needs_normal=False,
-         about="Five or more days whose maximum vapour pressure deficit reached 2 kPa, where "
-               "stomata usually begin to close.",
+         about="Five or more days whose maximum vapour pressure deficit reached 2 kPa, a level "
+               "at which stomatal closure is widely reported, though the response differs "
+               "between species and ecosystems.",
          rule=lambda s: (
              f"{s['n_vpdstress']} days reached 2 {s['u_VPD']}"
              + (f", {s['n_vpdsevere']} of them 3 {s['u_VPD']}" if s["n_vpdsevere"] else "")
@@ -580,7 +582,7 @@ BADGES = [
          tone="dry", priority=1, needs=("TA", "PREC"), supersedes=("warm", "dry"),
          about="The monthly mean is at least one standard deviation above the calendar-month "
                "normal and the total at most half of it. Either alone is ordinary weather; "
-               "together they close stomata.",
+               "together, in a growing season, they are the conditions of drought stress.",
          rule=lambda s: (
              f"{s['TA_anom']:+.1f} {s['u_TA']} against the {s['month_name']} normal, and only "
              f"{s['PREC_pctn']:.0f} % of its precipitation ({s['PREC']:.0f} {s['u_PREC']} against "
@@ -596,7 +598,8 @@ BADGES = [
     # own says nothing, and the departure from the usual date is the whole content.
     dict(key="gs_start", label="Growing season begins", group="Season", icon="sprout",
          tone="grow", priority=2, needs=("TA",), needs_normal=False,
-         about="The month in which the growing season began: six consecutive days above 5 °C.",
+         about="The month in which the growing season began: the first run of six consecutive "
+               "days above 5 °C in the calendar year.",
          rule=lambda s: (
              f"The growing season began on {s['ev_gs_start']['date']}, "
              + (f"{abs(s['ev_gs_start']['delta'])} days "
@@ -607,8 +610,9 @@ BADGES = [
 
     dict(key="gs_end", label="Growing season ends", group="Season", icon="leaf-fall",
          tone="grow", priority=2, needs=("TA",), needs_normal=False,
-         about="The month in which the growing season ended: six consecutive days below 5 °C "
-               "after 1 July.",
+         about="The month in which the growing season ended: the first run of six consecutive "
+               "days below 5 °C after 1 July. The season is taken within the calendar year, so "
+               "the dates describe a northern-hemisphere year.",
          rule=lambda s: (
              f"The growing season ended on {s['ev_gs_end']['date']}, "
              + (f"{abs(s['ev_gs_end']['delta'])} days "
@@ -617,7 +621,8 @@ BADGES = [
 
     dict(key="last_frost", label="Last frost of spring", group="Season", icon="snowflake",
          tone="cold", priority=2, needs=("TA",), needs_normal=False,
-         about="The month holding the last frost before midsummer.",
+         about="The month holding the last frost of January to June, which is the last spring "
+               "frost in the northern hemisphere.",
          rule=lambda s: (
              f"The last frost of the first half of the year fell on "
              f"{s['ev_last_frost']['date']}"
@@ -628,7 +633,8 @@ BADGES = [
 
     dict(key="first_frost", label="First frost of autumn", group="Season", icon="snowflake",
          tone="cold", priority=2, needs=("TA",), needs_normal=False,
-         about="The month holding the first frost after midsummer.",
+         about="The month holding the first frost of July to December, which is the first "
+               "autumn frost in the northern hemisphere.",
          rule=lambda s: (
              f"The first frost of the second half of the year fell on "
              f"{s['ev_first_frost']['date']}"
@@ -641,8 +647,9 @@ BADGES = [
     dict(key="record_days", label="Many record days", group="Records", icon="star", tone="warm",
          priority=1, needs=("TA",), needs_normal=False,
          about="Eight or more days were the warmest, coldest or wettest occurrence of their own "
-               "calendar date; about four land in an average month. A largely gap-filled day "
-               "cannot set one.",
+               "calendar date. In a record of n years each day has about a one-in-n chance of "
+               "each kind of record, so the number expected by chance falls as the record "
+               "lengthens. A largely gap-filled day cannot set one.",
          rule=lambda s: (
              f"{s['x']['nrec']} days set a record for their own calendar date: "
              + ", ".join(p for p in (
@@ -692,8 +699,9 @@ BADGES = [
     dict(key="net_sink", label="Net carbon sink", group="Carbon", icon="sprout", tone="grow",
          priority=1, needs=("NEE",), needs_normal=False, only=("year",),
          about="Over the whole year the site took up more carbon than it released. This is a "
-               "statement no month can make: at this site nearly every summer month is a sink and "
-               "nearly every winter month a source, so the sign of the balance belongs to the year.",
+               "statement no month can make: over a year a site's months are commonly sinks and "
+               "sources by turns, whichever months those are, so the sign of the annual balance "
+               "belongs to the year.",
          rule=lambda s: (
              f"Net uptake of {abs(s['NEE']):.0f} {s['u_NEE']} over the year"
              + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
@@ -703,9 +711,9 @@ BADGES = [
 
     dict(key="net_source", label="Net carbon source", group="Carbon", icon="leaf-fall",
          tone="warm", priority=1, needs=("NEE",), needs_normal=False, only=("year",),
-         about="Over the whole year the site released more carbon than it took up. For a managed "
-               "site this is the year a harvest, a ploughing or a drought outweighed the growing "
-               "season, and it is visible at no shorter scale.",
+         about="Over the whole year the site released more carbon than it took up: the losses "
+               "of the year, from respiration and from any harvest, disturbance or drought, "
+               "outweighed its uptake. Like the net sink, it is visible at no shorter scale.",
          rule=lambda s: (
              f"Net release of {s['NEE']:.0f} {s['u_NEE']} over the year"
              + (f" ± {s['NEE_unc']:.0f}" if s["NEE_unc"] else "")
@@ -736,8 +744,10 @@ BADGES = [
 
     dict(key="late_frost", label="Late spring frost", group="Season", icon="snowflake",
          tone="cold", priority=3, needs=("TA",), needs_normal=False, only=("year",),
-         about="The last frost of spring fell at least a fortnight later than usual, so the risk "
-               "to new growth ran later into the year than the site is used to.",
+         about="The last frost of January to June fell at least a fortnight later than its "
+               "median date in the record, so the risk to new growth ran later into the year than "
+               "usual. The dates are taken on the calendar year, as for a northern-hemisphere "
+               "site.",
          rule=lambda s: (
              f"The last frost of spring fell on {s['ev_last_frost']['date']}, "
              f"{s['ev_last_frost']['delta']} days later than usual"
@@ -748,8 +758,9 @@ BADGES = [
 
     dict(key="early_frost", label="Early autumn frost", group="Season", icon="icicles",
          tone="cold", priority=3, needs=("TA",), needs_normal=False, only=("year",),
-         about="The first frost of autumn fell at least a fortnight earlier than usual, cutting "
-               "the frost-free period short at the other end.",
+         about="The first frost of July to December fell at least a fortnight earlier than its "
+               "median date in the record, cutting the frost-free period short at the other end. "
+               "The dates are taken on the calendar year, as for a northern-hemisphere site.",
          rule=lambda s: (
              f"The first frost of autumn fell on {s['ev_first_frost']['date']}, "
              f"{abs(s['ev_first_frost']['delta'])} days earlier than usual"
@@ -778,10 +789,10 @@ BADGES = [
                 if s["worst_month"] else ""))
          if s["x"]["nx"] >= EXTREME_MONTHS else None),
 
-    dict(key="saturated", label="In cloud", group="Radiation", icon="fog", tone="dull",
+    dict(key="saturated", label="Near-saturated air", group="Radiation", icon="fog", tone="dull",
          priority=3, needs=("RH",), needs_normal=False,
-         about="Twelve or more days whose mean relative humidity reached 95 %. At 47 m on the "
-               "ridge, that is the tower inside low cloud or fog.",
+         about="Twelve or more days whose mean relative humidity reached 95 %: air at or near "
+               "saturation for the whole day, as in fog, low cloud or prolonged rain.",
          rule=lambda s: (f"{s['n_saturated']} days with a mean relative humidity of 95 "
                          f"{s['u_RH']} or more") if s["n_saturated"] >= 12 else None),
 ]
@@ -872,8 +883,8 @@ METRICS = [
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0, unit="days",
          group="Radiation and humidity", label="Evaporative stress days per month",
          short="Stress days",
-         about="Days whose maximum vapour pressure deficit reached 2 kPa, where stomata usually "
-               "begin to close.",
+         about="Days whose maximum vapour pressure deficit reached 2 kPa, a level at which "
+               "stomatal closure is widely reported.",
          day=dict(kind="flag", flag="vpdstress")),
     dict(key="RH", var="RH", field="value", scale="seq",
          stops=("--neutral-mid", "--series-3"), digits=0,
@@ -883,8 +894,7 @@ METRICS = [
     dict(key="SWC", var="SWC", field="value", scale="seq",
          stops=("--neutral-mid", "--series-1"), digits=1,
          group="Soil", label="Soil water content", short="SWC",
-         about="Monthly mean volumetric soil water content, homogenised across the "
-               "2020 sensor change.",
+         about="Monthly mean volumetric soil water content of the shallowest reported layer.",
          day=dict(kind="value", stat="mean")),
     dict(key="TS", var="TS", field="value", scale="div", center=None,
          poles=("--pole-cold", "--pole-warm"), digits=1,
@@ -1038,11 +1048,10 @@ METRICS = [
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0, unit="variables",
          group="Across the variables",
          label="How many things were unusual at once", short="Unusual variables",
-         about="How many of the five variables that can be compared this way (temperature, "
-               "precipitation, radiation, evaporative demand, soil water) stood at least one "
-               "standard deviation from their own normal for this calendar month. They do not "
-               "move independently; the correlation between them is measured and shown beside "
-               "the grid.",
+         about="How many of the {n_axes} variables this build compares this way ({axes}) stood "
+               "at least one standard deviation from their own normal for this calendar month. "
+               "They do not move independently; the correlation between them is measured and "
+               "shown beside the grid.",
          day=dict(kind="none")),
     dict(key="dtr", var="TA", field="extra", extra="dtr", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=1,
@@ -2825,6 +2834,13 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
 
         entry = {k: metric[k] for k in ("key", "label", "short", "about", "scale", "digits", "day",
                                        "group")}
+        if "{axes}" in entry["about"]:
+            # The composite names the axes this build has, not the five it could have.
+            axes = [loaded[k]["v"].title.lower() for k in COMPOSITE_VARS if k in keys]
+            words = {4: "four", 5: "five"}
+            entry["about"] = entry["about"].format(
+                n_axes=words.get(len(axes), str(len(axes))),
+                axes=", ".join(axes[:-1]) + " and " + axes[-1])
         # A count of days is a count whatever the variable behind it does, so the default follows
         # the variable only where the metric reads it directly.
         entry.update(agg=metric.get("agg", "sum" if field == "count"

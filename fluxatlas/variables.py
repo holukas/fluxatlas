@@ -19,9 +19,11 @@ column instead of an atlas whose evaporative stress days are all or nothing.
 
 Adding a variable
 -----------------
-Add an entry here. To be colourable on the grid it also needs a metric in `calendar.METRICS`; to
-earn badges it needs rules in `calendar.BADGES`. Neither is required - a variable with neither is
-still read, still shown in the day panel and still counted in coverage.
+Add an entry here. To be colourable on the grid it also needs a metric in `build.METRICS`; to
+earn badges it needs rules in `build.BADGES`. Badges are optional. A metric is not, in practice:
+beside other variables one without is still read, shown in the day panel and counted in coverage,
+but a build of it alone would offer the page nothing to colour the grid by, and the page needs at
+least one metric to draw at all.
 """
 
 from __future__ import annotations
@@ -326,9 +328,10 @@ VARIABLES = {
         digits=0,
         hourly=False,
         scale=1,
-        about="Relative humidity. Kept for the saturation test - a mean of 95 % or more is the "
-              "tower inside cloud or fog - rather than as an axis of the composite, where vapour "
-              "pressure deficit carries the same information in a physically meaningful form.",
+        about="Relative humidity. Kept for the saturation test - a daily mean of 95 % or more is "
+              "air at or near saturation, as in fog, low cloud or prolonged rain - rather than as "
+              "an axis of the composite, where vapour pressure deficit carries the same "
+              "information in a physically meaningful form.",
         extremes=dict(high="dampest", low="driest"),
     ),
 

@@ -149,9 +149,10 @@ tile, and on the variable's own page, is the formula in the file's own column na
 ## Adding a variable
 
 Add an entry to `VARIABLES` in {mod}`fluxatlas.variables`. To be colourable on the grid it also
-needs a metric in `build.METRICS`, and to earn badges it needs rules in `build.BADGES`. Neither is
-required. A variable with neither is still read, still shown in the day panel, still counted in
-coverage.
+needs a metric in `build.METRICS`, and to earn badges it needs rules in `build.BADGES`. Badges are
+optional. A metric is not, in practice: beside other variables, one without is still read, still
+shown in the day panel and still counted in coverage, but a build of that variable alone would offer
+nothing to colour the grid by, and the page needs at least one metric to draw.
 
 Ask what a one-variable build does with it, then open a build of that variable alone in a browser.
 [Selection](selection.md#a-one-variable-build-is-the-test) explains why the Python suite cannot
