@@ -216,7 +216,7 @@ def test_the_season_length_badges_follow_the_same_departure(full_atlas):
         for badge in (long_, short):
             if badge is not None:
                 assert f"ran {row['length']} days, {abs(delta)} " in badge["t"]
-                assert f"usual {timing['median']['length']:.0f}" in badge["t"]
+                assert f"record median of {timing['median']['length']:.0f}" in badge["t"]
                 earned += 1
     # Otherwise the agreement above was asserted about nothing.
     assert earned > 0

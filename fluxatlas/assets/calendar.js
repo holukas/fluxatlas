@@ -4521,9 +4521,10 @@
     const d = row.delta ? row.delta[name] : null;
     if (!isNum(d)) return '';
     const words = TIMING_WORDS[name];
-    if (d === 0) return ', ' + (name === 'start' || name === 'end' ? 'the usual date' : 'as usual');
+    if (d === 0) return ', ' + (name === 'start' || name === 'end' ? 'the record median date'
+      : 'the record median');
     return ', ' + Math.abs(d) + ' ' + unit + (Math.abs(d) === 1 ? '' : 's') + ' '
-      + (d < 0 ? words[0] : words[1]) + ' than usual';
+      + (d < 0 ? words[0] : words[1]) + ' than the record median';
   }
 
   /** One bar per year on a day-of-year axis: the growing season, or the uptake periods. */
@@ -4590,7 +4591,7 @@
         svgText(f.svg, f.m.left + f.iw + 8, f.m.top - 8, 'days', 'ax-text');
       }
 
-      // The record medians, which are the dates the season badges call usual. Each label reads
+      // The record medians, which are the dates the season badges measure against. Each label reads
       // away from the middle of the year, and turns back where it would run off the chart.
       const med = T.median || {};
       const marks = [['start', 0], ['end', through]].filter(([name]) => isNum(med[name]))

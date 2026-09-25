@@ -78,7 +78,8 @@
 - **The page is worded in plain scientific language.** Card titles and section headings are descriptive, as figure
   titles are ("Badge and normal criteria", "Mean annual cycle", "Position within the record"), and card text,
   tooltips, badge and metric descriptions are shorter. Every figure, threshold and qualification is kept. The composite
-  metrics are now "Largest standardized anomaly" and "Variables at least 1 sd from normal".
+  metrics are now "Largest standardized anomaly" and "Variables at least 1 sd from normal". Season and frost dates are
+  stated against the record median, which is what "usual" meant.
 - **GPP and RECO are no longer said to be measured.** Both are modelled in every half-hour by partitioning the net
   exchange, so the share the page states for them is the share of the NEE they came from that was measured, and it
   names that NEE column. Their coverage chart is titled "How much of each year was partitioned from measured net
