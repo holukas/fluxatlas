@@ -239,7 +239,10 @@ def test_the_ends_of_net_exchange_are_named_by_the_sign(page):
                              "Lowest ten half-hours (largest net uptake)"]
     assert all("µmol m⁻² s⁻¹" in item["text"] for column in card["items"] for item in column)
     assert all(item["text"].endswith(", net uptake") for item in card["items"][1])
-    assert "residual spikes" in card["foot"]
+    # The page displays the dataset; it does not second-guess records the file calls measured.
+    # Without that note the net exchange's card has no footnote at all, which is the usual case.
+    foot = card["foot"] or ""
+    assert "spike" not in foot and "plausib" not in foot
 
 
 @needs_jsdom

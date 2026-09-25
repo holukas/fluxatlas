@@ -5022,11 +5022,7 @@
         foot: [
           halfhours.partitioned ? v.short + ' is not measured but partitioned out of the net '
             + 'flux: a half-hour counts as measured where the net flux it came from was, so these '
-            + 'are the partitioning’s values at observed half-hours, not observations.' : '',
-          v.family === 'flux' ? 'At a single half-hour a flux’s extremes are where residual '
-            + 'spikes collect. The quality flag marks a record as measured, not as plausible, so '
-            + 'read the time of day and the season beside each value before taking it as an '
-            + 'event.' : ''
+            + 'are the partitioning’s values at observed half-hours, not observations.' : ''
         ].filter(Boolean).join(' ')
       }).innerHTML = '<div class="twocol">'
         + endColumn('highest', 'half-hours', end('high', halfhours.high), halfhours.units,
@@ -5472,10 +5468,9 @@
   /* ---- Every hour of the record, as date against time of day. --------------------------------
      Fills #var-hourly from HOURLY.
 
-     The picture a flux site is checked by: one column per day, one row per hour of it. A gap is a
-     block of its own colour, a timestamp that moves shifts the whole daily cycle along the hour
-     axis from one date to the next, and a sign or unit error recolours every hour at once. None of
-     the three is visible in a monthly figure.
+     The whole record in one picture: one column per day, one row per hour of it, so the daily
+     cycle, the seasons and the years read together - the shape of a day and how it moves through
+     the year, which no monthly figure shows.
 
      It is the renderer's one canvas. Twenty years is some 184,000 hours, which as SVG marks is a
      document too large to lay out and far too slow to rebuild on every resize and theme change.
@@ -5498,8 +5493,8 @@
    * How one variable's hours are coloured: which ramp, over which domain.
    *
    * The ramp is the variable's own metric's, so an hour reads in the colours its months do. The
-   * domain is a percentile range of the hours rather than their extent, because one spike in
-   * twenty years would otherwise put everything else in the middle third of the ramp. A variable
+   * domain is a percentile range of the hours rather than their extent, because one extreme hour
+   * in twenty years would otherwise put everything else in the middle third of the ramp. A variable
    * whose sign is a convention (NEE) diverges about zero instead, symmetrically, so a colour's
    * depth means the same magnitude of uptake as of release. A total that is mostly nothing
    * (precipitation) is drawn from zero, and a dry hour takes the neutral colour rather than the
@@ -5763,9 +5758,7 @@
       sub: 'One column per day and one row per hour of it, midnight at the bottom, coloured by '
         + 'the hourly ' + (v.agg === 'sum' ? 'total' : 'mean') + ' on the file’s own clock. '
         + 'Hovering reads one hour; selecting it opens its day.',
-      foot: 'The picture a site is checked by. A gap is a grey block; a timestamp that moves '
-        + 'shifts the whole daily cycle up or down the hour axis from one date to the next; a '
-        + 'sign or unit error recolours every hour at once. An hour is the '
+      foot: 'An hour without a value in the file is grey. An hour is the '
         + (v.agg === 'sum' ? 'sum' : 'mean') + ' of whichever of its two half-hours the file '
         + 'carries. Where the card is narrower than the record is long, a column is the mean of '
         + 'several days, greyed in proportion to the hours among them that carry no value.'
