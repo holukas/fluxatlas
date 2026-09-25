@@ -77,6 +77,21 @@ The canonical key still has to be one the registry describes, because that is
 where the units, thresholds and aggregation come from — only the column name is
 the caller's. `io.resolve` is where the three accepted forms are documented.
 
+**What a named column inherits follows the column, not the key.** A column the
+registry itself lists inherits its unit factor and its flag — `<column>_QC`
+first, then for `GPP`/`RECO` the flag of the NEE of the same u\* selection, then
+the registry's ordered list. A column the registry does not list inherits neither:
+the caller's own series is not described by `TA_F_QC` just because the file also
+carries it, and it states its own flag with `--qc` or is measured where present.
+
+**A build that names nothing takes the default selection, not everything.**
+`Variable.default` is False for the ancillary meteorology (`TS`, `WS`, `PA`,
+`LW_IN`, `PPFD_IN`, `USTAR`) and the energy-balance terms (`NETRAD`, `G`); they are
+built when named and `--list` marks them. The reason is the sparse badge, which
+marks a month where *any* variable in the build is thin: taking every variable of
+the CH-Oe2 file put it on 216 of 252 months against 103, `PA` (mostly reanalysis
+there) accounting for 159. A new ancillary variable should default to False.
+
 **The file is read twice, and the first read is the header.** A FULLSET file is
 248 columns and hundreds of megabytes; an atlas of six variables needs about
 twenty of them. So `columns_of` parses the header (or the parquet footer schema),
@@ -144,6 +159,24 @@ much, via `thinNote()`.
 `RH` is the case that shows the gate still bites: it has no QC column, so its gaps
 are genuinely missing rather than filled, its `avail` is 73.5 %, and its trend is
 still withheld at 6 complete years. Correctly.
+
+### How the filling is described
+
+Beyond measured and not, every span carries the share at each level of its
+variable's flag, and the page says how the rest was filled. **The two FLUXNET flag
+conventions give the same code different meanings**, so the legend is chosen from
+the flag column (`variables.qc_convention`), never from the variable:
+
+| convention | columns | 1 | 2 | 3 |
+| --- | --- | --- | --- | --- |
+| MDS | `*_F_MDS_QC`, the NEE flags | good fill | medium fill | poor fill |
+| consolidated | `TA_F_QC`, `SW_IN_F_QC`, `P_F_QC`, `VPD_F_QC`, … | gap-filled | from reanalysis | — |
+| unstated | any other, including `--qc` | otherwise flagged | | |
+
+On CH-Oe2 `TA_F_QC`'s code-2 share equals the medium plus poor fill of
+`TA_F_MDS_QC` exactly, which is how the consolidated reading was confirmed.
+`NEE_*_MEAN_QC` holds fractions rather than codes and is read as unstated. None of
+this gates anything: it qualifies the figure, as `meas` does.
 
 ## Seasons are derived, not fixed
 
@@ -281,8 +314,9 @@ dies on the first `W m⁻²` it prints on a legacy Windows console code page, wh
 is where most of its readers are. Any example that prints a unit needs the same
 four lines.
 
-`pytest` — ~250 tests, ~4 min, of which the renderer smoke test is about half the
-wall clock: it builds six pages, loads each into a DOM and then *drives* it —
+`pytest` — ~430 tests, ~5 min, of which the renderer smoke test is about half the
+wall clock: it builds six mixed selections plus one page for every variable no
+other selection carries, loads each into a DOM and then *drives* it —
 hovering and focusing tiles at every scale, putting every chart under the cursor,
 and opening a day by both routes from each span panel. It reads `aria-label`,
 `title` and SVG `<title>` as well as visible text, because a blank tooltip, a
@@ -334,6 +368,22 @@ Sign convention is the micrometeorological one: negative NEE is uptake. Green is
 uptake and red is release everywhere on the page, and `NEE` diverges about zero
 rather than the record mean because zero is the boundary the convention makes
 meaningful.
+
+### The energy balance
+
+**A FULLSET file publishes no net radiation**, only its four components, so where
+no `NETRAD` column exists it is computed as SW_IN − SW_OUT + LW_IN − LW_OUT
+(`io._derived_spec` / `_add_derived`, the recipe in `varreg.derivation`). It is
+derived, not corrected: `v.derived` is set, `v.column` reads `computed: …`, and every
+place the page names a source says "computed" rather than "read from". A half-hour
+is measured only where every component was.
+
+Two ratios are built on it: the **closure ratio** (H + LE)/(NETRAD − G) and the
+**evaporative fraction** LE/(H + LE). Both are withheld where the denominator is
+under a floor set from the CH-Oe2 record — 40 and 20 W m⁻² — below which the monthly
+closure spread from 0.26 to 1.95 and then went negative. The median monthly closure
+there is 88 %, but 2006–2012 close at 102–133 % annually because `G_F_MDS` averages
++8 to +17 W m⁻² in those years; that is in the data and is not corrected.
 
 ### Uncertainty: the aggregation kind matters more than the column
 

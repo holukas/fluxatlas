@@ -2,9 +2,54 @@
 
 ## Unreleased
 
+Net radiation, the soil heat flux and six more FULLSET variables can now be read, and the
+energy-balance closure and the evaporative fraction are computed from them. The page says how each
+span was gap-filled, records exactly which file and columns produced it, keeps the chosen view in
+its address, draws the carbon balance accumulated through each year, and offers the grid as CSV.
+Several inputs that failed with a misleading error are now read or refused plainly, and text that
+was true only of the CH-LAE site has been removed from every page.
+
 A build of the 21-year CH-Oe2 FULLSET record is more than twice as fast, 2.8 s instead of 6.0 s on
-the same machine. Every figure on the page is unchanged, which was checked by comparing the complete
-payload of three builds before and after.
+the same machine. Every figure on the page is unchanged by that work, which was checked by comparing
+the complete payload of three builds before and after.
+
+### Added
+
+- **Six more FULLSET variables, built when named:** soil temperature `TS`, wind speed `WS`, air pressure `PA`, incoming longwave `LW_IN`, photosynthetic photon flux `PPFD_IN` and friction velocity `USTAR`. Every candidate name, unit and limit was checked against the CH-Oe2 file. `USTAR` is grouped with the fluxes because it drops out when they do, but it is not gap-filled, so it warns at the meteorological 50 % and its statistics need 75 % of a span present.
+- **Net radiation and the soil heat flux** (`NETRAD`, `G`). A FULLSET file publishes the four radiation components and not their sum, so where no `NETRAD` column exists it is computed as SW_IN − SW_OUT + LW_IN − LW_OUT, and every place that names the source says it was computed. A half-hour counts as measured only where every component was.
+- **The energy-balance closure ratio** (H + LE) / (NETRAD − G) and **the evaporative fraction** LE / (H + LE), as monthly metrics in the Energy group. Each is withheld where its denominator is below a floor set from the CH-Oe2 record (40 and 20 W m⁻²), since both ratios lose meaning as the denominator approaches zero. On CH-Oe2 the median monthly closure is 88 %.
+- **How each span was gap-filled.** The month panel and the variable page now say what share of a span was filled and how, in the words of the flag's own convention: a graded MDS flag (good, medium or poor quality fill), a consolidated `*_F` flag (gap-filled, or taken from reanalysis), or a flag whose convention is unknown. The two FLUXNET conventions give code 2 different meanings, which is why the legend follows the flag column rather than the variable. The page grows by about 0.5 %.
+- **The page records which file and columns produced it:** the file's name, size and SHA-256 digest, and for every variable the column, flag and factor it was read with, in the footer and in a disclosure beneath it. `Atlas.provenance` returns the same record.
+- **`Atlas.table(scale)`** returns the figures behind the tiles as a DataFrame, one row per month, season or year, read from the same payload the page is built from.
+- **The total accumulated from 1 January, one line per year,** for the net exchange on the year panel and on the page of every summed variable, with the open year drawn over the others.
+- **The chosen metric and scale are kept in the page's address**, so a link or a reload opens the same view. Every existing address keeps its form, and the fragment alone is rewritten, which works on a page opened from a file.
+- **The grid downloads as CSV** for the current metric and scale: one row per year, one column per span, the year figure last, units in every header.
+- **`--list` marks the variables a build takes only when named.**
+
+### Fixed
+
+- **A file whose timestamps carry a time zone is refused naming the zone**, where it used to be refused as not lying on the half-hourly grid while quoting a first stamp that did. FLUXNET timestamps are local standard time, so the message says how to convert rather than guessing an offset.
+- **Rows without a timestamp are dropped and counted.** A single blank row at the end of a CSV, which spreadsheet software commonly leaves, stopped the read with a pandas error that named neither the file nor the column. A timestamp that is not a number is refused naming the column and the value.
+- **GPP and RECO named by hand take the flag of the NEE of their own u\* selection.** `GPP_NT_CUT_REF` used to take `NEE_VUT_REF_QC`.
+- **A column the registry does not list no longer inherits one of its flags.** A caller's own series named alongside a FULLSET column took that column's flag and reported its measured share from it.
+- **The CSV reader no longer retries a read that ran out of memory** with the slower parser. It falls back only for the errors of a file its fast parser is too strict for.
+- **Any page whose data contained `<!--` was blank.** The escape used for it was not valid JSON. Every `<` in the data is now written as `<`, and the page's placeholders are substituted in one pass, so no part of the data can be read as a placeholder.
+- **Text the caller supplies is escaped** wherever the page prints it: the site name and description, the input's file name, column names and the title. A `<` in a site description broke the page.
+- **Toggling the theme on a variable page threw**, and toggling it from a span panel left the grid's tiles in the old colours.
+- **Page text that was true of one site only.** The near-saturation badge described a tower 47 m up on a ridge, the soil-water metric a sensor change in 2020, the net-sink badge a site that is a sink every summer, the composite a count of five axes whatever the build had, and several texts a forest. Each now states only what holds for any site.
+- **A year's placing is taken from whichever end of the ranking it is nearer**, using the far-end rank rather than `n − rank + 1`, which ties made wrong. The same holds for the growing season, the frost-free period and the record days, and the words for the net exchange follow the side of zero the year is on.
+- **The variable page's headings for its highest and lowest months** name the side of zero those months are on, so a site that is a sink in every month is not said to have its largest releases.
+- **A percentage of normal is given only for a quantity with a true zero.** For air temperature in degrees Celsius it is meaningless, and one winter came out at −76 %.
+- **The build's coverage warning** no longer says gap-filled values were used for a variable that has no flag and so was never gap-filled.
+- **The trend falls back to SciPy's `kendalltau` if the private function it relies on fails in any way**, not only if it cannot be imported.
+- **The page states the coverage rule it applies.** Five sentences still said a badge or a normal needs its month *measured* to a threshold, which stopped being the rule when the gates moved to availability; they now say *covered*, and that the measured share is stated rather than gated on.
+- **`doy365` says where 29 February goes**, which is 28 February's slot and not 1 March's.
+
+### Changed
+
+- **A build that names no variables takes the same eleven as before;** the eight added here are built only when named. Taking every variable a FULLSET file supplies put the sparse badge on 216 of 252 CH-Oe2 months against 103, `PA`, which is mostly reanalysis there, accounting for 159 of them.
+- **The "In cloud" badge is now "Near-saturated air"**, which is what a daily mean relative humidity of 95 % establishes at any site.
+- **The build time is stated with its UTC offset.**
 
 ### Performance
 
