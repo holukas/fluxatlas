@@ -484,7 +484,9 @@ async function driveAddress(monthHash) {
   await tick();
   await tick();
   out.chosen = window.location.hash;
-  const says = hash => hash.includes('metric=' + encodeURIComponent(metricKey))
+  // A page with one metric has nothing to choose, and a default is left out of the address by
+  // design - so the metric is only looked for where there was a choice to record.
+  const says = hash => (options.length < 2 || hash.includes('metric=' + encodeURIComponent(metricKey)))
     && hash.includes('scale=' + scaleValue);
   if (options.length > 1 && !out.chosen.includes('metric=' + encodeURIComponent(metricKey))) {
     note('the address', `choosing a metric left the address at ${out.chosen}`);

@@ -40,6 +40,7 @@ from pathlib import Path
 import pytest
 
 import fluxatlas as fa
+from conftest import add_fullset_extras
 from fluxatlas import build
 
 NODE = shutil.which("node")
@@ -399,3 +400,30 @@ def test_the_year_scale_ships_the_climatology_its_charts_draw(full_atlas):
         assert normal is None or "mean" in normal
     assert any(payload["year_climatology"][key] for key in keys), (
         "no variable of a twelve-year record has a record normal, which cannot be right")
+
+
+# -- Every variable alone ------------------------------------------------------------------------
+#
+# The renderer's recurring bug is a fixed reference to a variable a selection does not carry, and it
+# is always selection-specific: `seasonLine` threw only without air temperature, and a page of
+# pressure alone blanked because it offered no metric at all. So each variable no other selection
+# above carries is built on its own, and the energy terms once together, since the closure ratio and
+# the computed net radiation exist only in that combination.
+
+ALONE = [["LE"], ["H"], ["NETRAD"], ["G"], ["PA"], ["USTAR"], ["TS"], ["WS"], ["LW_IN"],
+         ["PPFD_IN"], ["H", "LE", "NETRAD", "G"]]
+
+
+@pytest.fixture(scope="module")
+def extras_path(flux_frame, tmp_path_factory):
+    path = tmp_path_factory.mktemp("alone") / "extras.parquet"
+    add_fullset_extras(flux_frame.copy()).to_parquet(path)
+    return path
+
+
+@needs_jsdom
+@pytest.mark.parametrize("selection", ALONE, ids=["-".join(s) for s in ALONE])
+def test_each_variable_renders_on_its_own(extras_path, tmp_path, selection):
+    atlas = fa.Atlas(extras_path, selection, site="XX-Syn", hourly=False, quiet=True)
+    found = drive(atlas, tmp_path)
+    assert not found["problems"], report(found)
