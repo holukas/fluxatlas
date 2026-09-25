@@ -1921,8 +1921,9 @@
       }))))
       + '<p class="smallnote">Vapour pressure deficit is computed from air temperature and '
       + 'relative humidity, so it cannot be independent of temperature; the table says by how '
-      + 'much. It is counted all the same, being the atmospheric limb of a drought and the one a '
-      + 'forest responds to. Relative humidity is the variable left out: VPD is the meaningful '
+      + 'much. It is counted all the same, being the atmospheric limb of a drought and the '
+      + 'evaporative demand that stomata respond to, in whatever vegetation the site carries. '
+      + 'Relative humidity is the variable left out: VPD is the meaningful '
       + 'combination of the two, and RH beside it would be the same information twice.</p>';
 
     renderTrendCards(host);
@@ -2582,7 +2583,7 @@
       hover(f, sx, days, d => {
         const i = d - 1;
         return tipRows(labelAt(mo.i0 + d - 1) + ' ' + dateAt(mo.i0 + d - 1).y, [
-          { k: 'soil water, 0.2 m', v: nf(swc[i], 1) + ' ' + VARS['SWC'].units,
+          { k: 'soil water', v: nf(swc[i], 1) + ' ' + VARS['SWC'].units,
             color: f.p.series[2] },
           { k: 'normal for the date', v: nf(norm.mid[i], 1) + ' ' + VARS['SWC'].units,
             color: f.p.muted },
@@ -4073,7 +4074,7 @@
         sub: 'Soil water content against its ±' + M.clim_window + ' day normal band, over '
           + 'the daily precipitation on its own axis.',
         legend: [
-          { color: 'var(--series-3)', label: 'soil water, 0.2 m', line: true },
+          { color: 'var(--series-3)', label: 'soil water content', line: true },
           { color: 'var(--band-outer)', label: 'normal 10th–90th percentile' },
           { color: 'var(--series-1)', label: 'precipitation, right axis' }
         ],
@@ -4318,7 +4319,7 @@
     const monthName = MONTH_NAME[state.m - 1];
     const facets = cardEl(grid, {
       title: 'Through the day', width: 'w-8',
-      sub: 'Hourly means, and hourly totals for precipitation, from the 30-minute products. The '
+      sub: 'Hourly means, and hourly totals for precipitation, from the half-hourly records. The '
         + 'dashed line on each panel is the mean day of every ' + monthName + ' in the record, so '
         + 'the shape of this day can be read against the shape of an ordinary one.'
     });
