@@ -1,8 +1,8 @@
-"""The bundled CH-LAE extract, and the example that builds an atlas from it.
+"""The bundled CH-LAE extract.
 
 These skip where the extract is absent, so a checkout without it still has a passing suite. They
 are the only tests that touch real data, and what they check is the things synthetic data cannot:
-that the example's column mapping still matches the file, and that a real twenty-one-year record
+that the extract's column mapping still matches the file, and that a real twenty-one-year record
 with real gaps produces a page.
 """
 
@@ -25,10 +25,14 @@ pytestmark = pytest.mark.skipif(not DATA.exists(),
 
 @pytest.fixture(scope="module")
 def mapping():
-    """The example's own mapping, imported rather than restated so the two cannot drift."""
-    sys.path.insert(0, str(EXAMPLES))
+    """The six-variable mapping of the extract, shared with the payload regression test.
+
+    The CH-LAE example now reads the merged product with every site setting, which this extract
+    does not carry; the extract keeps the plain mapping it was cut for.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
-        from build_lae_meteo_atlas import MAPPING
+        from test_payload_regression import MAPPING
     finally:
         sys.path.pop(0)
     return MAPPING
