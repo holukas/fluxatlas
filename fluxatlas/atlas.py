@@ -27,6 +27,7 @@ import pandas as pd
 
 from ._console import say
 from . import build as _build
+from . import compare as _compare
 from . import io as _io
 from . import variables as _variables
 
@@ -90,12 +91,19 @@ class Atlas:
     """
 
     def __init__(self, path, variables=None, *, site=None, site_long="", first_year=None,
-                 last_year=None, hourly=True, quiet=False, seasons=_build.DEFAULT_SEASONS):
+                 last_year=None, hourly=True, quiet=False, seasons=_build.DEFAULT_SEASONS,
+                 primary=None, lat=None, lon=None, utc_offset=None, reference=None):
         self.path = Path(path)
         self.site = site or _guess_site(path)
         self.site_long = site_long
         self.hourly = hourly
         self.seasons = seasons
+
+        # The settings that reach beyond one column are checked before the file is read, so a
+        # mistake in them costs nothing but the message.
+        primary = _check_primary(variables, primary)
+        variables = _apply_primary(variables, primary)
+        compared = _check_reference(variables, reference, lat, lon, utc_offset)
 
         # The digest is taken on a second thread while the file is parsed. Hashing releases the
         # interpreter lock and reading the selected columns is mostly parsing, so the two overlap
@@ -107,13 +115,16 @@ class Atlas:
             fingerprint = fingerprint.result()
         self.variables = list(self.loaded)
         self.first_year, self.last_year = _io.span(self.loaded)
+        prepared = (_prepare_reference(reference, compared, self.loaded, lat, lon, utc_offset,
+                                       quiet) if compared else None)
         if not quiet:
             say(f"building {(self.last_year - self.first_year + 1) * 12} months, "
                 f"{self.first_year}-{self.last_year}"
                 f"{'' if hourly else ', without hourly detail'} ...")
         self.payload = _build.build_payload(
             self.loaded, site=self.site, site_long=self.site_long, source=self.path.name,
-            with_hourly=hourly, quiet=quiet, seasons=seasons, fingerprint=fingerprint)
+            with_hourly=hourly, quiet=quiet, seasons=seasons, fingerprint=fingerprint,
+            reference=prepared, primary=primary or None)
         if not quiet:
             self.report()
 
@@ -230,8 +241,114 @@ class Atlas:
 
 def build_atlas(path, out, variables=None, *, site=None, site_long="", first_year=None,
                 last_year=None, hourly=True, title=None, quiet=False,
-                seasons=_build.DEFAULT_SEASONS):
+                seasons=_build.DEFAULT_SEASONS, primary=None, lat=None, lon=None,
+                utc_offset=None, reference=None):
     """Read, build and write in one call, returning the path written."""
     atlas = Atlas(path, variables, site=site, site_long=site_long, first_year=first_year,
-                  last_year=last_year, hourly=hourly, quiet=quiet, seasons=seasons)
+                  last_year=last_year, hourly=hourly, quiet=quiet, seasons=seasons,
+                  primary=primary, lat=lat, lon=lon, utc_offset=utc_offset, reference=reference)
     return atlas.write(out, title=title, quiet=quiet)
+
+
+# ----------------------------------------------------------------------------------------------
+# Settings that reach beyond one column
+# ----------------------------------------------------------------------------------------------
+
+def _check_primary(variables, primary):
+    """`primary` as `{base: instance}`, checked against the registry and against the selection.
+
+    An instance stands in for its plain key only where the build reads it, and only where the build
+    does not also read the plain key itself: two series under one name is a choice the build would
+    otherwise have to make silently.
+    """
+    if not primary:
+        return {}
+    out = {}
+    for base, chosen in dict(primary).items():
+        if base not in _variables.VARIABLES:
+            raise KeyError(f"primary: {base!r} is not a registry key")
+        if (not _variables.is_known(chosen) or _variables.base_key(chosen) != base
+                or _variables.instance_label(chosen) is None):
+            raise KeyError(f"primary: {chosen!r} is not an instance of {base}; write it "
+                           f"{base}@LABEL")
+        if not isinstance(variables, dict) or chosen not in variables:
+            raise KeyError(f"primary: {chosen} stands in for {base} but is not among the variables "
+                           f"this build reads")
+        if base in variables:
+            raise KeyError(f"primary: the build reads {base} itself and names {chosen} to stand in "
+                           f"for it; leave one of the two out")
+        out[base] = chosen
+    return out
+
+
+def _apply_primary(variables, primary):
+    """The mapping with each chosen instance read under its plain key, in the order given."""
+    if not primary:
+        return variables
+    chosen = {instance: base for base, instance in primary.items()}
+    out = {}
+    for key, want in variables.items():
+        if key not in chosen:
+            out[key] = want
+            continue
+        spec = dict(column=want) if isinstance(want, str) else dict(want or {})
+        spec["instance"] = _variables.instance_label(key)
+        out[chosen[key]] = spec
+    return out
+
+
+def _reference_of(want):
+    """A variable's `reference` setting as `{column, shift, split}`, or None."""
+    found = want.get("reference") if isinstance(want, dict) else None
+    if found is None:
+        return None
+    spec = dict(column=found) if isinstance(found, str) else dict(found)
+    stray = set(spec) - {"column", "shift", "split", "factor"}
+    if stray or not spec.get("column"):
+        raise KeyError(f"a reference setting takes column, shift, split and factor; got "
+                       f"{sorted(spec)}")
+    return spec
+
+
+def _check_reference(variables, reference, lat, lon, utc_offset):
+    """The variables a reference station is compared with, checked before anything is read."""
+    compared = {}
+    if isinstance(variables, dict):
+        for key, want in variables.items():
+            spec = _reference_of(want)
+            if spec is not None:
+                compared[key] = spec
+    if compared and not reference:
+        raise ValueError(f"{', '.join(compared)} name(s) a reference column, but no reference "
+                         f"station file is given")
+    if reference and not compared:
+        raise ValueError("a reference station is given, but no variable names a reference column "
+                         "to compare with")
+    if reference and not (reference.get("file") or reference.get("path")):
+        raise ValueError("the reference station names no file")
+    split = [k for k, spec in compared.items() if spec.get("split")]
+    if split and None in (lat, lon, utc_offset):
+        raise ValueError(f"{', '.join(split)} split(s) the comparison into night and day, which "
+                         f"needs the site's latitude, longitude and UTC offset")
+    return compared
+
+
+def _prepare_reference(reference, compared, loaded, lat, lon, utc_offset, quiet):
+    """The reference station's columns on the product's grid, one per compared variable."""
+    path = Path(reference.get("file") or reference.get("path"))
+    columns = list(dict.fromkeys(spec["column"] for spec in compared.values()))
+    stamps, values = _compare.read_reference(path, columns)
+    shift = float(reference.get("shift", 0) or 0)
+    out = dict(station=reference.get("station") or path.stem, file=path.name,
+               distance_km=reference.get("distance_km"), elevation_m=reference.get("elevation_m"),
+               site=dict(lat=lat, lon=lon, utc_offset=utc_offset), vars={})
+    for key, spec in compared.items():
+        moved = float(spec.get("shift", shift) or 0)
+        factor = float(spec.get("factor", 1.0))
+        out["vars"][key] = dict(column=spec["column"], split=bool(spec.get("split")), shift=moved,
+                                factor=factor,
+                                series=_compare.on_grid(stamps, values[spec["column"]], moved,
+                                                        loaded[key]["series"].index, factor))
+    if not quiet:
+        say(f"  reference {out['station']}: {', '.join(compared)} against {path.name}")
+    return out

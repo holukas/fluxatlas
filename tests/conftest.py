@@ -285,3 +285,71 @@ def add_fullset_extras(frame, seed=2):
     gone = (rng.random(n) < 0.15) | ((index.year == first + 2) & (index.month == 3))
     out["USTAR"] = np.where(gone, np.nan, ustar.round(3))
     return out
+
+
+def add_site_extras(frame, seed=3):
+    """A site's own product beside the FLUXNET columns: what the site settings are tested against.
+
+    Appended to a frame that already carries `add_fullset_extras`, under names no registry lists, so
+    each is read only where a test names it. Every series is built so that what the page states of
+    it is known in advance:
+
+    - `TA_SITE` is `TA_F` corrected across a sensor change at the start of the sixth year. Its
+      uncorrected twin `TA_SITE_RAW` reads 1.3 °C cold before the change and up to 0.4 °C warm in
+      daylight after it, so the correction is a single constant in the old era and a daytime-only,
+      never-positive term in the new one. `TA_SITE_SOURCE` codes the old sensor 1, the new one 0,
+      and the week of the change 2; that week is still read by the old chain, so the new sensor's
+      era, the reference era, begins on its eighth day.
+    - `TA_SITE_FLAG` is a fill flag of the site's own: 0 measured, 4 interpolated, 5 reconstructed.
+    - `SWC_5` and `SWC_30` are soil water at two depths. `SWC_5` exists only from the fourth year.
+    - `TS_10` is soil temperature with a METHOD flag, `TS_10_METHOD`: 1 and 2 are measurements by two
+      profile generations, 3 is modelled, 0 is no value.
+    """
+    rng = np.random.default_rng(seed)
+    out = frame.copy()
+    index = out.index
+    n = len(index)
+    first = int(index.year.min())
+    change = pd.Timestamp(f"{first + 5}-01-01")
+    before = index < change
+    hour = index.hour.to_numpy(dtype=float) + index.minute.to_numpy(dtype=float) / 60
+    daylight = np.clip(np.sin(np.pi * (hour - 6) / 12), 0, None)
+
+    out["TA_SITE"] = out["TA_F"]
+    shield = -0.4 * daylight * rng.random(n)
+    week = (index >= change) & (index < change + pd.Timedelta(days=7))
+    out["TA_SITE_RAW"] = np.where(before | week, out["TA_F"] - 1.3,
+                                  out["TA_F"] - shield).round(6)
+    source = np.where(before, 1, 0)
+    source[week] = 2
+    out["TA_SITE_SOURCE"] = source
+    out["TA_SITE_FLAG"] = rng.choice([0, 4, 5], n, p=[0.9, 0.07, 0.03])
+
+    doy = index.dayofyear.to_numpy(dtype=float)
+    out["SWC_5"] = np.where(index.year < first + 3, np.nan,
+                            (25 + 6 * np.cos(2 * np.pi * doy / 365.25)
+                             + rng.normal(0, 1, n)).round(2))
+    out["SWC_30"] = (32 + 3 * np.cos(2 * np.pi * (doy - 30) / 365.25)
+                     + rng.normal(0, 0.5, n)).round(2)
+    out["SWC_30_SOURCE"] = np.where(before, 1, 2)
+
+    out["TS_10"] = (0.7 * out["TA_F"] + 3 + rng.normal(0, 0.3, n)).round(2)
+    method = np.where(before, 2, 1)
+    method = np.where(rng.random(n) < 0.1, 3, method)
+    out["TS_10_METHOD"] = method
+    return out
+
+
+def reference_frame(frame, seed=4):
+    """A reference station beside a site frame, stamped at the end of each half-hour.
+
+    Its air temperature reads 0.5 °C below the site's throughout, and its pressure is published in
+    hPa, ten times the site's kPa, so a comparison that is right states a residual of +0.5 and of
+    zero, and one that misses the factor states one of about -860.
+    """
+    rng = np.random.default_rng(seed)
+    end = frame.index + pd.Timedelta(minutes=15)
+    ta = frame["TA_F"].to_numpy() - 0.5 + rng.normal(0, 0.2, len(frame))
+    ref = pd.DataFrame({"TA_REF": ta.round(3), "PA_REF": (frame["PA_F"].to_numpy() * 10).round(2)},
+                       index=pd.DatetimeIndex(end, name="TIMESTAMP_END"))
+    return ref

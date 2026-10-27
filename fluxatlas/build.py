@@ -99,9 +99,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import compare
 from . import variables as varreg
 from ._console import say
 from .io import span
+from .record import CARBON_RATE_DIGITS, CARBON_RATE_UNITS, CARBON_UNITS, var_record_layer
 from .stats import (
     doy365, growing_season, longest_spell, percentile_domain, r, rank_of, resample_agg, rlist,
     trend,
@@ -241,6 +243,10 @@ def day_flags(variables):
     """The per-day tests, each with the bit it occupies in the day flag word."""
     flags = []
     for key, v in variables.items():
+        # An instance is one of several series of a registry variable, and its day tests would
+        # share their keys with the variable's own. The plain key carries them; an instance none.
+        if varreg.instance_label(key) is not None:
+            continue
         items = [i for group in v.index_groups for i in group["items"]]
         items = items + EXTRA_INDICES.get(key, [])
         for item in items:
@@ -1137,7 +1143,19 @@ def daily_frame(loaded, dates):
             agg["sum"] = resample_agg(d["series"], "D", "sum")
         day[key] = agg.reindex(dates)
         meas[key] = (d["measured"].astype(float).resample("D").mean() * 100).reindex(dates)
+        meas[key][_outside_own_years(v, dates.year)] = np.nan
     return day, meas
+
+
+def _outside_own_years(v, years):
+    """Where a span lies outside the years a variable is read over, as a boolean array.
+
+    Outside them the variable was not measured because it was not there, which is not a coverage
+    figure of zero: the span has no coverage figure at all. For a variable read over the whole file
+    this is all False, and nothing changes.
+    """
+    years = np.asarray(years)
+    return (years < v.first_year) | (years > v.last_year)
 
 
 def flag_words(flags, day, meas, nrm, dates):
@@ -1642,7 +1660,11 @@ def yearly_frames(loaded, spans):
         unc = aggregate_uncertainty(d, lambda s: s.groupby(group).sum(min_count=1), index)
         fill = fill_shares(d, lambda f: f.groupby(group).sum().reindex(index).fillna(0)
                            .div(expected, axis=0) * 100)
+        _blank_outside(v, index, meas, avail)
         out[key] = dict(value=value, meas=meas, avail=avail, unc=unc, fill=fill)
+        if "source" in d:
+            out[key]["src"] = compare.source_shares(
+                d, lambda f: f.groupby(group).sum().reindex(index))
     return out
 
 
@@ -2048,6 +2070,12 @@ def fill_table(frames_by_var):
     return out
 
 
+def source_tables(frames_by_var):
+    """`compare.source_table` for every variable whose frames carry source shares."""
+    return {key: compare.source_table(frames["src"])
+            for key, frames in frames_by_var.items() if frames.get("src") is not None}
+
+
 def monthly_frames(loaded, months):
     """Monthly aggregate, measured share, available share, uncertainty and fill shares, per
     variable."""
@@ -2059,8 +2087,20 @@ def monthly_frames(loaded, months):
         avail = (d["series"].notna().astype(float).resample("MS").mean() * 100).reindex(months)
         unc = aggregate_uncertainty(d, lambda s: s.resample("MS").sum(min_count=1), months)
         fill = fill_shares(d, lambda f: (f.resample("MS").mean() * 100).reindex(months))
+        _blank_outside(v, months.year, meas, avail)
         out[key] = dict(value=value, meas=meas, avail=avail, unc=unc, fill=fill)
+        if "source" in d:
+            out[key]["src"] = compare.source_shares(
+                d, lambda f: f.resample("MS").sum().reindex(months))
     return out
+
+
+def _blank_outside(v, years, *frames):
+    """Clear the coverage figures of the spans outside the variable's own years."""
+    outside = _outside_own_years(v, years)
+    if outside.any():
+        for frame in frames:
+            frame[outside] = np.nan
 
 
 def seasonal_frames(loaded, spans, scheme):
@@ -2086,7 +2126,11 @@ def seasonal_frames(loaded, spans, scheme):
         unc = aggregate_uncertainty(d, lambda s: s.groupby(group).sum(min_count=1), index)
         fill = fill_shares(d, lambda f: f.groupby(group).sum().reindex(index).fillna(0)
                            .div(expected, axis=0) * 100)
+        _blank_outside(v, [sp["y"] for sp in spans], meas, avail)
         out[key] = dict(value=value, meas=meas, avail=avail, unc=unc, fill=fill)
+        if "source" in d:
+            out[key]["src"] = compare.source_shares(
+                d, lambda f: f.groupby(group).sum().reindex(index))
     return out
 
 
@@ -2204,8 +2248,11 @@ def span_stats(sp, keys, table, day_values, dates, events, loaded):
     """
     idx, group = sp["idx"], sp["group"]
     days = day_positions(dates, sp["start"], sp["end"])
+    # The badges speak about the plain keys. An instance is a further series of one of them - a
+    # depth beside the one that stands in for the variable - so a thin instance does not mark the
+    # span sparse; its own tile and page say how thin it is.
     s = SpanStats(y=sp["y"], m=sp.get("m"), month_name=sp["name"], n_days=sp["n_days"],
-                  keys=list(keys))
+                  keys=[k for k in keys if varreg.instance_label(k) is None])
     for key in keys:
         v = loaded[key]["v"]
         t = table["variables"][key]
@@ -2829,9 +2876,7 @@ EXTREME_ENTRIES = 10
 # in. A single half-hour stated in that unit ("-0.93 g C m-2") is a quantity no one reads a flux
 # in, so the half-hours of a carbon flux are stated as the rate the file published, in µmol m-2
 # s-1: the registry's conversion inverted. The day and every longer span stay in g C m-2.
-CARBON_UNITS = "g C m⁻²"
-CARBON_RATE_UNITS = "µmol m⁻² s⁻¹"
-CARBON_RATE_DIGITS = 1
+# The three constants live in `record`, which states the half-hours of its own cards the same way.
 
 
 def record_day_threshold(records_per_day=48):
@@ -2926,13 +2971,16 @@ def extreme_halfhours_layer(loaded, dates, day):
 
 
 def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, quiet=False,
-                  seasons=DEFAULT_SEASONS, fingerprint=None):
+                  seasons=DEFAULT_SEASONS, fingerprint=None, reference=None, primary=None):
     """Everything the page is built from, as one JSON-serialisable mapping.
 
     `loaded` is what `io.read_fluxnet` returns and `source` the name of the file it was read from.
     `fingerprint` is that file's size and digest, `{"bytes": ..., "sha256": ...}`, which
     `meta["provenance"]` records so that a page can be matched to the exact file that produced it;
     a caller that omits it gets a page whose provenance states both as null.
+
+    `reference` is the comparison with a reference station as `Atlas` prepares it, and `primary`
+    the instances that stand in for their plain keys; both are recorded only where they are given.
     """
     keys = list(loaded)
     first_year, last_year = span(loaded)
@@ -3002,6 +3050,9 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     # The fill shares per scale, rounded once rather than span by span. The year's are added once
     # its frames exist.
     fill_tables = dict(month=fill_table(monthly), season=fill_table(seasonal))
+    # The same for a source flag, where the build names one: which sensor or record each span came
+    # from. Absent from every row of a variable without one.
+    src_tables = dict(month=source_tables(monthly), season=source_tables(seasonal))
 
     def span_row(sp, table, scale, extra=None):
         """One tile's worth of payload, for any of the three span scales.
@@ -3045,6 +3096,9 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
             filled = fill_tables[scale].get(key, {}).get(sp["idx"])
             if filled:
                 row[key]["f"] = filled
+            sourced = src_tables[scale].get(key, {}).get(sp["idx"])
+            if sourced:
+                row[key]["src"] = sourced
         return row, st
 
     # -- Months ------------------------------------------------------------------------------
@@ -3079,6 +3133,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     year_spans = year_periods(first_year, last_year)
     yearly = yearly_frames(loaded, year_spans)
     fill_tables["year"] = fill_table(yearly)
+    src_tables["year"] = source_tables(yearly)
     year_index = pd.Index([sp["y"] for sp in year_spans], dtype="int64")
     year_norm = normals(yearly, [1] * len(year_spans), [sp["y"] for sp in year_spans])
     year_counts = {k: pd.Series(v.groupby(dates.year).sum()).reindex(year_index).fillna(0)
@@ -3163,7 +3218,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         return None, domain, day_domain
 
     metrics = []
-    for metric in METRICS:
+    for metric in metric_definitions(loaded):
         key, var, field = metric["key"], metric["var"], metric["field"]
         if var not in keys:
             continue
@@ -3324,6 +3379,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
                                          note=v.qc_convention.note)
                                     if v.fill_levels else None),
                               about=v.about))
+        variable_extras(variables[-1], key, loaded[key], list(range(first_year, last_year + 1)))
 
     payload = dict(
         meta=dict(
@@ -3413,7 +3469,23 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
         diurnal=diurnal_layer(loaded, dates, day),
         season_timing=season_timing_layer(loaded, dates, day),
         extreme_halfhours=extreme_halfhours_layer(loaded, dates, day),
+        var_record=var_record_layer(loaded, first_year, last_year),
     )
+
+    # What a build names beyond the column of each variable is recorded only where it named it, so
+    # a build that names none of it carries exactly the provenance it always did.
+    columns = payload["meta"]["provenance"]["columns"]
+    for key in keys:
+        v = loaded[key]["v"]
+        if v.source_flag:
+            columns[key]["source"] = v.source_flag["column"]
+        if v.raw_column:
+            columns[key]["raw"] = v.raw_column
+    if primary:
+        payload["meta"]["primary"] = dict(primary)
+        payload["meta"]["provenance"]["primary"] = dict(primary)
+    if reference:
+        payload["reference"] = reference_payload(loaded, reference)
 
     # The grid is the page, so its shape is checked rather than assumed: one tile per month of
     # every year, and every tile addressing a real window of the daily arrays.
@@ -3429,6 +3501,74 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     if not all(row["i0"] + row["n"] <= len(dates) for row in rows):
         raise RuntimeError("a month runs past the days")
     return payload
+
+
+def metric_definitions(loaded):
+    """The metrics this build can offer: the registry's, and the plain value of every instance.
+
+    An instance is one series among several of a registry variable, so it takes the metric that
+    reads its variable's value - the one its variable page is about - under its own key, and the
+    grid can be coloured by any one depth. The anomaly and ratio metrics stay with the plain key,
+    which is the variable the badges and the composite speak of.
+    """
+    out = list(METRICS)
+    for key, d in loaded.items():
+        label = varreg.instance_label(key)
+        if label is None:
+            continue
+        v = d["v"]
+        for metric in METRICS:
+            if metric["var"] != v.base or metric["field"] != "value":
+                continue
+            out.append(dict(metric, key=f"{metric['key']}@{label}", var=key,
+                            label=f"{v.title}, monthly {'total' if v.agg == 'sum' else 'mean'}",
+                            short=v.short,
+                            about=f"{metric['about']} This is the series {v.title.lower()}, one "
+                                  f"of several of {varreg.make(v.base).title.lower()} in this "
+                                  f"build."))
+    return out
+
+
+def variable_extras(entry, key, d, years):
+    """Add to a variable's payload entry what the build named beyond its column, and nothing else.
+
+    A field is written only where the build asked for what it describes, so a build that asked for
+    none of it carries the entry it always did.
+    """
+    v = d["v"]
+    options = d.get("options", {})
+    if v.instance:
+        entry["instance"] = v.instance
+    if v.fill_short and entry.get("fill"):
+        entry["fill"]["short"] = list(v.fill_short)
+    if v.source_flag:
+        entry["source"] = compare.source_layer(d, years)
+    notes = options.get("notes") or []
+    notes = [notes] if isinstance(notes, str) else list(notes)
+    notes = [compare.fill_note(str(n), v.units) for n in notes if n]
+    if notes:
+        entry["notes"] = notes
+    if "raw" in d:
+        entry["correction"] = compare.correction_layer(key, d)
+    elif options.get("correction_note"):
+        # A note about a correction the build cannot measure, having no uncorrected twin: shown as
+        # written, with only its unit filled in.
+        entry["notes"] = entry.get("notes", []) + [
+            compare.fill_note(str(options["correction_note"]), v.units)]
+
+
+def reference_payload(loaded, reference):
+    """The comparison with a reference station, for every variable the build compares."""
+    out = {k: reference[k] for k in ("station", "file", "distance_km", "elevation_m")
+           if reference.get(k) is not None}
+    out["min_overlap"] = compare.REFERENCE_MIN_OVERLAP
+    out["vars"] = {}
+    for key, spec in reference["vars"].items():
+        found = compare.reference_layer(key, loaded[key], spec, reference.get("site") or {})
+        found["shift"] = spec.get("shift", 0)
+        found["factor"] = spec.get("factor", 1.0)
+        out["vars"][key] = found
+    return out
 
 
 # ----------------------------------------------------------------------------------------------

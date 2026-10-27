@@ -182,6 +182,56 @@ _MDS_QC = re.compile(r"^(?:[A-Z0-9_]+_F_MDS(?:_\d+)?|(?:NEE|GPP|RECO)_(?:VUT|CUT
                      r"_(?:REF|USTAR50|\d\d))_QC$")
 
 
+def legend_entries(legend, what="legend"):
+    """A caller's legend as `{code: (long, short)}`, whatever form it was written in.
+
+    A code may map to `(long, short)`, to `[long, short]`, to `{"long": ..., "short": ...}` or to
+    a single string that serves as both. Codes are integers; a key read from JSON or YAML arrives as
+    text (`"0"`) and is converted, so a legend file and a Python dict describe a flag alike.
+    """
+    out = {}
+    for code, labels in dict(legend).items():
+        try:
+            number = float(code)
+        except (TypeError, ValueError):
+            raise ValueError(f"{what}: {code!r} is not a flag code; codes are integers") from None
+        if not number.is_integer():
+            raise ValueError(f"{what}: {code!r} is not a flag code; codes are integers")
+        if isinstance(labels, str):
+            long = short = labels
+        elif isinstance(labels, dict):
+            long = labels.get("long") or labels.get("short")
+            short = labels.get("short") or long
+        else:
+            parts = list(labels)
+            if not parts or not all(isinstance(p, str) for p in parts) or len(parts) > 2:
+                raise ValueError(f"{what}: code {code} needs a label, or a long and a short one")
+            long, short = parts[0], parts[-1]
+        if not long:
+            raise ValueError(f"{what}: code {code} has an empty label")
+        out[int(number)] = (str(long), str(short))
+    return dict(sorted(out.items()))
+
+
+def legend_convention(legend, measured_codes, codes_present=None):
+    """A caller's legend for a fill flag, as a convention like the two FLUXNET ones.
+
+    Each code that is not measured becomes a level of its own, in code order. Where `codes_present`
+    is given, a code the record never carries beside a value is left out, so the legend on the page
+    lists what the record holds rather than every code the flag could take - a soil temperature's
+    "no value" is a code no value ever carries.
+    """
+    levels = tuple(FillLevel((code,), labels[0]) for code, labels in legend.items()
+                   if code not in measured_codes
+                   and (codes_present is None or code in codes_present))
+    measured = ", ".join(str(c) for c in sorted(measured_codes))
+    described = "; ".join(f"{code} {labels[0]}" for code, labels in legend.items()
+                          if code not in measured_codes)
+    note = (f"the legend given for this build: {measured} measured"
+            + (f"; {described}" if described else ""))
+    return QcConvention("legend", levels, note)
+
+
 def qc_convention(column):
     """The convention a quality-flag column follows, from its name.
 
@@ -456,6 +506,56 @@ VARIABLES = {
               "increases with air temperature, humidity and cloud cover, so it stays high on "
               "overcast nights and falls on clear ones.",
         extremes=dict(high="most incoming longwave", low="least incoming longwave"),
+    ),
+
+    # The two outgoing terms of the radiation balance, as variables of their own. They are already
+    # read as terms of the computed net radiation; these entries let a build carry them on the page
+    # as well. The candidates are the ones the net radiation recipe names, so the two agree on which
+    # column a file supplies them from.
+    "SW_OUT": dict(
+        default=False,
+        title="Outgoing shortwave radiation",
+        short="Shortwave out",
+        units="W m⁻²",
+        columns=[("SW_OUT", 1.0), ("SW_OUT_1_1_1", 1.0)],
+        qc=["SW_OUT_QC"],
+        # Reflected shortwave is a fraction of the incoming, a tenth over a forest and more over
+        # snow. The bounds admit fresh snow under a high sun and refuse a column in another unit.
+        limits=(-100.0, 1000.0),
+        agg="mean",
+        daily_stats=("mean", "max"),
+        ship=("mean", "max"),
+        digits=0,
+        hourly=False,
+        scale=1,
+        about="Outgoing shortwave radiation, the part of the incoming shortwave the surface "
+              "reflects. Its ratio to the incoming shortwave is the albedo, which rises sharply "
+              "under snow.",
+        # Every night reaches zero, so the low end is a floor rather than an event.
+        extremes=dict(high="most reflected shortwave", low="least reflected shortwave",
+                      low_halfhour=False),
+    ),
+
+    "LW_OUT": dict(
+        default=False,
+        title="Outgoing longwave radiation",
+        short="Longwave out",
+        units="W m⁻²",
+        columns=[("LW_OUT", 1.0), ("LW_OUT_1_1_1", 1.0)],
+        qc=["LW_OUT_QC"],
+        # The thermal emission of the surface, by the Stefan-Boltzmann law about 200 W m-2 at
+        # -30 °C and 600 W m-2 at 45 °C, so it never comes near zero.
+        limits=(100.0, 800.0),
+        agg="mean",
+        daily_stats=("mean",),
+        ship=("mean",),
+        digits=0,
+        hourly=False,
+        scale=1,
+        about="Outgoing longwave radiation, the thermal emission of the surface and the small part "
+              "of the incoming longwave it reflects. It follows the surface temperature, so it "
+              "stays at several hundred W m⁻² by night as well as by day.",
+        extremes=dict(high="most outgoing longwave", low="least outgoing longwave"),
     ),
 
     "PPFD_IN": dict(
@@ -910,6 +1010,11 @@ class Variable:
                     f"{key}: index {item['key']!r} needs the daily {item['stat']}, which is not in "
                     f"daily_stats {self.daily_stats}")
 
+        # The registry entry this variable takes its definition from, and the label of the instance
+        # where it is one of several series of that entry (a depth, a height). `make` sets both.
+        self.base = key
+        self.instance = None
+
         # Filled in by the reader.
         self.uncertainty_note = None
         self.column = None
@@ -920,7 +1025,10 @@ class Variable:
         # convention's own levels, and `FILL_OTHER` after them where the record needs it.
         self.qc_convention = None
         self.fill_levels = []
-        self.source = None
+        self.fill_short = None      # short labels of the levels, where the caller wrote a legend
+        self.source = None          # the name of the file the variable was read from
+        self.source_flag = None     # {column, legend, reference_code}, where a build names one
+        self.raw_column = None      # the uncorrected twin, where a build names one
         self.first_year = None
         self.last_year = None
 
@@ -952,7 +1060,7 @@ def uncertainty(key, columns, column):
     convention, or a variant the file documents no error for - gets none.
     """
     out = []
-    for spec in VARIABLES.get(key, {}).get("uncertainty", []):
+    for spec in VARIABLES.get(base_key(key), {}).get("uncertainty", []):
         for data_column, unc_columns in spec["columns"]:
             if data_column != column:
                 continue
@@ -978,7 +1086,7 @@ def uncertainty_note(components):
 @lru_cache(maxsize=None)
 def rank_first(key):
     """Which end of the distribution takes rank 1: `"high"` or `"low"`."""
-    return VARIABLES.get(key, {}).get("rank_first", "high")
+    return VARIABLES.get(base_key(key), {}).get("rank_first", "high")
 
 
 def derivation(key, columns):
@@ -1013,7 +1121,7 @@ def derivation(key, columns):
 @lru_cache(maxsize=None)
 def family(key):
     """Which group a variable belongs to: `METEOROLOGY` or `FLUX`."""
-    return VARIABLES.get(key, {}).get("family", METEOROLOGY)
+    return VARIABLES.get(base_key(key), {}).get("family", METEOROLOGY)
 
 
 @lru_cache(maxsize=None)
@@ -1025,7 +1133,7 @@ def coverage(key):
     rather than an error: the caller may be asking about a column that is not in the registry at
     all, and the meteorological threshold is the conservative answer.
     """
-    return Coverage(*VARIABLES.get(key, {}).get("coverage", COVERAGE_DEFAULT))
+    return Coverage(*VARIABLES.get(base_key(key), {}).get("coverage", COVERAGE_DEFAULT))
 
 
 def default(key):
@@ -1038,8 +1146,49 @@ def known():
     return list(VARIABLES)
 
 
+# Instances: several series of one registry variable
+# ---------------------------------------------------------------------------------------------
+# A site may measure one quantity at several depths or heights - soil water content at five depths,
+# soil temperature at seven - and each depth is a series of its own, with its own column, its own
+# flags and often its own years. Each is addressed as `BASE@LABEL`, `SWC@0.05` or `TS@0.15`, and
+# takes everything the registry says about `BASE`: unit, limits, aggregation, digits, coverage
+# thresholds and the text that describes it. Only the column, the flags and the years are its own.
+#
+# The plain key keeps its meaning. `SWC` is still the one soil water content the composite, the
+# badges and the grid's soil metric read; a build chooses which instance stands in for it, or none.
+INSTANCE_SEPARATOR = "@"
+_INSTANCE_KEY = re.compile(r"^([A-Z][A-Z0-9_]*)@([A-Za-z0-9._-]+)$")
+
+
+def base_key(key):
+    """The registry entry a key is defined by: `SWC` for both `SWC` and `SWC@0.2`."""
+    return key.split(INSTANCE_SEPARATOR, 1)[0]
+
+
+def instance_label(key):
+    """The label of an instance key, `"0.2"` for `SWC@0.2`, or None for a plain key."""
+    return key.split(INSTANCE_SEPARATOR, 1)[1] if INSTANCE_SEPARATOR in key else None
+
+
+def is_known(key):
+    """Whether `key` is a registry key or a well-formed instance of one."""
+    if INSTANCE_SEPARATOR not in key:
+        return key in VARIABLES
+    match = _INSTANCE_KEY.match(key)
+    return bool(match) and match.group(1) in VARIABLES
+
+
 def make(key):
-    """One `Variable`, by canonical key."""
-    if key not in VARIABLES:
-        raise KeyError(f"unknown variable {key!r}; known keys: {', '.join(VARIABLES)}")
-    return Variable(key, VARIABLES[key])
+    """One `Variable`, by canonical key or by instance key."""
+    if not is_known(key):
+        hint = (" An instance is written BASE@LABEL, with a registry key before the @ and letters, "
+                "digits, '.', '_' or '-' after it." if INSTANCE_SEPARATOR in key else "")
+        raise KeyError(f"unknown variable {key!r}; known keys: {', '.join(VARIABLES)}.{hint}")
+    base = base_key(key)
+    v = Variable(base, VARIABLES[base])
+    label = instance_label(key)
+    if label is not None:
+        v.key, v.instance = key, label
+        v.title = f"{v.title} ({label})"
+        v.short = f"{v.short} {label}"
+    return v

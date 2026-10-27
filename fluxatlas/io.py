@@ -317,10 +317,18 @@ def _derived_spec(key, columns):
 
 
 def _source_columns(spec):
-    """The columns of the file a resolved variable is read from."""
+    """The columns of the file a resolved variable is read from, its settings' columns included."""
     if "components" in spec:
-        return [c for _, name, qc in spec["components"] for c in (name, qc) if c]
-    return [c for c in (spec["column"], spec.get("qc")) if c]
+        out = [c for _, name, qc in spec["components"] for c in (name, qc) if c]
+    else:
+        out = [c for c in (spec["column"], spec.get("qc")) if c]
+    options = spec.get("options", {})
+    source = options.get("source")
+    if source:
+        out.append(source if isinstance(source, str) else source["column"])
+    if options.get("raw"):
+        out.append(options["raw"])
+    return out
 
 
 def _add_derived(df, specs):
@@ -343,6 +351,51 @@ def _add_derived(df, specs):
         df[spec["column"]] = total
         if spec.get("qc"):
             df[spec["qc"]] = np.where(measured, 0, 1)
+
+
+# What a mapping entry may carry beside the column it names. The first three say where the series
+# is and how to read it; the rest are settings of the variable that a build is free to leave out, and
+# a build that leaves all of them out produces exactly the page it always did.
+COLUMN_FIELDS = ("column", "qc", "factor")
+OPTION_FIELDS = (
+    "source",           # a second flag naming the sensor, record or calibration behind a value
+    "qc_legend",        # what each code of the fill flag means, where it follows no FLUXNET convention
+    "measured_codes",   # the fill-flag codes that mean measured, where that is not 0 alone
+    "raw",              # the same series before its correction, read to show what the correction did
+    "checks",           # a callable a site passes to assert the shape of its own correction
+    "first_year",       # the years this variable is read over, inside the file's own
+    "last_year",
+    "notes",            # the site's own notes on this variable, shown on its page
+    "correction_note",  # how the correction is described, with its figures filled in
+    "reference",        # the reference station column this variable is compared with
+    "title",            # a name for the variable, most useful for an instance
+    "short",
+    "instance",         # the instance a plain key is read from, set by `Atlas` for `primary`
+)
+
+
+def source_spec(value, key):
+    """A variable's `source` setting as `{column, legend, reference_code}`.
+
+    Accepted as a column name alone, or as a dict naming the column and, optionally, the legend of
+    its codes and the code of the reference era - the era a correction and a hardware change are
+    measured against.
+    """
+    if value is None:
+        return None
+    spec = dict(column=value) if isinstance(value, str) else dict(value)
+    if not spec.get("column"):
+        raise KeyError(f"the source flag for {key} names no column")
+    stray = set(spec) - {"column", "legend", "reference_code"}
+    if stray:
+        raise KeyError(f"the source flag for {key} has unknown field(s) {', '.join(sorted(stray))};"
+                       f" it takes column, legend and reference_code")
+    legend = spec.get("legend")
+    spec["legend"] = (varreg.legend_entries(legend, f"the source legend for {key}")
+                      if legend else None)
+    ref = spec.get("reference_code")
+    spec["reference_code"] = None if ref is None else int(ref)
+    return spec
 
 
 def resolve(source, keys, label="the file"):
@@ -378,16 +431,35 @@ def resolve(source, keys, label="the file"):
         keys = [keys]
 
     mapping = keys if isinstance(keys, dict) else {k: None for k in keys}
-    unknown = [k for k in mapping if k not in varreg.VARIABLES]
+    unknown = [k for k in mapping if not varreg.is_known(k)]
     if unknown:
         raise KeyError(f"unknown variable(s) {', '.join(unknown)}; known keys: "
-                       f"{', '.join(varreg.known())}")
+                       f"{', '.join(varreg.known())}, or an instance of one written BASE@LABEL")
     if not mapping:
         raise ValueError(f"{label} carries none of the registry variables "
                          f"({', '.join(varreg.known())}), and no mapping was given")
 
     specs = {}
     for key, want in mapping.items():
+        # The settings beside the column are taken off first: a mapping that names only settings
+        # leaves the column to the registry, exactly as naming the key alone would.
+        options = {}
+        if isinstance(want, dict):
+            want = dict(want)
+            options = {k: want.pop(k) for k in OPTION_FIELDS if k in want}
+            stray = set(want) - set(COLUMN_FIELDS)
+            if stray:
+                raise KeyError(f"the mapping for {key} has unknown field(s) "
+                               f"{', '.join(sorted(stray))}; it takes "
+                               f"{', '.join(COLUMN_FIELDS + OPTION_FIELDS)}")
+            if not want:
+                want = None
+        if want is None and varreg.instance_label(key) is not None:
+            raise KeyError(f"{key} is an instance of {varreg.base_key(key)} and names no column. "
+                           f"An instance is one series among several, so it has to say which: "
+                           f'variables={{"{key}": "YOUR_COLUMN"}}')
+        if options:
+            _check_option_columns(key, options, columns, label)
         if want is None:
             if key not in present:
                 recipe = varreg.VARIABLES[key].get("derived")
@@ -400,6 +472,8 @@ def resolve(source, keys, label="the file"):
                     + ". Pass an explicit mapping if the column is named differently, e.g. "
                     + f'variables={{"{key}": "YOUR_COLUMN"}}')
             specs[key] = dict(present[key])
+            if options:
+                specs[key]["options"] = options
             continue
         spec = dict(column=want) if isinstance(want, str) else dict(want)
         if "column" not in spec:
@@ -467,7 +541,25 @@ def resolve(source, keys, label="the file"):
             candidates = dict(varreg.make(key).candidates)
             factor = float(candidates.get(spec["column"], 1.0))
         specs[key] = dict(column=spec["column"], factor=factor, qc=qc)
+        if options:
+            specs[key]["options"] = options
     return specs
+
+
+def _check_option_columns(key, options, columns, label):
+    """Refuse a setting that names a column the file does not carry, before anything is read."""
+    source = source_spec(options.get("source"), key)
+    if source and source["column"] not in columns:
+        raise KeyError(f"{label} has no column {source['column']!r}, named as the source flag "
+                       f"for {key}")
+    raw = options.get("raw")
+    if raw is not None and raw not in columns:
+        raise KeyError(f"{label} has no column {raw!r}, named as the uncorrected twin of {key}")
+    for name in ("first_year", "last_year"):
+        if options.get(name) is not None and not float(options[name]).is_integer():
+            raise ValueError(f"{key}: {name} must be a year, got {options[name]!r}")
+    if options.get("checks") is not None and not callable(options["checks"]):
+        raise TypeError(f"{key}: checks must be a callable taking (delta, source)")
 
 
 def fill_levels(qc, series, convention, measured_codes=varreg.MEASURED_QC_CODES):
@@ -607,10 +699,26 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
         v.derived = "components" in spec
         v.source = path.name
         v.first_year, v.last_year = first, last
+        options = spec.get("options", {})
+        if options.get("instance") and v.instance is None:
+            # The instance that stands in for this plain key: read under the plain key, so the
+            # badges and the composite find it, and named for the instance it is.
+            stand_in = varreg.make(f"{key}{varreg.INSTANCE_SEPARATOR}{options['instance']}")
+            v.instance, v.title, v.short = stand_in.instance, stand_in.title, stand_in.short
+        for name in ("title", "short"):
+            if options.get(name):
+                setattr(v, name, str(options[name]))
 
         series = pd.to_numeric(df[v.column], errors="coerce")
         series = series.mask(series <= MISSING + 1).astype(float) * v.factor
         series.name = key
+
+        # A variable may cover only part of the file's years - a soil depth dug in 2020, a channel
+        # that stopped in 2021 - and is then read over its own years and missing outside them,
+        # rather than carrying a decade of empty years that would read as a decade of outage.
+        outside = _outside_years(series.index, v, options, first, last, key)
+        if outside is not None:
+            series = series.mask(outside)
 
         lo, hi = v.limits
         clean = series.dropna()
@@ -644,10 +752,28 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
         # Where there is a flag, what it says about the rest is kept as well: one small integer per
         # record naming its level in the flag's convention, rather than a boolean per level. The
         # measured split is read off the same array, so the two cannot disagree.
+        #
+        # A flag of the site's own is described by the site: `measured_codes` says which of its
+        # codes are measurements - more than one, where a flag also names the sensor generation -
+        # and `qc_legend` what the others mean. Without them the FLUXNET conventions stand.
+        if options.get("measured_codes") is not None:
+            codes = options["measured_codes"]
+            codes = [codes] if isinstance(codes, (int, float, str)) else list(codes)
+            v.measured_codes = frozenset(int(float(c)) for c in codes)
         fill = None
         if v.qc_column and v.qc_column in df.columns:
             qc = pd.to_numeric(df[v.qc_column], errors="coerce")
-            v.qc_convention = varreg.qc_convention(v.qc_column)
+            legend = options.get("qc_legend")
+            if legend:
+                legend = varreg.legend_entries(legend, f"the fill legend for {key}")
+                _refuse_unknown_codes(qc if outside is None else qc.mask(outside),
+                                      set(legend) | set(v.measured_codes), key, v.qc_column,
+                                      "fill legend")
+                carried = set(qc[series.notna()].dropna().astype(int))
+                v.qc_convention = varreg.legend_convention(legend, v.measured_codes, carried)
+                v.fill_short = [legend[lv.codes[0]][1] for lv in v.qc_convention.levels]
+            else:
+                v.qc_convention = varreg.qc_convention(v.qc_column)
             fill = fill_levels(qc, series, v.qc_convention, v.measured_codes)
             v.fill_levels = [lv.label for lv in v.qc_convention.levels]
             if (fill == len(v.fill_levels) + 1).any():
@@ -655,6 +781,29 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
             measured = fill == 0
         else:
             measured = series.notna()
+
+        # The second flag, where a site keeps one: which sensor, record or calibration a value came
+        # from. It describes provenance and is independent of the fill flag, so it is carried apart
+        # and gates nothing.
+        flag = None
+        found = source_spec(options.get("source"), key)
+        if found:
+            flag = pd.to_numeric(df[found["column"]], errors="coerce")
+            if outside is not None:
+                flag = flag.mask(outside)
+            if found["legend"]:
+                _refuse_unknown_codes(flag, set(found["legend"]), key, found["column"],
+                                      "source legend")
+            v.source_flag = found
+
+        # The same series before its correction, read only to measure what the correction did.
+        raw = None
+        if options.get("raw"):
+            raw = pd.to_numeric(df[options["raw"]], errors="coerce")
+            raw = raw.mask(raw <= MISSING + 1).astype(float) * v.factor
+            if outside is not None:
+                raw = raw.mask(outside)
+            v.raw_column = options["raw"]
 
         # The uncertainty travels through the same unit conversion as the flux, because an interval
         # in one unit around a figure in another says nothing. Its components stay apart: they are
@@ -671,14 +820,60 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
 
         out[key] = dict(v=v, df=df, series=series, measured=measured, fill=fill,
                         uncertainty=components)
+        # Present only where the build asked for them, so a build that asked for none of them
+        # hands the builder exactly what it always did.
+        if flag is not None:
+            out[key]["source"] = flag
+        if raw is not None:
+            out[key]["raw"] = raw
+        if options:
+            out[key]["options"] = options
         if not quiet:
-            share = measured.mean() * 100
+            # Over the variable's own years, where it has them: before a sensor was installed is
+            # not a share of it that went unmeasured.
+            share = (measured if outside is None else measured[~outside.to_numpy()]).mean() * 100
             flag = v.qc_column or "no QC column"
             say(f"  {key:<7} {v.column:<16} {flag:<18} {len(series):>8,} records  "
                 f"{share:5.1f} % measured"
                 + (" (of the NEE it is partitioned from)" if v.partitioned and v.qc_column
                    else ""))
     return out
+
+
+def _outside_years(index, v, options, first, last, key):
+    """Where a variable's own years exclude a record, or None where it is read over the file's.
+
+    Sets `v.first_year` and `v.last_year` to the variable's own years, clipped to the file's: a
+    variable cannot be read over years the file does not reach.
+    """
+    own_first, own_last = options.get("first_year"), options.get("last_year")
+    if own_first is None and own_last is None:
+        return None
+    lo = first if own_first is None else max(first, int(own_first))
+    hi = last if own_last is None else min(last, int(own_last))
+    if lo > hi:
+        raise ValueError(f"{key}: its years {own_first or first}-{own_last or last} lie outside the "
+                         f"years the file covers completely, {first}-{last}")
+    v.first_year, v.last_year = lo, hi
+    if (lo, hi) == (first, last):
+        return None
+    years = np.asarray(index.year)
+    return pd.Series((years < lo) | (years > hi), index=index)
+
+
+def _refuse_unknown_codes(flag, known, key, column, what):
+    """Stop the build where a flag carries a code its legend does not describe.
+
+    A legend the caller wrote is a claim about every record, and a code it does not mention is a
+    record the page would have to describe without knowing what it is. Only the records the build
+    reads are checked, so a code that occurs only in years left out does not stop it.
+    """
+    present = set(flag.dropna().unique().tolist())
+    unknown = sorted(c for c in present if c not in known)
+    if unknown:
+        listed = ", ".join(f"{c:g}" for c in unknown)
+        raise ValueError(f"{key}: {column} carries code(s) {listed}, which the {what} does not "
+                         f"describe. Add an entry for each, or leave the legend out.")
 
 
 def span(loaded):
