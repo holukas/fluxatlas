@@ -411,7 +411,7 @@ def test_the_year_scale_ships_the_climatology_its_charts_draw(full_atlas):
 # the computed net radiation exist only in that combination.
 
 ALONE = [["LE"], ["H"], ["NETRAD"], ["G"], ["PA"], ["USTAR"], ["TS"], ["WS"], ["LW_IN"],
-         ["PPFD_IN"], ["H", "LE", "NETRAD", "G"]]
+         ["PPFD_IN"], ["SW_OUT"], ["LW_OUT"], ["H", "LE", "NETRAD", "G"]]
 
 
 @pytest.fixture(scope="module")
@@ -427,3 +427,30 @@ def test_each_variable_renders_on_its_own(extras_path, tmp_path, selection):
     atlas = fa.Atlas(extras_path, selection, site="XX-Syn", hourly=False, quiet=True)
     found = drive(atlas, tmp_path)
     assert not found["problems"], report(found)
+
+
+# -- Every site setting at once ---------------------------------------------------------------------
+#
+# The settings add cards that no other selection draws: the source per year, the correction, the
+# residual against a reference station, the notes, and a page per instance of one variable. Each
+# reads a payload field only it carries, which is the shape of every renderer bug this suite exists
+# for, so one page carries all of them and is walked like the others.
+
+@needs_jsdom
+def test_a_page_with_every_site_setting_renders(tmp_path):
+    from test_site_settings import site_variables
+    from conftest import add_fluxes, add_site_extras, reference_frame, synthetic_frame
+
+    frame = add_site_extras(add_fullset_extras(add_fluxes(synthetic_frame())))
+    data, ref = tmp_path / "site.parquet", tmp_path / "reference.parquet"
+    frame.to_parquet(data)
+    reference_frame(frame).to_parquet(ref)
+    atlas = fa.Atlas(data, site_variables(), site="XX-Syn", hourly=False, quiet=True,
+                     primary={"SWC": "SWC@0.3"}, lat=47.5, lon=8.4, utc_offset=1,
+                     reference=dict(file=ref, station="Syn reference", shift=-15))
+    found = drive(atlas, tmp_path)
+    assert not found["problems"], report(found)
+    visited = " | ".join(found["visited"])
+    for key in ("SWC@0.05", "TS@0.1", "SW_OUT"):
+        assert f"the {key} page, every table shown" in visited
+

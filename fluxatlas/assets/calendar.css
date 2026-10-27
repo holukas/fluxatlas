@@ -1,9 +1,8 @@
 /* ==============================================================================================
-   CH-LAE meteo calendar explorer - components
+   fluxatlas - components
    ----------------------------------------------------------------------------------------------
-   This file is appended to `dashboard_assets/dashboard.css`, which supplies the tokens, the base
-   layout, the cards, the tables and the tooltip. Only the components this page adds are defined
-   here, so the two pages cannot drift apart and no colour is decided twice.
+   Inlined after `base.css`, which supplies the tokens, the base layout, the cards, the tables and
+   the tooltip. Only the components the atlas adds are defined here, so no colour is decided twice.
 
    The one token added is a status colour for sparse coverage. It is deliberately not one of the
    series slots: a warning is a state, not a series, and reusing a categorical hue for it would
@@ -628,3 +627,32 @@ select.picker.narrow { min-width: 260px; }
   .monthnav.year { margin-left: 0; }
   select.picker { min-width: 0; width: 100%; }
 }
+
+/* ---------------------------------------------------------------------------------------------
+   The variable page: its section index, its sections, its tiles and notes
+   --------------------------------------------------------------------------------------------- */
+
+/* The index sits under the top bar while the page scrolls beneath it. It is the top bar's own
+   section nav, so it is hidden on a narrow screen by the same rule, where the headings remain. */
+.sectionnav.varnav {
+  position: sticky; top: var(--topbar-h); z-index: 4; margin: 0 0 var(--gap);
+  padding: 6px 4px; background: var(--page); border-bottom: 1px solid var(--border);
+}
+.varsec + .varsec { margin-top: calc(var(--gap) * 1.5); }
+.varsec { scroll-margin-top: calc(var(--topbar-h) + 52px); }
+.vartiles { margin-bottom: var(--gap); }
+.varnotes p { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); max-width: 110ch; }
+.varnotes p:last-child { margin-bottom: 0; }
+.varnotes code, .card-foot code, .card-sub code { font-size: 0.92em; }
+
+/* The numbers behind a chart, shown in its place by the card's Chart/Table switch. */
+.tableview { margin-top: 2px; max-height: 520px; overflow: auto; }
+
+/* A statement about the record that a reader should not miss, such as gap-filled values that reach
+   outside what was measured. It carries its words, not only its colour. */
+.callout.warn {
+  max-width: 110ch; margin: 12px 0 0; padding: 8px 12px; font-size: 12.5px;
+  color: var(--text-primary); border-left: 3px solid var(--tone-warn); background: var(--wash);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+

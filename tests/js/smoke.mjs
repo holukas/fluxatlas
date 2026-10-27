@@ -312,6 +312,36 @@ function driveCharts(where) {
   });
 }
 
+/* Every Chart/Table switch of the view, both ways. A table is built only when it is asked for, so
+ * a table that reads a field its variable does not carry throws on the click and never before it,
+ * and a chart that does not redraw when it comes back is blank. The section index is walked too:
+ * its links scroll rather than navigate, and one that navigated would leave the page. */
+function driveTables(where) {
+  visibleViews().forEach(root => {
+    Array.from(root.querySelectorAll('.viewtoggle')).forEach((group, i) => {
+      const toTable = group.querySelector('button[data-view="table"]');
+      const toChart = group.querySelector('button[data-view="chart"]');
+      toTable.dispatchEvent(mouse('click'));
+      const card = group.closest('.card');
+      const view = card.querySelector('.tableview');
+      if (!view || view.hidden || !view.querySelector('table')) {
+        note(where, `the table of card ${i + 1} did not show`);
+      }
+      scan(`${where}, the table of card ${i + 1}`, 'table', view ? view.textContent : '');
+      toChart.dispatchEvent(mouse('click'));
+      if (!card.querySelector('.chart svg, .chart canvas')) {
+        note(where, `card ${i + 1} drew no chart after its table was put away`);
+      }
+    });
+    Array.from(root.querySelectorAll('#var-nav a')).forEach(a => {
+      const before = window.location.hash;
+      a.dispatchEvent(mouse('click'));
+      if (window.location.hash !== before) note(where, `the index link ${a.textContent} navigated`);
+    });
+  });
+  visited.push(`${where}, every table shown`);
+}
+
 /* Where a selection landed. A click builds a URL and the router follows it, so a URL built from a
  * field the active scale does not carry - `#2016-null-01` - resolves to nothing, and the page
  * answers by falling back to the grid. That is indistinguishable from a reader changing their
@@ -709,6 +739,7 @@ async function run() {
     stage = `the ${variable.key} page`;
     await goto(`#var-${variable.key}`, `the ${variable.key} page`);
     driveCharts(`the ${variable.key} page`);
+    driveTables(`the ${variable.key} page`);
     driveCumulative(`the ${variable.key} page`, sums.includes(variable));
   }
 
