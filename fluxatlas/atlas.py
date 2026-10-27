@@ -303,10 +303,9 @@ def _reference_of(want):
     if found is None:
         return None
     spec = dict(column=found) if isinstance(found, str) else dict(found)
-    stray = set(spec) - {"column", "shift", "split", "factor"}
+    stray = set(spec) - {"column", "shift", "split"}
     if stray or not spec.get("column"):
-        raise KeyError(f"a reference setting takes column, shift, split and factor; got "
-                       f"{sorted(spec)}")
+        raise KeyError(f"a reference setting takes column, shift and split; got {sorted(spec)}")
     return spec
 
 
@@ -344,11 +343,9 @@ def _prepare_reference(reference, compared, loaded, lat, lon, utc_offset, quiet)
                site=dict(lat=lat, lon=lon, utc_offset=utc_offset), vars={})
     for key, spec in compared.items():
         moved = float(spec.get("shift", shift) or 0)
-        factor = float(spec.get("factor", 1.0))
         out["vars"][key] = dict(column=spec["column"], split=bool(spec.get("split")), shift=moved,
-                                factor=factor,
                                 series=_compare.on_grid(stamps, values[spec["column"]], moved,
-                                                        loaded[key]["series"].index, factor))
+                                                        loaded[key]["series"].index))
     if not quiet:
         say(f"  reference {out['station']}: {', '.join(compared)} against {path.name}")
     return out

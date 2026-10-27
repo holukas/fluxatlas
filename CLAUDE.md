@@ -325,11 +325,15 @@ either a bug or a deliberate change that rewrites it (`--write`).
 
 `examples/build_lae_meteo_atlas.py` builds the full merged CH-LAE product
 (`99_METEO_MERGED_2004-2026.09.parquet`, not committed) with every site
-setting — legends, source flags, instances, year windows, raw twins, the
-MeteoSwiss Lägeren reference and notes. All CH-LAE facts live in that script;
+setting — legends, source flags, instances, raw twins, the MeteoSwiss
+Lägeren reference and notes. All CH-LAE facts live in that script;
 none go in the registry.
 
 ## Site settings
+
+**No setting changes, rescales or hides a value read from a file.** A
+reference column is compared as its file states it; a per-variable year window
+and a reference `factor` were built and removed for that reason.
 
 Per-variable options beside `column`/`qc`/`factor` (`io.OPTION_FIELDS`), plus
 `primary`, `lat`/`lon`/`utc_offset` and `reference` on `Atlas`. Every one is

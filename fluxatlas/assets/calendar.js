@@ -4442,7 +4442,7 @@
   /**
    * The last ten years of a variable against all of its earlier years.
    *
-   * Taken over the years covered well enough to stand for the variable, within its own years. The
+   * Taken over the years covered well enough to stand for the variable. The
    * difference is also stated in per cent where that is meaningful: where the earlier mean is at
    * least the year-to-year spread of the annual values, so that a mean near zero - a soil heat flux
    * - does not turn a small change into hundreds of per cent, and against the size of the earlier
@@ -5684,8 +5684,7 @@
         sub: 'Share of each month not measured' + (nee ? ' (of ' + nee + ')' : '')
           + ': gap-filled or missing. It locates the outages behind the coverage chart. Select '
           + 'a month to open it.',
-        foot: 'A month outside the years this variable is read over has no share and is drawn '
-          + 'empty.',
+        foot: 'A month the record does not reach is drawn empty.',
         draw: drawYearMonth(key, 'missing'), table: () => yearMonthTable(key, 'missing')
       });
     }

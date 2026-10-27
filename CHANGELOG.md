@@ -82,14 +82,13 @@
   - **Several series of one variable**, such as soil water at five depths, as instances `SWC@0.05`, `SWC@0.1` and so on.
     Each takes its unit, limits and aggregation from the registry and has its own page and grid metric. `primary`
     (`--primary SWC=SWC@0.2`) chooses the one the composite, the badges and the grid's soil metric read.
-  - **A variable's own years** (`first_year`, `last_year`, `--years`), for a series that exists in part of the record.
   - **The uncorrected twin of a corrected series** (`raw`, `--raw`). The page states what the correction did, overall,
     per era of the source flag and per year, and fills `{break_ts}`, `{offset}` and `{shield_max}` in the site's
     correction note from those figures. `checks` lets a site assert the shape of its own correction.
   - **A reference station** (`reference`, `--reference`, `--ref`): the residual of the measured records against it,
     month by month with a 12-month rolling median, night and day apart where asked, and the step across a hardware
-    change. It needs at least 10,000 overlapping half-hours. The night and day split uses the site's position
-    (`lat`, `lon`, `utc_offset`).
+    change. It needs at least 10,000 overlapping half-hours. The station's values are compared as its file states
+    them, never converted. The night and day split uses the site's position (`lat`, `lon`, `utc_offset`).
   - **Notes** on a variable (`notes`, `--note`), shown on its page.
 - **Outgoing shortwave and longwave radiation** (`SW_OUT`, `LW_OUT`) as variables of their own, built when named. They
   resolve from the same columns the computed net radiation reads.

@@ -190,8 +190,8 @@ uv run python examples/build_lae_meteo_atlas.py --input PATH/99_METEO_MERGED_200
 The site-settings case: a local product that says more than a FLUXNET file can. It reads the
 merged CH-LAE meteo product with every setting the package offers — the site's own fill
 legends, the instrument flag of each series, five soil water and seven soil temperature
-depths with their own years, the homogenised series beside their measured twins, and the
-MeteoSwiss Lägeren station as a reference. The legends and the site's notes are in the
+depths, the homogenised series beside their measured twins, and the MeteoSwiss Lägeren
+station as a reference for air temperature and humidity. The legends and the site's notes are in the
 script, not in the package. Neither input file is committed; the defaults are where they sit
 in the CH-LAE data folder.
 

@@ -1143,19 +1143,7 @@ def daily_frame(loaded, dates):
             agg["sum"] = resample_agg(d["series"], "D", "sum")
         day[key] = agg.reindex(dates)
         meas[key] = (d["measured"].astype(float).resample("D").mean() * 100).reindex(dates)
-        meas[key][_outside_own_years(v, dates.year)] = np.nan
     return day, meas
-
-
-def _outside_own_years(v, years):
-    """Where a span lies outside the years a variable is read over, as a boolean array.
-
-    Outside them the variable was not measured because it was not there, which is not a coverage
-    figure of zero: the span has no coverage figure at all. For a variable read over the whole file
-    this is all False, and nothing changes.
-    """
-    years = np.asarray(years)
-    return (years < v.first_year) | (years > v.last_year)
 
 
 def flag_words(flags, day, meas, nrm, dates):
@@ -1660,7 +1648,6 @@ def yearly_frames(loaded, spans):
         unc = aggregate_uncertainty(d, lambda s: s.groupby(group).sum(min_count=1), index)
         fill = fill_shares(d, lambda f: f.groupby(group).sum().reindex(index).fillna(0)
                            .div(expected, axis=0) * 100)
-        _blank_outside(v, index, meas, avail)
         out[key] = dict(value=value, meas=meas, avail=avail, unc=unc, fill=fill)
         if "source" in d:
             out[key]["src"] = compare.source_shares(
@@ -2087,20 +2074,11 @@ def monthly_frames(loaded, months):
         avail = (d["series"].notna().astype(float).resample("MS").mean() * 100).reindex(months)
         unc = aggregate_uncertainty(d, lambda s: s.resample("MS").sum(min_count=1), months)
         fill = fill_shares(d, lambda f: (f.resample("MS").mean() * 100).reindex(months))
-        _blank_outside(v, months.year, meas, avail)
         out[key] = dict(value=value, meas=meas, avail=avail, unc=unc, fill=fill)
         if "source" in d:
             out[key]["src"] = compare.source_shares(
                 d, lambda f: f.resample("MS").sum().reindex(months))
     return out
-
-
-def _blank_outside(v, years, *frames):
-    """Clear the coverage figures of the spans outside the variable's own years."""
-    outside = _outside_own_years(v, years)
-    if outside.any():
-        for frame in frames:
-            frame[outside] = np.nan
 
 
 def seasonal_frames(loaded, spans, scheme):
@@ -2126,7 +2104,6 @@ def seasonal_frames(loaded, spans, scheme):
         unc = aggregate_uncertainty(d, lambda s: s.groupby(group).sum(min_count=1), index)
         fill = fill_shares(d, lambda f: f.groupby(group).sum().reindex(index).fillna(0)
                            .div(expected, axis=0) * 100)
-        _blank_outside(v, [sp["y"] for sp in spans], meas, avail)
         out[key] = dict(value=value, meas=meas, avail=avail, unc=unc, fill=fill)
         if "source" in d:
             out[key]["src"] = compare.source_shares(
@@ -3566,7 +3543,6 @@ def reference_payload(loaded, reference):
     for key, spec in reference["vars"].items():
         found = compare.reference_layer(key, loaded[key], spec, reference.get("site") or {})
         found["shift"] = spec.get("shift", 0)
-        found["factor"] = spec.get("factor", 1.0)
         out["vars"][key] = found
     return out
 

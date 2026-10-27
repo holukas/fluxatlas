@@ -343,13 +343,12 @@ def add_site_extras(frame, seed=3):
 def reference_frame(frame, seed=4):
     """A reference station beside a site frame, stamped at the end of each half-hour.
 
-    Its air temperature reads 0.5 °C below the site's throughout, and its pressure is published in
-    hPa, ten times the site's kPa, so a comparison that is right states a residual of +0.5 and of
-    zero, and one that misses the factor states one of about -860.
+    Its air temperature reads 0.5 °C below the site's throughout, so a comparison that is right
+    states a residual of +0.5. Its pressure equals the site's, so that residual is zero.
     """
     rng = np.random.default_rng(seed)
     end = frame.index + pd.Timedelta(minutes=15)
     ta = frame["TA_F"].to_numpy() - 0.5 + rng.normal(0, 0.2, len(frame))
-    ref = pd.DataFrame({"TA_REF": ta.round(3), "PA_REF": (frame["PA_F"].to_numpy() * 10).round(2)},
+    ref = pd.DataFrame({"TA_REF": ta.round(3), "PA_REF": frame["PA_F"].to_numpy()},
                        index=pd.DatetimeIndex(end, name="TIMESTAMP_END"))
     return ref

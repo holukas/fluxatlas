@@ -16,8 +16,8 @@ the first form will do before reaching for the second.
 library assumes - 0 measured, above 0 modelled - and the factor converts the column into the
 canonical unit, which is what `--list` prints beside each variable.
 
-The site settings - a source flag, a fill legend, measured codes, an uncorrected twin, a variable's
-own years, notes, the instance that stands in for a plain key, and a reference station - each name
+The site settings - a source flag, a fill legend, measured codes, an uncorrected twin, notes, the
+instance that stands in for a plain key, and a reference station - each name
 a variable already in the selection. None of them is needed, and a build that names none of them
 produces the page it always did. Legends are long, so they come from a JSON or YAML file:
 
@@ -146,8 +146,8 @@ def add_settings(args, mapping):
     # Read through `getattr`, so a namespace built without these flags - by a caller of
     # `build_mapping` that knows only the column flags - names none of them.
     args = argparse.Namespace(**{name: getattr(args, name, None) for name in (
-        "source", "source_ref", "legends", "measured", "raw", "years", "note",
-        "correction_note", "ref", "ref_split", "ref_factor")})
+        "source", "source_ref", "legends", "measured", "raw", "note", "correction_note", "ref",
+        "ref_split")})
     for key, column in _pairs(args.source, "--source").items():
         _settings_of(mapping, key, "--source")["source"] = dict(column=column)
     for key, code in _pairs(args.source_ref, "--source-ref").items():
@@ -170,16 +170,6 @@ def add_settings(args, mapping):
                                                                             key)
     for key, column in _pairs(args.raw, "--raw").items():
         _settings_of(mapping, key, "--raw")["raw"] = column
-    for key, span in _pairs(args.years, "--years").items():
-        first, sep, last = span.partition(":")
-        if not sep:
-            raise SystemExit(f"--years: {span!r} for {key} is not FIRST:LAST")
-        try:
-            years = [int(x) if x.strip() else None for x in (first, last)]
-        except ValueError:
-            raise SystemExit(f"--years: {span!r} for {key} is not FIRST:LAST") from None
-        spec = _settings_of(mapping, key, "--years")
-        spec["first_year"], spec["last_year"] = years
     for item in args.note or ():
         key, _, text = item.partition("=")
         if not _variables.is_known(key.strip()) or not text.strip():
@@ -194,14 +184,6 @@ def add_settings(args, mapping):
         if not isinstance(spec.get("reference"), dict):
             raise SystemExit(f"--ref-split names {key}, which has no --ref column")
         spec["reference"]["split"] = True
-    for key, value in _pairs(args.ref_factor, "--ref-factor").items():
-        spec = _settings_of(mapping, key, "--ref-factor")
-        if not isinstance(spec.get("reference"), dict):
-            raise SystemExit(f"--ref-factor names {key}, which has no --ref column")
-        try:
-            spec["reference"]["factor"] = float(value)
-        except ValueError:
-            raise SystemExit(f"--ref-factor: {value!r} is not a number") from None
 
 
 def reference_of(args):
@@ -314,10 +296,6 @@ def build_parser():
     site.add_argument("--raw", action="append", metavar="KEY=COLUMN",
                       help="the uncorrected twin of a corrected series, read to show what the "
                            "correction did. Repeatable.")
-    site.add_argument("--years", action="append", metavar="KEY=FIRST:LAST",
-                      help="the years a variable is read over, inside the file's, for a series "
-                           "that exists in part of the record; either side may be left empty. "
-                           "Repeatable.")
     site.add_argument("--note", action="append", metavar="KEY=TEXT",
                       help="a note on a variable, shown on its page; {units} is filled in. "
                            "Repeatable.")
@@ -340,9 +318,6 @@ def build_parser():
     ref.add_argument("--ref-split", action="append", metavar="KEY",
                      help="split a comparison into night and day by the position of the sun; "
                           "needs --lat, --lon and --utc-offset. Repeatable.")
-    ref.add_argument("--ref-factor", action="append", metavar="KEY=NUMBER",
-                     help="multiply a reference column onto the variable's unit, e.g. 0.1 for "
-                          "hPa to kPa. Repeatable.")
     ref.add_argument("--ref-shift", type=float, default=0.0, metavar="MINUTES",
                      help="move the reference stamps by this many minutes before they are put on "
                           "the half-hourly windows, e.g. -15 for a station stamped at the end of "

@@ -25,12 +25,12 @@ What each setting does
   codes are measured.
 - `source` - the second flag, with a legend and the code of the reference era.
 - `raw` - the uncorrected twin of a homogenised series, read only to show what the correction did.
-- `first_year`, `last_year` - a variable's own years, for a depth that exists only in part of the
-  record.
 - `SWC@0.05` and the like - one series per depth, each with its own page.
   `primary={"SWC": "SWC@0.2"}` says which depth stands in for soil water content in the composite,
   the badges and the grid's soil metric.
 - `reference` - the station column a variable is compared with, and whether to split night from day.
+  The station's values are compared as the file states them, so only a column in the variable's own
+  unit is compared: the station's pressure is in hPa and the product's in kPa, so pressure is not.
 - `notes`, `correction_note` - the site's own account of the variable, shown on its page.
 
 The two input files sit in the CH-LAE data folder, outside this repository; the defaults below are
@@ -210,7 +210,6 @@ VARIABLES = {
     ),
     "SW_IN": dict(
         column="SW_IN_T1_47_1_gfXG", qc="FLAG_SW_IN_T1_47_1_ISFILLED", qc_legend=SW_IN_FILL,
-        first_year=2006,
         notes=[
             "The tower record begins on 14 September 2005, so this variable starts with the first "
             "complete year, 2006. The series was tested at both hardware changes, the 2016 logger "
@@ -227,7 +226,6 @@ VARIABLES = {
     ),
     "PPFD_IN": dict(
         column="PPFD_IN_T1_47_1_gfXG", qc="FLAG_PPFD_IN_T1_47_1_ISFILLED", qc_legend=PPFD_IN_FILL,
-        first_year=2006,
         notes=[
             "This sensor has been falling about 7 % since 2021. The drift is documented rather than "
             "corrected: it develops over years rather than stepping at a date, and no fieldbook "
@@ -245,9 +243,7 @@ VARIABLES = {
         ],
     ),
     "PA": dict(
-        column="PA_T1_47_1", first_year=2006,
-        # The station publishes pressure in hPa, the product in kPa.
-        reference=dict(column="PA_LAE_MS", factor=0.1),
+        column="PA_T1_47_1",
         notes=[
             "Air pressure at 47 m, exported as measured. There is no gap-filling and no "
             "correction, so the record carries its gaps.",
@@ -256,7 +252,7 @@ VARIABLES = {
         ],
     ),
     "LW_IN": dict(
-        column="LW_IN_T1_47_1", first_year=2006,
+        column="LW_IN_T1_47_1",
         source=dict(column="FLAG_LW_IN_T1_47_1_SOURCE", legend=LW_IN_SOURCE, reference_code=0),
         notes=[
             "Incoming longwave radiation at 47 m, exported as measured with its gaps. The source "
@@ -303,7 +299,7 @@ VARIABLES = {
         ],
     ),
     "SW_OUT": dict(
-        column="SW_OUT_T1_47_1", first_year=2006,
+        column="SW_OUT_T1_47_1",
         source=dict(column="FLAG_SW_OUT_T1_47_1_INSTRUMENT", legend=SW_OUT_SOURCE,
                     reference_code=0),
         notes=[
@@ -316,7 +312,7 @@ VARIABLES = {
         ],
     ),
     "LW_OUT": dict(
-        column="LW_OUT_T1_47_1", first_year=2006,
+        column="LW_OUT_T1_47_1",
         source=dict(column="FLAG_LW_OUT_T1_47_1_SOURCE", legend=LW_OUT_SOURCE, reference_code=0),
         notes=[
             "Outgoing longwave radiation at 47 m, exported as measured with its gaps. It is the "
@@ -339,23 +335,20 @@ for depth in ("0.05", "0.1", "0.2", "0.3", "0.5"):
         raw=f"SWC_FF1_{depth}_1" if homogenised else None,
         title=f"Soil water content at {depth} m", short=f"Soil water {depth} m",
         source=dict(column=f"FLAG_SWC_FF1_{depth}_1_SOURCE", legend=SWC_SOURCE, reference_code=2),
-        first_year=2021 if depth == "0.5" else None,
         correction_note=(
             "The record spans two sensor generations with no overlap between them, so the step at "
             "the changeover cannot be calibrated away against a common period. The homogenised "
             "column rescales the earlier generation on climatology, and the source flag names the "
             "sensor set behind every record." if homogenised else None),
         notes=None if homogenised else [
-            "This depth has a single sensor era, installed in April 2020, so it begins with 2021 "
-            "and carries no homogenised second column."],
+            "This depth has a single sensor era, installed in April 2020, so it begins then and "
+            "carries no homogenised second column."],
     )
 
 # Soil temperature at seven depths. The METHOD flag is both flags at once: whether a value was
 # measured or modelled, and which profile measured it. The depths do not share a period, because
-# the holes in the ground do not.
-TS_YEARS = {"0.05": (2005, 2025), "0.1": (2005, 2025), "0.15": (2005, 2020),
-            "0.2": (2021, 2025), "0.3": (2005, 2025), "0.5": (2005, 2025), "0.6": (2021, 2025)}
-for depth, (first, last) in TS_YEARS.items():
+# the holes in the ground do not; each shows the years it has no value in as missing.
+for depth in ("0.05", "0.1", "0.15", "0.2", "0.3", "0.5", "0.6"):
     flag = f"FLAG_TS_FF1_{depth}_HOMOGENIZED_GAPFILLED_METHOD"
     notes = []
     if depth in ("0.05", "0.1", "0.3", "0.5"):
@@ -375,7 +368,7 @@ for depth, (first, last) in TS_YEARS.items():
         title=f"Soil temperature at {depth} m", short=f"Soil temperature {depth} m",
         qc=flag, qc_legend=TS_METHOD, measured_codes=(1, 2),
         source=dict(column=flag, legend=TS_METHOD),
-        first_year=first, last_year=last, notes=notes,
+        notes=notes,
     )
 
 # Which depth stands in for soil water content in the composite, the badges and the grid's soil

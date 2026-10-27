@@ -93,7 +93,7 @@ A site may measure one quantity at several depths or heights. Each is an **insta
 registry variable, addressed `BASE@LABEL`: `SWC@0.05`, `TS@0.15`, `TA@2m`. An instance takes
 everything the registry says of its base - unit, limits, aggregation, digits, coverage thresholds and
 description - and has its own column, flags, settings, page, entry in the variable index and metric
-on the grid. It has to name its column. It carries no day tests of its own, and it does not mark a
+on the grid. A depth installed part way through the record shows the years before it as missing. It has to name its column. It carries no day tests of its own, and it does not mark a
 span sparse, since it is a further series of a variable the page already describes.
 
 The plain key keeps its meaning. `primary={"SWC": "SWC@0.2"}` reads that instance under the plain
@@ -103,13 +103,6 @@ absent.
 
 `title` and `short` name a variable, which is most useful for an instance:
 `title="Soil water content at 0.2 m"`.
-
-## A variable's own years
-
-`first_year` and `last_year` read a variable over part of the record: a depth dug in 2020, a channel
-that stopped in 2021. Outside its years the variable has no value and no coverage figure, rather
-than a decade of zero coverage, and its trend, normals and record are taken over its own years.
-They are clipped to the years the file covers completely; years outside those are refused.
 
 ## A corrected series and its twin
 
@@ -145,8 +138,9 @@ reference=dict(file="station.parquet", station="MeteoSwiss Lägeren", distance_k
 and each variable compared with it names its column: `reference=dict(column="TA_STATION",
 split=True)`. `shift`, in minutes, moves the station's stamps before they are put on the half-hourly
 windows; a station stamped at the end of its half-hour and a product stamped at the middle differ by
-a quarter of an hour, and flooring onto the window makes -15 and -30 land alike. `factor` brings the
-station's unit onto the variable's, 0.1 for pressure in hPa against a product in kPa.
+a quarter of an hour, and flooring onto the window makes -15 and -30 land alike. The station's values
+are compared as its file states them and are never converted, so a reference column has to be in
+the variable's unit already.
 
 Only measured records of the product are compared. At least 10,000 overlapping half-hours are
 needed, and below that the comparison is withheld and the page says why. The page states the
@@ -170,5 +164,5 @@ them as such. The registry's own description of a variable is unchanged by them.
 
 `examples/build_lae_meteo_atlas.py` builds the merged CH-LAE meteo product with every setting on this
 page: thirteen products, five soil water depths, seven soil temperature depths, the corrected air
-temperature, precipitation and soil water with their twins, four instrument flags and the MeteoSwiss
-Lägeren station. Its legends and notes are in the script, not in the package.
+temperature, precipitation and soil water with their twins, the instrument flags and the MeteoSwiss
+Lägeren station for air temperature and humidity. Its legends and notes are in the script, not in the package.

@@ -65,9 +65,6 @@ def var_record_layer(loaded, first_year, last_year):
         v = d["v"]
         series = d["series"]
         measured = d["measured"].reindex(series.index, fill_value=False).to_numpy(dtype=bool)
-        own = (np.asarray(series.index.year) >= v.first_year) \
-            & (np.asarray(series.index.year) <= v.last_year)
-        own_years = [y for y in years if v.first_year <= y <= v.last_year]
 
         carbon = v.units == CARBON_UNITS and v.agg == "sum"
         scale = 1.0 / varreg.UMOL_TO_GC if carbon else 1.0
@@ -106,17 +103,16 @@ def var_record_layer(loaded, first_year, last_year):
         def counted(found):
             if found is None:
                 return None
-            return [None if first_measured is None or y <= first_measured or y not in own_years
+            return [None if first_measured is None or y <= first_measured
                     else int(found.get(y, 0)) for y in years]
 
-        # The longest run not measured, counted inside the variable's own years only: before a
-        # sensor was installed is not an outage of it.
-        gaps = _runs_by_start_year(pd.Series(~measured & own, index=series.index))
-        gap_h = [r(gaps.get(y, 0.0), 1) if y in own_years else None for y in years]
+        # The longest run not measured, counted in the year it starts in.
+        gaps = _runs_by_start_year(pd.Series(~measured, index=series.index))
+        gap_h = [r(gaps.get(y, 0.0), 1) for y in years]
 
         # Whether the gap-filled series stays inside what was measured. A value beyond the measured
         # range is a model result the instrument never recorded, and the page says so.
-        present = values[own].dropna()
+        present = values.dropna()
         seen = only_measured.dropna()
         inside = None
         if len(present) and len(seen):
@@ -129,7 +125,6 @@ def var_record_layer(loaded, first_year, last_year):
         month = seen.index.month
         clim_lo = seen.groupby(month).min().reindex(range(1, 13))
         clim_hi = seen.groupby(month).max().reindex(range(1, 13))
-        n_own = int(own.sum())
         out[key] = dict(
             units=units, digits=digits, rate=bool(carbon),
             basis="half-hours above zero" if floor else "half-hourly values",
@@ -140,6 +135,6 @@ def var_record_layer(loaded, first_year, last_year):
             gap_h=gap_h, inside=inside,
             clim_lo=[r(x, digits) for x in clim_lo.to_numpy(dtype=float)],
             clim_hi=[r(x, digits) for x in clim_hi.to_numpy(dtype=float)],
-            meas=r(measured[own].sum() / n_own * 100, 1) if n_own else None,
+            meas=r(measured.mean() * 100, 1) if len(measured) else None,
         )
     return dict(quantiles=list(QUANTILES), vars=out)

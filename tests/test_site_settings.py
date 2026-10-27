@@ -1,8 +1,7 @@
 """The site settings: what a build can say about a variable beyond the column it is read from.
 
 A source flag, a fill legend of the site's own, measured codes, instances of one variable at several
-depths, a variable's own years, the uncorrected twin of a corrected series, a reference station and
-the site's notes. Each is opt-in, so each is tested here on what it adds; that a build naming none of
+depths, the uncorrected twin of a corrected series, a reference station and the site's notes. Each is opt-in, so each is tested here on what it adds; that a build naming none of
 them is unchanged is `test_payload_regression.py`.
 
 The data are `conftest.add_site_extras`, built so that every figure asserted here is known before
@@ -59,8 +58,8 @@ def site_variables(**extra):
                    notes=["Measured at 2 m; {units} throughout."],
                    correction_note="Raised by {offset} before {break_ts}, cooled by up to "
                                    "{shield_max} after it."),
-        "PA": dict(column="PA_F", reference=dict(column="PA_REF", factor=0.1)),
-        "SWC@0.05": dict(column="SWC_5", first_year=2013, title="Soil water content at 0.05 m"),
+        "PA": dict(column="PA_F", reference=dict(column="PA_REF")),
+        "SWC@0.05": dict(column="SWC_5", title="Soil water content at 0.05 m"),
         "SWC@0.3": dict(column="SWC_30", source=dict(column="SWC_30_SOURCE")),
         "TS@0.1": dict(column="TS_10", qc="TS_10_METHOD", qc_legend=TS_LEGEND,
                        measured_codes=(1, 2), source=dict(column="TS_10_METHOD", legend=TS_LEGEND)),
@@ -150,29 +149,13 @@ def test_an_instance_carries_no_day_tests_and_does_not_mark_a_span_sparse(site_a
 def test_primary_is_checked_before_the_file_is_read(site_path):
     with pytest.raises(KeyError, match="not among the variables"):
         fa.Atlas(site_path, {"TA": "TA_F"}, primary={"SWC": "SWC@0.3"}, quiet=True)
+    with pytest.raises(KeyError, match="unknown field"):
+        fa.Atlas(site_path, {"TA": dict(column="TA_F", first_year=2015)}, quiet=True)
     with pytest.raises(KeyError, match="leave one of the two out"):
         fa.Atlas(site_path, {"SWC": "SWC_F_MDS_1", "SWC@0.3": "SWC_30"},
                  primary={"SWC": "SWC@0.3"}, quiet=True)
     with pytest.raises(KeyError, match="not an instance of SWC"):
         fa.Atlas(site_path, {"TS@0.1": "TS_10"}, primary={"SWC": "TS@0.1"}, quiet=True)
-
-
-# -- A variable's own years -----------------------------------------------------------------------
-
-def test_a_variable_is_read_over_its_own_years(site_atlas):
-    v = entry(site_atlas, "SWC@0.05")
-    assert (v["first_year"], v["last_year"]) == (2013, 2021)
-    before = [row["SWC@0.05"] for row in site_atlas.payload["months"] if row["y"] < 2013]
-    # Outside its years the variable has no coverage figure at all, rather than a coverage of zero.
-    assert all(rec["v"] is None and rec["meas"] is None and rec["avail"] is None
-               for rec in before)
-    year = next(row for row in site_atlas.payload["years"] if row["y"] == 2013)
-    assert year["SWC@0.05"]["avail"] == 100
-
-
-def test_years_outside_the_file_are_refused(site_path):
-    with pytest.raises(ValueError, match="outside the years"):
-        fa.Atlas(site_path, {"TA": dict(column="TA_F", first_year=2030)}, quiet=True)
 
 
 # -- A fill legend and measured codes -------------------------------------------------------------
@@ -284,14 +267,14 @@ def test_the_residual_against_a_reference_is_what_was_built_into_it(site_atlas):
     assert ta["break_year"] == 2015
     assert [s["key"] for s in ta["steps"]] == ["all", "night", "day"]
     assert all(abs(s["step"]) < 0.05 for s in ta["steps"])
-    # A station published in hPa beside a product in kPa, brought onto it by its factor.
+    # The station's values are compared as the file states them.
     assert ref["vars"]["PA"]["mean"] == pytest.approx(0.0, abs=1e-6)
     assert ref["vars"]["PA"]["split"] is False and "steps" not in ref["vars"]["PA"]
 
 
 def test_a_comparison_on_too_few_half_hours_is_withheld(site_path, reference_path):
-    # One year, of which only the reconstructed three per cent counts as measured.
-    atlas = fa.Atlas(site_path, {"TA": dict(column="TA_SITE", first_year=2021, qc="TA_SITE_FLAG",
+    # Only the reconstructed three per cent counts as measured: about 6,300 half-hours.
+    atlas = fa.Atlas(site_path, {"TA": dict(column="TA_SITE", qc="TA_SITE_FLAG",
                                             measured_codes=[5], reference=dict(column="TA_REF"))},
                      quiet=True, hourly=False, reference=dict(file=reference_path))
     found = atlas.payload["reference"]["vars"]["TA"]
@@ -336,9 +319,10 @@ def test_the_record_layer_states_each_year(site_atlas):
     assert ta["rec_high"][0] is None and all(isinstance(x, int) for x in ta["rec_high"][1:])
     assert ta["inside"]["ok"] is True
     assert len(ta["clim_lo"]) == 12
-    # The soil depth that begins in the fourth year has no gap, and no records, before it.
+    # The soil depth that begins in the fourth year: its first three years are one long gap, and
+    # its records are counted from the year after its first measured day.
     swc = rec["SWC@0.05"]
-    assert swc["gap_h"][:3] == [None, None, None]
+    assert swc["gap_h"][0] == 365 * 24 * 3 + 24
     assert swc["rec_high"][:4] == [None, None, None, None]
 
 
@@ -363,7 +347,7 @@ def test_the_command_line_names_every_setting(site_path, reference_path, tmp_pat
                      "--source", "TA=TA_SITE_SOURCE", "--source-ref", "TA=0",
                      "--legends", str(legends), "--raw", "TA=TA_SITE_RAW",
                      "--var", "SWC@0.3=SWC_30", "--var", "SWC@0.05=SWC_5",
-                     "--years", "SWC@0.05=2013:", "--primary", "SWC=SWC@0.3",
+                     "--primary", "SWC=SWC@0.3",
                      "--var", "TS@0.1=TS_10", "--qc", "TS@0.1=TS_10_METHOD",
                      "--measured", "TS@0.1=1,2", "--note", "TA=A note in {units}.",
                      "--reference", str(reference_path), "--ref", "TA=TA_REF",

@@ -286,18 +286,18 @@ def read_reference(path, columns):
     return raw, values
 
 
-def on_grid(stamps, values, shift_minutes, index, factor=1.0):
+def on_grid(stamps, values, shift_minutes, index):
     """One reference column shifted, floored onto the half-hourly windows, and aligned to `index`.
 
-    `factor` brings the station's unit onto the variable's, as a column's factor does in the reader:
-    a station that publishes pressure in hPa beside a product in kPa is a factor of 0.1.
+    The station's values are taken as the file states them. A reference column has to be in the
+    variable's unit already: the page compares what the two files say and converts neither.
 
     Flooring after the shift makes the stated shift forgiving in the way the reader is: a station
     stamped at the end of its window lands on the right window whether it is shifted back by a
     quarter or by a half of an hour.
     """
     starts = (pd.DatetimeIndex(stamps) + pd.Timedelta(minutes=float(shift_minutes))).floor(FREQ)
-    series = pd.Series(values * float(factor), index=starts)
+    series = pd.Series(values, index=starts)
     series = series[~series.index.duplicated(keep="first")]
     return series.reindex(index)
 

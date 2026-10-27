@@ -363,8 +363,6 @@ OPTION_FIELDS = (
     "measured_codes",   # the fill-flag codes that mean measured, where that is not 0 alone
     "raw",              # the same series before its correction, read to show what the correction did
     "checks",           # a callable a site passes to assert the shape of its own correction
-    "first_year",       # the years this variable is read over, inside the file's own
-    "last_year",
     "notes",            # the site's own notes on this variable, shown on its page
     "correction_note",  # how the correction is described, with its figures filled in
     "reference",        # the reference station column this variable is compared with
@@ -555,9 +553,6 @@ def _check_option_columns(key, options, columns, label):
     raw = options.get("raw")
     if raw is not None and raw not in columns:
         raise KeyError(f"{label} has no column {raw!r}, named as the uncorrected twin of {key}")
-    for name in ("first_year", "last_year"):
-        if options.get(name) is not None and not float(options[name]).is_integer():
-            raise ValueError(f"{key}: {name} must be a year, got {options[name]!r}")
     if options.get("checks") is not None and not callable(options["checks"]):
         raise TypeError(f"{key}: checks must be a callable taking (delta, source)")
 
@@ -713,13 +708,6 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
         series = series.mask(series <= MISSING + 1).astype(float) * v.factor
         series.name = key
 
-        # A variable may cover only part of the file's years - a soil depth dug in 2020, a channel
-        # that stopped in 2021 - and is then read over its own years and missing outside them,
-        # rather than carrying a decade of empty years that would read as a decade of outage.
-        outside = _outside_years(series.index, v, options, first, last, key)
-        if outside is not None:
-            series = series.mask(outside)
-
         lo, hi = v.limits
         clean = series.dropna()
 
@@ -766,9 +754,8 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
             legend = options.get("qc_legend")
             if legend:
                 legend = varreg.legend_entries(legend, f"the fill legend for {key}")
-                _refuse_unknown_codes(qc if outside is None else qc.mask(outside),
-                                      set(legend) | set(v.measured_codes), key, v.qc_column,
-                                      "fill legend")
+                _refuse_unknown_codes(qc, set(legend) | set(v.measured_codes), key,
+                                      v.qc_column, "fill legend")
                 carried = set(qc[series.notna()].dropna().astype(int))
                 v.qc_convention = varreg.legend_convention(legend, v.measured_codes, carried)
                 v.fill_short = [legend[lv.codes[0]][1] for lv in v.qc_convention.levels]
@@ -789,8 +776,6 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
         found = source_spec(options.get("source"), key)
         if found:
             flag = pd.to_numeric(df[found["column"]], errors="coerce")
-            if outside is not None:
-                flag = flag.mask(outside)
             if found["legend"]:
                 _refuse_unknown_codes(flag, set(found["legend"]), key, found["column"],
                                       "source legend")
@@ -801,8 +786,6 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
         if options.get("raw"):
             raw = pd.to_numeric(df[options["raw"]], errors="coerce")
             raw = raw.mask(raw <= MISSING + 1).astype(float) * v.factor
-            if outside is not None:
-                raw = raw.mask(outside)
             v.raw_column = options["raw"]
 
         # The uncertainty travels through the same unit conversion as the flux, because an interval
@@ -829,36 +812,13 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
         if options:
             out[key]["options"] = options
         if not quiet:
-            # Over the variable's own years, where it has them: before a sensor was installed is
-            # not a share of it that went unmeasured.
-            share = (measured if outside is None else measured[~outside.to_numpy()]).mean() * 100
+            share = measured.mean() * 100
             flag = v.qc_column or "no QC column"
             say(f"  {key:<7} {v.column:<16} {flag:<18} {len(series):>8,} records  "
                 f"{share:5.1f} % measured"
                 + (" (of the NEE it is partitioned from)" if v.partitioned and v.qc_column
                    else ""))
     return out
-
-
-def _outside_years(index, v, options, first, last, key):
-    """Where a variable's own years exclude a record, or None where it is read over the file's.
-
-    Sets `v.first_year` and `v.last_year` to the variable's own years, clipped to the file's: a
-    variable cannot be read over years the file does not reach.
-    """
-    own_first, own_last = options.get("first_year"), options.get("last_year")
-    if own_first is None and own_last is None:
-        return None
-    lo = first if own_first is None else max(first, int(own_first))
-    hi = last if own_last is None else min(last, int(own_last))
-    if lo > hi:
-        raise ValueError(f"{key}: its years {own_first or first}-{own_last or last} lie outside the "
-                         f"years the file covers completely, {first}-{last}")
-    v.first_year, v.last_year = lo, hi
-    if (lo, hi) == (first, last):
-        return None
-    years = np.asarray(index.year)
-    return pd.Series((years < lo) | (years > hi), index=index)
 
 
 def _refuse_unknown_codes(flag, known, key, column, what):
