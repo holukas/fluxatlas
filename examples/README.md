@@ -5,7 +5,7 @@ Two scripts, and they are the two kinds of file this package reads.
 | Script | The case it shows |
 | --- | --- |
 | `build_fluxnet_atlas.py` | A **FLUXNET-standardized** file. No configuration: the registry knows the column names already. **Start here.** |
-| `build_lae_meteo_atlas.py` | A local product whose columns were never named for FLUXNET, so they are **mapped by hand**. |
+| `build_lae_meteo_atlas.py` | A local product whose columns were never named for FLUXNET, **mapped by hand** with every site setting: legends, instrument flags, depths, corrected series and a reference station. |
 
 If you have a FLUXNET file — a FULLSET record, a FLUXMET release, EddyPro's FLUXNET
 output — the first one is the case you are in, and nothing below the first command is
@@ -184,15 +184,20 @@ Its default input is a real FULLSET record for the Oensingen cropland — 248 co
 your own.
 
 ```bash
-uv run python examples/build_lae_meteo_atlas.py --open
+uv run python examples/build_lae_meteo_atlas.py --input PATH/99_METEO_MERGED_2004-2026.09.parquet     --reference PATH/MeteoSwiss_LAE_30MIN_2004-2026.09.parquet --open
 ```
 
-The mapping case, and it needs no data of yours: it runs on
-`data/CH-LAE_meteo_30min_2005-2025.parquet`, a 9.3 MB twenty-one-year six-variable
-extract that **is** committed. It builds two atlases from one read — all six variables,
-then air temperature alone — which is the selection behaviour in a single run. The
-extract keeps its CH-LAE column names deliberately, because naming columns by hand is
-the general case for a local product.
+The site-settings case: a local product that says more than a FLUXNET file can. It reads the
+merged CH-LAE meteo product with every setting the package offers — the site's own fill
+legends, the instrument flag of each series, five soil water and seven soil temperature
+depths with their own years, the homogenised series beside their measured twins, and the
+MeteoSwiss Lägeren station as a reference. The legends and the site's notes are in the
+script, not in the package. Neither input file is committed; the defaults are where they sit
+in the CH-LAE data folder.
+
+`data/CH-LAE_meteo_30min_2005-2025.parquet`, a 9.3 MB twenty-one-year six-variable extract,
+**is** committed. The tests read it, and it is the plain mapping case: its columns keep their
+CH-LAE names, so `fa.Atlas(path, {"TA": {"column": "TA_T1_47_1_HOMOGENIZED_gfXG"}})` reads it.
 
 `make_example_data.py` is what cut that extract down. It needs the CH-LAE data folder and
 is here for provenance, not as a step anyone else runs.

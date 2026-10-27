@@ -40,7 +40,8 @@ fa.available("record.csv")
 fluxatlas record.csv -o atlas.html --vars TA,PREC,NEE,GPP
 ```
 
-Leaving out `--vars` builds every registry variable the file can supply. That is useful for looking
+Leaving out `--vars` builds the default selection: every registry variable the file can supply
+except the ancillary ones `--list` marks, which are built when named. That is useful for looking
 at an unfamiliar file, but a chosen selection gives a page that answers a question. See
 [selection](selection.md).
 

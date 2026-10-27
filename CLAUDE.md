@@ -56,6 +56,8 @@ fa.build_atlas("CH-LAE_HH.csv", "atlas.html", variables=["TA"])  # TA and nothin
 | `variables.py` | The registry, keyed by canonical key (`TA`, `PREC`, …), each with the candidate FLUXNET columns that can supply it and the factor onto the canonical unit. |
 | `stats.py` | Theil-Sen trend, spells, growing season, rounding — the estimators shared with the CH-LAE dashboards. |
 | `build.py` | The ported computation: metrics, badges, day tests, normals, seasons, payload, render. The large one. |
+| `compare.py` | The site settings that describe a series against something else: source-flag shares, the correction read back from an uncorrected twin, the residual against a reference station, the night/day split. |
+| `record.py` | `var_record`: what only a year's half-hours give the variable page - percentiles, measured extremes, new records, the longest gap, the gap-fill check. |
 | `assets/` | `calendar.js`, `calendar.css`, `base.css`, `designs.css`, `template.html`, `logo.svg`, inlined into the output. |
 | `docs/` | Sphinx, MyST markdown, hosted on Read the Docs. Three parts are generated rather than written: the API reference from the docstrings, the CLI reference from `cli.build_parser` via `sphinx-argparse`, and the variable, column and uncertainty tables from the registry via `docs/_ext/registry_tables.py`. Do not write any of the three out by hand. |
 
@@ -314,13 +316,27 @@ called neither more nor less but "about the same".
 `examples/data/CH-LAE_meteo_30min_2005-2025.parquet` (9.3 MB, committed) is a
 twenty-one-year six-variable extract of the CH-LAE merged meteo product, cut
 down by `examples/make_example_data.py` — that script needs the CH-LAE data
-folder and is there for provenance, not as a step anyone else runs.
-`examples/build_lae_meteo_atlas.py` builds a six-variable and a one-variable
-atlas from it into `examples/output/` (ignored).
+folder and is there for provenance, not as a step anyone else runs. The tests
+read it, and `tests/test_payload_regression.py` builds it with a frozen mapping
+and compares the payload with `tests/data/payload_baseline.json.gz`: a build
+that names no site setting must not move. A new top-level payload key is
+declared in that test's `ADDED`; anything else that moves the baseline is
+either a bug or a deliberate change that rewrites it (`--write`).
 
-The example uses CH-LAE column names deliberately: it is the mapping case, which
-is the general one. A FLUXNET-named file needs `variables=["TA"]` and nothing
-more.
+`examples/build_lae_meteo_atlas.py` builds the full merged CH-LAE product
+(`99_METEO_MERGED_2004-2026.09.parquet`, not committed) with every site
+setting — legends, source flags, instances, year windows, raw twins, the
+MeteoSwiss Lägeren reference and notes. All CH-LAE facts live in that script;
+none go in the registry.
+
+## Site settings
+
+Per-variable options beside `column`/`qc`/`factor` (`io.OPTION_FIELDS`), plus
+`primary`, `lat`/`lon`/`utc_offset` and `reference` on `Atlas`. Every one is
+opt-in and every payload field it produces is written only when it is set, so
+the regression baseline holds. Instances are `BASE@LABEL`: `variables.base_key`
+is what every registry lookup goes through; instances carry no day tests and
+do not mark a span sparse. `docs/site-settings.md` is their documentation.
 
 `examples/data/EUF_CH-Oe2_FLUXNET_FLUXMET_HH_2004-2024_v1.3_r1.csv` (552 MB, **not
 committed** — `.gitignore` excludes `examples/data/*.csv` so it cannot be added by

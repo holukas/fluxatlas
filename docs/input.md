@@ -95,7 +95,7 @@ forms, and the third is what makes the package usable on series that were never 
 file:
 
 ```python
-None                                   # every registry variable the file can supply
+None                                   # the default variables the file can supply
 ["TA", "PREC"]                         # these variables, resolved by candidate name
 {"TA": "MY_TEMPERATURE",               # an explicit mapping from canonical key to column
  "PREC": {"column": "RAIN", "qc": "RAIN_FLAG", "factor": 1.0}}

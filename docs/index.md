@@ -37,6 +37,9 @@ with no server and no network.
 - [Reading the input](input.md): what the reader accepts, and how to name your own columns.
 - [Files that are not FLUXNET-standardized](other-formats.md): reading a half-hourly series named
   to any other convention, which is most of them.
+- [Site settings](site-settings.md): what a site can state about its own record - a source flag,
+  its own fill legend, several depths of one variable, a corrected series beside the measured one,
+  a reference station and notes.
 - [Variables](variables.md): the registry, its canonical keys and the columns behind them.
 
 ## The ideas the page rests on
@@ -70,6 +73,7 @@ getting-started
 cli
 input
 other-formats
+site-settings
 variables
 ```
 

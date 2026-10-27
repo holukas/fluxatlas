@@ -175,6 +175,44 @@ The rest of the page:
   several days. Hovering reads one hour and selecting it opens that day. A page built with
   `--no-hourly` has no such chart and says so.
 
+Above all of these the page opens with **tiles**: the annual mean or total with its spread between
+years, the trend per decade with its interval and p, the last ten years against all earlier ones,
+the highest and lowest year, the highest and lowest measured half-hour with its averaging window,
+the measured share and, for air temperature, the mean length of the growing season. The rest of the
+page is grouped into sections, and an index at the top marks the section in view; it is hidden on a
+narrow screen, where the headings remain.
+
+The cards that read the record year by year:
+
+- **anomaly stripes**, one per year, coloured by the year's departure from the record;
+- **the daily record**: every day of the record, the day's range as a band (minimum to maximum, mean
+  to maximum for a variable that ships no daily minimum, none for a total), its mean or total as a
+  line, and a 31-day centred running mean that needs ten days with a value;
+- **the distribution per year**: the 5th to 95th and 25th to 75th percentiles and the median of each
+  year's half-hours, beside the annual mean where it is the same quantity. A total whose zero is a
+  floor - precipitation, gross uptake - counts only its half-hours above zero, and says so;
+- **recent against earlier years**: the mean of the last ten years against all earlier ones, in per
+  cent only where the earlier mean is at least the spread of the annual values. A variable whose
+  record begins inside those ten years says which years hold no data;
+- **the climatology of each calendar month**: its normal, its lowest and highest year, and the lowest
+  and highest measured half-hour of that month in the record, the last drawn only for a variable
+  that averages;
+- **the monthly value and the monthly anomaly as year-by-month surfaces**, and the **missing share**
+  of each month on the same layout;
+- **the last year against the mean, by month and hour**, on the colour scale every span panel's
+  departure surface uses;
+- **days that set a new record** against every measured day before them, highs and lows, the first
+  year left out. These complement the records for each calendar date;
+- **the longest gap** of each year, counted in the year it starts in, in the coverage card;
+- **whether the gap-filled series stays inside the measured range**, under the extremes: a sentence
+  where it does and a warning where it does not, with how many half-hours lie outside;
+- **a year-by-year table** of everything on the page.
+
+Every chart card carries a Chart/Table switch that shows the numbers behind it. The settings
+described in [site settings](site-settings.md) add their own cards where a build names them: the
+source of each year, the correction a homogenised series carries, the residual against a reference
+station and the site's own notes.
+
 Nothing on the page is computed twice. The slopes are the ones the grid's foot row prints, and the
 fitted line is drawn from the two endpoints the build ships rather than re-fitted in the browser,
 so a line cannot disagree with the number printed beside it.

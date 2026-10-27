@@ -26,7 +26,8 @@ There are two ways to say which variables to build, and one call can use both.
 
 `--list` prints what the registry can find in a file. Run it first to see whether `--vars` will do.
 
-Naming nothing builds every registry variable the file can supply.
+Naming nothing builds the default selection: every registry variable the file can supply except
+the ones `--list` marks with `*`, which are built when named.
 
 ## Examples
 

@@ -11,6 +11,10 @@
 - The page states how each span was gap-filled and which file and columns produced it.
 - Builds are more than twice as fast.
 - Three alternative page designs, switched in the top bar.
+- Site settings: a source flag, a site's own fill legend, several depths of one variable, a corrected series beside the
+  measured one, a reference station and notes, each optional.
+- Each variable page adds tiles, the daily record, the distribution of each year and year-by-month surfaces, with a
+  Chart/Table switch on every chart.
 
 ### New features
 
@@ -66,6 +70,36 @@
   *Observatory* as an instrument console and *Swiss* in the International Typographic Style; *Classic* is the page as
   before. Each has a light and a dark form, the choice is remembered in the browser, and no font is downloaded. A
   design changes colour and type only, so every figure and every ramp's meaning is the same in all four.
+- **Site settings.** A variable's entry in the mapping, or a flag on the command line, can now state what a site's own
+  product carries beyond the column. Every setting is optional, and a build that names none of them produces the
+  payload it did before; a regression test compares that payload with one written before the settings existed. The
+  *Site settings* page of the documentation describes each one.
+  - **A source flag** (`source`, `--source`): which sensor, record or calibration each value came from. The variable
+    page shows the share of each year under each code, and each span panel the share of the span.
+  - **A fill legend and measured codes** of the site's own (`qc_legend`, `measured_codes`, `--legends`, `--measured`).
+    More than one code can mean measured. Where a legend is given, a code it does not describe stops the build and is
+    named.
+  - **Several series of one variable**, such as soil water at five depths, as instances `SWC@0.05`, `SWC@0.1` and so on.
+    Each takes its unit, limits and aggregation from the registry and has its own page and grid metric. `primary`
+    (`--primary SWC=SWC@0.2`) chooses the one the composite, the badges and the grid's soil metric read.
+  - **A variable's own years** (`first_year`, `last_year`, `--years`), for a series that exists in part of the record.
+  - **The uncorrected twin of a corrected series** (`raw`, `--raw`). The page states what the correction did, overall,
+    per era of the source flag and per year, and fills `{break_ts}`, `{offset}` and `{shield_max}` in the site's
+    correction note from those figures. `checks` lets a site assert the shape of its own correction.
+  - **A reference station** (`reference`, `--reference`, `--ref`): the residual of the measured records against it,
+    month by month with a 12-month rolling median, night and day apart where asked, and the step across a hardware
+    change. It needs at least 10,000 overlapping half-hours. The night and day split uses the site's position
+    (`lat`, `lon`, `utc_offset`).
+  - **Notes** on a variable (`notes`, `--note`), shown on its page.
+- **Outgoing shortwave and longwave radiation** (`SW_OUT`, `LW_OUT`) as variables of their own, built when named. They
+  resolve from the same columns the computed net radiation reads.
+- **More on each variable page.** Tiles above the summary give the annual mean or total and its spread, the trend, the
+  last ten years against the earlier ones, the highest and lowest year and half-hour, the measured share and the
+  growing season. New cards show anomaly stripes, the daily record with a 31-day running mean, the distribution of each
+  year's half-hours, the climatology of each calendar month with its measured records, the monthly value, anomaly and
+  missing share as year-by-month surfaces, the last year against the mean by month and hour, the days that set a new
+  record, the longest gap of each year, whether the gap-filled series stays inside the measured range, and a year-by-year
+  table. Every chart card has a Chart/Table switch, and an index at the top of the page marks the section in view.
 
 ### Changed
 
