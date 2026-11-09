@@ -333,10 +333,12 @@ function driveTables(where) {
         note(where, `card ${i + 1} drew no chart after its table was put away`);
       }
     });
+    /* Cancelable, as a reader's click is. A click that cannot be cancelled is followed whatever the
+       handler does, and that navigation lands after the walk has moved on to the next page. */
     Array.from(root.querySelectorAll('#var-nav a')).forEach(a => {
-      const before = window.location.hash;
-      a.dispatchEvent(mouse('click'));
-      if (window.location.hash !== before) note(where, `the index link ${a.textContent} navigated`);
+      const click = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+      a.dispatchEvent(click);
+      if (!click.defaultPrevented) note(where, `the index link ${a.textContent} navigated`);
     });
   });
   visited.push(`${where}, every table shown`);

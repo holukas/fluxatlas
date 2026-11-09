@@ -239,9 +239,11 @@ def test_the_variable_page_draws_the_surface_and_twelve_mean_days(flux_page):
     for key in ("NEE", "PREC"):
         view = views[f"#var-{key}"]
         assert view["heading"] == "Diurnal cycle"
-        surface_card, days_card = view["var"]
+        surface_card, last_year_card, days_card = view["var"]
         assert surface_card["title"] == "Mean by calendar month and hour of day"
         assert surface_card["rows"] == [12]
+        assert last_year_card["title"].endswith("against the mean, by month and hour")
+        assert last_year_card["rows"] == [12]
         assert "mean total per hour" in surface_card["sub"]
         assert len(days_card["facets"]) == 12 and days_card["svgs"] == 12
         assert all("per hour" in f for f in days_card["facets"])
