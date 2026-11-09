@@ -918,6 +918,18 @@ METRICS = [
          about="Monthly mean incoming longwave radiation. It increases with air temperature, "
                "humidity and cloud cover.",
          day=dict(kind="value", stat="mean")),
+    dict(key="SW_OUT", var="SW_OUT", field="value", scale="seq",
+         stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0,
+         group="Radiation and humidity", label="Outgoing shortwave, monthly mean", short="SW_OUT",
+         about="Monthly mean outgoing shortwave radiation, the part of the incoming shortwave the "
+               "surface reflects.",
+         day=dict(kind="value", stat="mean")),
+    dict(key="LW_OUT", var="LW_OUT", field="value", scale="seq",
+         stops=("--neutral-mid", "--series-2"), digits=0,
+         group="Radiation and humidity", label="Outgoing longwave, monthly mean", short="LW_OUT",
+         about="Monthly mean outgoing longwave radiation, which follows the temperature of the "
+               "surface.",
+         day=dict(kind="value", stat="mean")),
     dict(key="PPFD_IN", var="PPFD_IN", field="value", scale="seq",
          stops=("--neutral-mid", "--warm-1", "--warm-2", "--warm-3"), digits=0,
          group="Radiation and humidity", label="Incoming PPFD, monthly mean", short="PPFD_IN",
