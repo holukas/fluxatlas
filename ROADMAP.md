@@ -15,7 +15,31 @@ records what exists. Every item has to keep the rules the package is built on:
 
 - **Run the browser tests locally without extra steps.** The smoke tests need node and jsdom, and
   skip without them. Document a one-line setup in `docs/development.md`, or provide node through a
-  Python package so that `uv sync` installs it.
+  Python package so that `uv sync` installs it. If that package is `nodejs-wheel`, put its real
+  `node.exe` (in `site-packages/nodejs_wheel`) on the path: the `node` wrapper in `Scripts` fails
+  under `uv run` with `No module named 'nodejs_wheel'`.
+- **Run the browser tests on the variable-page tables.** `fluxatlas/tables.py` and the
+  `Atlas.year_record`, `correction`, `reference` and `sources` methods were committed after their
+  own tests and the suite without the browser tests passed; the full suite with the browser tests
+  has not been run on them.
+- **Changelog entries for two committed changes.** The renderer split into `assets/js/` and the
+  documentation screenshots were committed without a `CHANGELOG.md` entry, which the hard rules ask
+  for. Suggested wording for each was in the session reports: the renderer is kept as twelve parts
+  joined by `build.renderer_script`, each checked on its own; the documentation shows screenshots of
+  a page built from the bundled extract, and `docs/_screenshots.py` recaptures them.
+- **Stale statements in the docs.** `docs/selection.md` still says the test environment has no
+  JavaScript parser, `docs/development.md` still gives "about 197 tests, roughly two minutes", and
+  `CLAUDE.md` gives "~490 tests, ~10 min". The suite is now over 600 tests, and with the browser
+  tests it takes far longer.
+- **The README screenshot on PyPI.** `README.md` is the PyPI description, and PyPI cannot resolve
+  the relative path `docs/_static/screenshots/grid-top.png`, so the image will show as broken there.
+  The logo uses an absolute `raw.githubusercontent.com` link for that reason; the screenshot needs
+  the same form once the file is on `main`. The relative path has not been checked on GitHub either.
+- **Legends named once in a settings file.** A settings file has no way to define a legend once and
+  refer to it, so `examples/ch-lae_site.json` writes the soil temperature METHOD legend out 14 times
+  and runs to 565 lines.
+- **`75-variable-page.js` is 3,145 lines** with no section headers inside it, so it cannot be split
+  further along headers as the rest of the renderer was. Add headers first.
 - **The first year of the CH-LAE example.** The merged product carries 2004, and the example starts
   at 2005 through the atlas-wide `first_year`. Decide whether the example should show every whole
   year the file covers.
