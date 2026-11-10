@@ -15,6 +15,11 @@ Interactive explorer for FLUXNET-standardized ecosystem data.
 HTML page: every month of the record on one grid, opening down to the season, the year,
 the month and the single day. Fluxes, meteorology and their quality flags.
 
+![The calendar grid of a built page: one row per year from 2005 and one column per calendar month, each tile coloured blue to red by the air temperature anomaly and carrying its value, badge icons and a strip of daily values, with each year's mean in the last column.](docs/_static/screenshots/grid-top.png)
+
+*The calendar grid, coloured by the air temperature anomaly, built from the CH-LAE extract in
+`examples/data/`. The first ten of 21 years are shown.*
+
 The output is a single file. It carries its own scripts and styles, so it opens from a
 memory stick with no server and no network.
 

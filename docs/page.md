@@ -15,9 +15,26 @@ where the two margins meet. The same grid draws at four resolutions: months,
 [seasons](seasons.md), years, or every day of the record as one raster. The raster is the only one
 of the four that does not cut a spell in half at a boundary.
 
+```{figure} _static/screenshots/grid.png
+:figclass: screenshot
+:alt: The whole calendar grid of the CH-LAE extract. Twenty-one rows, 2005 to 2025, by twelve calendar months, each tile coloured blue to red by the air temperature anomaly, with badge icons and a strip of daily values. A column on the right gives each year's mean; a foot row gives each calendar month's mean and its Theil-Sen slope per decade, and the corner the record's slope. Under the grid a colour scale and a note on coverage and the trend.
+
+The grid at the month scale, coloured by the air temperature anomaly, with the year means on the
+right and the slope of each calendar month in the foot row. Hatched tiles are under the
+measured-share warning line.
+```
+
 **The month.** Its statistics against the calendar-month normal, its rank among the same month of
 every other year, and its badges spelled out with the numbers behind them. Then the month itself
 from four directions:
+
+```{figure} _static/screenshots/month.png
+:figclass: screenshot
+:alt: The panel of August 2018. A heading with buttons to the previous and next month and to the same month a year earlier or later, a sentence summarising the month, and one tile per variable giving its monthly value, its departure from the August normal, its rank among 21 Augusts and the column it was read from. A further tile counts the days that met a threshold.
+
+The top of the panel for August 2018: each variable against its August normal and ranked among
+the Augusts of the record.
+```
 
 - day by day: temperature against the climatological band, how far each day sat from its own
   normal, precipitation daily and accumulated, soil water against the rain that drives it, and
@@ -30,6 +47,13 @@ from four directions:
   day, or whether its carbon balance moved at midday or overnight;
 - where the month sits among its own years;
 - a day calendar.
+
+```{figure} _static/screenshots/month-daily.png
+:figclass: screenshot
+:alt: Four charts of August 2018. Daily air temperature as a range band and a daily mean line over the normal band for each date; the daily air temperature anomaly as red and blue bars with a dashed running mean; daily precipitation as bars with the normal for each date; and the cumulative precipitation against the running total of the daily normals.
+
+The daily series of the same month: each day against the normal for its own date.
+```
 
 **The day.** Every variable's statistics for that day, the flags it set, and, where the hourly
 arrays are included, the diurnal course of radiation, temperature and precipitation, each against
@@ -68,6 +92,14 @@ rate the record badges run at.
 
 Opening a year gives everything a month gives, and one thing more: a ranked list of what set the
 year apart from the others.
+
+```{figure} _static/screenshots/year.png
+:figclass: screenshot
+:alt: The panel of the year 2018. A sentence summarising the year, one tile per variable with the annual value, its departure from the record mean and its rank among 21 years, the links to the twelve months, four badges with the figures behind them, and the start of a card ranking 2018 among the 21 years by soil water, growing season and air temperature.
+
+The panel for 2018. Each figure is set against every other year of the record, and the last card
+lists the placings that set the year apart.
+```
 
 A badge is a threshold and a placing is not, and a year can miss every badge while being the third
 warmest of twenty-one. So the list states placings, and each entry is ranked by how far the year
@@ -108,10 +140,25 @@ The grid answers what happened in a given month. Each variable also has a page o
 answers what that variable has done over the whole record. Reach it from the index under the grid,
 or from the variable's label on any span panel.
 
+```{figure} _static/screenshots/variable.png
+:figclass: screenshot
+:alt: The top of the air temperature page. A heading with buttons to the previous and next variable, a sentence naming the column it was read from, a row of section links, tiles for the annual mean, the trend per decade, the last ten years, the highest year, the highest and lowest measured half-hour, the measured share and the growing season, and a summary table of the record.
+
+The top of the air temperature page: the tiles described below, and the summary of the record.
+```
+
 **The trend of each calendar month, separately.** This is what the page exists for. One annual
 slope is the average of twelve monthly ones, and averaging them hides the case worth seeing: a
 record whose Januaries have moved three times as far as its Julys says something the annual figure
 cannot. Each slope carries its 95 % interval, and a bar is solid where Kendall p is below 0.05.
+
+```{figure} _static/screenshots/variable-trends.png
+:figclass: screenshot
+:alt: A bar chart of the Theil-Sen slope of air temperature per decade for each calendar month, January to December, each with a vertical 95 % interval. March and August are drawn solid and marked with an asterisk; April and May are slightly negative.
+
+The slope of each calendar month of air temperature, 2005 to 2025. Solid bars have Kendall p below
+0.05.
+```
 
 The rest of the page:
 
@@ -207,6 +254,14 @@ The cards that read the record year by year:
 - **whether the gap-filled series stays inside the measured range**, under the extremes: a sentence
   where it does and a warning where it does not, with how many half-hours lie outside;
 - **a year-by-year table** of everything on the page.
+
+```{figure} _static/screenshots/variable-anomaly.png
+:figclass: screenshot
+:alt: A heat map of the monthly air temperature anomaly, one row per year from 2005 to 2025 and one column per calendar month, coloured blue to red on a scale symmetric about zero from -3.5 to +3.5 degrees Celsius, with a Chart and Table switch in the card's corner.
+
+The monthly anomaly of air temperature by year and calendar month, one of the year-by-month
+surfaces on the variable page.
+```
 
 Every chart card carries a Chart/Table switch that shows the numbers behind it. The settings
 described in [site settings](site-settings.md) add their own cards where a build names them: the

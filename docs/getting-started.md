@@ -67,6 +67,13 @@ Coverage warnings come before the figures they qualify. The trends are printed b
 anomaly and rank on the page is taken against a whole-record normal, and a trend moves that normal.
 [Coverage](coverage.md) sets out what the warning means.
 
+```{figure} _static/screenshots/page-top.png
+:figclass: screenshot
+:alt: The top of the built page. A bar with the fluxatlas mark, the breadcrumb CH-LAE 2005-2025, a Design menu set to Classic and a dark-mode button. Below it the site name CH-LAE, a sentence on what the page shows, counts of months, days, variables and badge types, and tiles for the warmest, coldest, wettest and driest month, the largest warm anomaly and the months with a badge. Under these the calendar grid begins with its controls and the first two years.
+
+The page this build writes, as it opens. [The built page](page.md) describes each part of it.
+```
+
 ## 3. The same from the library
 
 ```python

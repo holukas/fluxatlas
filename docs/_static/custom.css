@@ -38,3 +38,14 @@ article table.docutils td,
 article table.docutils th {
     vertical-align: top;
 }
+
+/* Screenshots of a built page. The page's own background is close to the documentation's in light
+   mode and far from it in dark, so a hairline frame marks where the image ends in both. */
+figure.screenshot img {
+    border: 1px solid var(--color-background-border);
+    border-radius: 6px;
+}
+
+figure.screenshot figcaption {
+    font-size: 0.9rem;
+}

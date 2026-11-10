@@ -6,6 +6,14 @@
 It reads fluxes (NEE, GPP, RECO, H, LE), meteorology and their quality flags. Every month of the
 record sits on one grid, and the grid opens down to the season, the month and the single day.
 
+```{figure} _static/screenshots/grid-top.png
+:figclass: screenshot
+:alt: The calendar grid of a built page. Above it, controls choose the metric, the detail shown, the scale and a CSV export. Below them, one row per year from 2005 and one column per calendar month, each tile coloured blue to red by the air temperature anomaly and carrying the anomaly, the monthly mean, a row of badge icons and a strip of the month's days. A last column gives each year's mean.
+
+The calendar grid at the month scale, coloured by the air temperature anomaly, built from the
+CH-LAE extract in `examples/data/`. The first ten of 21 years are shown.
+```
+
 ```{admonition} What exists
 :class: note
 
