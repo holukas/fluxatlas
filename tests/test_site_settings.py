@@ -11,6 +11,7 @@ the build runs: a correction of exactly +1.3 °C before a sensor change, a refer
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 
@@ -80,6 +81,11 @@ def site_atlas(site_path, reference_path):
 
 def entry(atlas, key):
     return next(v for v in atlas.payload["variables"] if v["key"] == key)
+
+
+def as_recorded(legend):
+    """A legend as the provenance records it: string codes, `[long, short]`."""
+    return {str(code): list(labels) for code, labels in legend.items()}
 
 
 # -- Outgoing radiation ----------------------------------------------------------------------------
@@ -334,6 +340,93 @@ def test_the_record_layer_follows_the_page_on_totals(flux_atlas):
     assert rec["PREC"]["rec_low"] is None
 
 
+# -- Provenance of the settings -------------------------------------------------------------------
+
+# The provenance a build carries when it names no site setting. Everything below is added to it only
+# where the build used it.
+PLAIN_PROVENANCE = {"file", "bytes", "sha256", "columns", "seasons", "first_year", "last_year",
+                    "hourly"}
+SETTING_FIELDS = {"source", "source_legend", "source_reference_code", "raw", "qc_legend",
+                  "measured_codes"}
+
+
+def test_the_reference_file_is_fingerprinted_like_the_input(site_atlas, reference_path):
+    ref = site_atlas.provenance["reference"]
+    data = reference_path.read_bytes()
+    assert ref["file"] == reference_path.name
+    assert ref["bytes"] == len(data) == reference_path.stat().st_size
+    assert ref["sha256"] == hashlib.sha256(data).hexdigest()
+    assert ref["station"] == "Syn reference"
+    assert ref["shift"] == -15.0
+    assert (ref["distance_km"], ref["elevation_m"]) == (2.0, 600.0)
+    assert ref["vars"] == {"TA": dict(column="TA_REF", split=True, shift=-15.0),
+                           "PA": dict(column="PA_REF", split=False, shift=-15.0)}
+
+
+def test_a_reference_states_only_what_it_was_given(site_path, reference_path):
+    atlas = fa.Atlas(site_path, {"TA": dict(column="TA_F", reference=dict(column="TA_REF",
+                                                                          shift=30))},
+                     quiet=True, hourly=False, reference=dict(file=reference_path))
+    ref = atlas.provenance["reference"]
+    assert set(ref) == {"file", "bytes", "sha256", "station", "shift", "vars"}
+    assert ref["station"] == reference_path.stem and ref["shift"] == 0.0
+    assert ref["vars"]["TA"] == dict(column="TA_REF", split=False, shift=30.0)
+
+
+def test_the_source_flag_is_recorded_with_its_legend_and_reference_code(site_atlas):
+    cols = site_atlas.provenance["columns"]
+    ta = cols["TA"]
+    assert ta["source"] == "TA_SITE_SOURCE"
+    assert ta["source_legend"] == as_recorded(SOURCE_LEGEND)
+    assert ta["source_reference_code"] == 0
+    # A source named by its column alone records the column and nothing it was not given.
+    assert cols["SWC"]["source"] == "SWC_30_SOURCE"
+    assert "source_legend" not in cols["SWC"] and "source_reference_code" not in cols["SWC"]
+    assert cols["TS@0.1"]["source_legend"] == as_recorded(TS_LEGEND)
+    assert "source_reference_code" not in cols["TS@0.1"]
+
+
+def test_the_fill_legend_and_the_measured_codes_are_recorded(site_atlas):
+    cols = site_atlas.provenance["columns"]
+    assert cols["TA"]["qc_legend"] == as_recorded(FILL_LEGEND)
+    assert "measured_codes" not in cols["TA"]
+    assert cols["TS@0.1"]["qc_legend"] == as_recorded(TS_LEGEND)
+    assert cols["TS@0.1"]["measured_codes"] == [1, 2]
+    assert cols["TA"]["raw"] == "TA_SITE_RAW"
+
+
+def test_a_variable_read_with_no_setting_records_its_column_alone(site_atlas):
+    cols = site_atlas.provenance["columns"]
+    for key in ("SWC@0.05", "SW_OUT", "LW_OUT", "PA"):
+        assert set(cols[key]) == {"column", "qc", "factor"}, key
+
+
+def test_the_build_settings_are_recorded(site_atlas):
+    prov = site_atlas.provenance
+    assert prov["primary"] == {"SWC": "SWC@0.3"}
+    assert (prov["lat"], prov["lon"], prov["utc_offset"]) == (47.5, 8.4, 1.0)
+    assert set(prov) == PLAIN_PROVENANCE | {"primary", "lat", "lon", "utc_offset", "reference"}
+
+
+def test_a_build_that_names_no_setting_records_none(site_path):
+    # `measured_codes=0` is the default stated outright, which changes nothing and so records
+    # nothing; a position given without a reference is still what the build was told.
+    atlas = fa.Atlas(site_path, {"TA": dict(column="TA_F", measured_codes=0), "PA": "PA_F"},
+                     quiet=True, hourly=False, lon=8.4)
+    prov = atlas.provenance
+    assert set(prov) == PLAIN_PROVENANCE | {"lon"} and prov["lon"] == 8.4
+    for key, found in prov["columns"].items():
+        assert not set(found) & SETTING_FIELDS, key
+
+
+def test_the_page_carries_the_provenance_the_atlas_reports(site_atlas, tmp_path):
+    html = site_atlas.write(tmp_path / "site.html", quiet=True).read_text(encoding="utf-8")
+    payload = json.loads(re.search(r'<script id="payload" type="application/json">(.*?)</script>',
+                                   html, re.S).group(1))
+    assert payload["meta"]["provenance"] == site_atlas.provenance
+    assert "None" not in json.dumps(payload["meta"]["provenance"])
+
+
 # -- The command line -----------------------------------------------------------------------------
 
 def test_the_command_line_names_every_setting(site_path, reference_path, tmp_path):
@@ -362,6 +455,14 @@ def test_the_command_line_names_every_setting(site_path, reference_path, tmp_pat
     assert ta["notes"] == ["A note in \u00b0C."] and "correction" in ta
     assert payload["reference"]["vars"]["TA"]["split"] is True
     assert payload["meta"]["primary"] == {"SWC": "SWC@0.3"}
+    prov = payload["meta"]["provenance"]
+    assert prov["reference"]["sha256"] == hashlib.sha256(reference_path.read_bytes()).hexdigest()
+    assert prov["reference"]["station"] == "Syn" and prov["reference"]["shift"] == -15.0
+    assert prov["columns"]["TA"]["source_reference_code"] == 0
+    assert prov["columns"]["TA"]["source_legend"] == as_recorded(SOURCE_LEGEND)
+    assert prov["columns"]["TA"]["qc_legend"] == as_recorded(FILL_LEGEND)
+    assert prov["columns"]["TS@0.1"]["measured_codes"] == [1, 2]
+    assert (prov["lat"], prov["lon"], prov["utc_offset"]) == (47.5, 8.4, 1.0)
 
 
 def test_a_setting_for_a_variable_outside_the_selection_is_refused(site_path, tmp_path):

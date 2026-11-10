@@ -2960,7 +2960,8 @@ def extreme_halfhours_layer(loaded, dates, day):
 
 
 def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, quiet=False,
-                  seasons=DEFAULT_SEASONS, fingerprint=None, reference=None, primary=None):
+                  seasons=DEFAULT_SEASONS, fingerprint=None, reference=None, primary=None,
+                  lat=None, lon=None, utc_offset=None):
     """Everything the page is built from, as one JSON-serialisable mapping.
 
     `loaded` is what `io.read_fluxnet` returns and `source` the name of the file it was read from.
@@ -2970,6 +2971,8 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
 
     `reference` is the comparison with a reference station as `Atlas` prepares it, and `primary`
     the instances that stand in for their plain keys; both are recorded only where they are given.
+    So are `lat`, `lon` and `utc_offset`, the site's position and clock, which the provenance
+    states as the build was told them.
     """
     keys = list(loaded)
     first_year, last_year = span(loaded)
@@ -3463,18 +3466,18 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
 
     # What a build names beyond the column of each variable is recorded only where it named it, so
     # a build that names none of it carries exactly the provenance it always did.
-    columns = payload["meta"]["provenance"]["columns"]
+    provenance = payload["meta"]["provenance"]
     for key in keys:
-        v = loaded[key]["v"]
-        if v.source_flag:
-            columns[key]["source"] = v.source_flag["column"]
-        if v.raw_column:
-            columns[key]["raw"] = v.raw_column
+        provenance["columns"][key].update(setting_provenance(loaded[key]["v"]))
     if primary:
         payload["meta"]["primary"] = dict(primary)
-        payload["meta"]["provenance"]["primary"] = dict(primary)
+        provenance["primary"] = dict(primary)
+    for name, value in (("lat", lat), ("lon", lon), ("utc_offset", utc_offset)):
+        if value is not None:
+            provenance[name] = float(value)
     if reference:
         payload["reference"] = reference_payload(loaded, reference)
+        provenance["reference"] = reference_provenance(reference)
 
     # The grid is the page, so its shape is checked rather than assumed: one tile per month of
     # every year, and every tile addressing a real window of the daily arrays.
@@ -3544,6 +3547,55 @@ def variable_extras(entry, key, d, years):
         # written, with only its unit filled in.
         entry["notes"] = entry.get("notes", []) + [
             compare.fill_note(str(options["correction_note"]), v.units)]
+
+
+def legend_provenance(legend):
+    """A legend as the provenance records it: the code as a string, to `[long, short]`.
+
+    String keys because the payload is JSON, so that `Atlas.provenance` and the page read the same
+    dict rather than one with integer keys and one with string keys.
+    """
+    return {str(code): [str(long), str(short)] for code, (long, short) in legend.items()}
+
+
+def setting_provenance(v):
+    """The site settings a variable was read with, as its provenance entry records them.
+
+    Only what the build named, so a variable read with none of them adds nothing. `measured_codes`
+    is recorded only where it departs from the default and there is a flag for it to apply to.
+    """
+    out = {}
+    if v.source_flag:
+        out["source"] = v.source_flag["column"]
+        if v.source_flag.get("legend"):
+            out["source_legend"] = legend_provenance(v.source_flag["legend"])
+        if v.source_flag.get("reference_code") is not None:
+            out["source_reference_code"] = int(v.source_flag["reference_code"])
+    if v.raw_column:
+        out["raw"] = v.raw_column
+    if v.qc_legend:
+        out["qc_legend"] = legend_provenance(v.qc_legend)
+    if v.qc_column and set(v.measured_codes) != set(varreg.MEASURED_QC_CODES):
+        out["measured_codes"] = sorted(int(c) for c in v.measured_codes)
+    return out
+
+
+def reference_provenance(reference):
+    """The reference station as the provenance records it: which file, and how it was compared."""
+    fingerprint = reference.get("fingerprint") or {}
+    out = dict(file=reference["file"])
+    if fingerprint:
+        out["bytes"] = int(fingerprint["bytes"])
+        out["sha256"] = str(fingerprint["sha256"])
+    out["station"] = reference["station"]
+    out["shift"] = float(reference.get("shift", 0) or 0)
+    for name in ("distance_km", "elevation_m"):
+        if reference.get(name) is not None:
+            out[name] = float(reference[name])
+    out["vars"] = {key: dict(column=spec["column"], split=bool(spec.get("split")),
+                             shift=float(spec.get("shift", 0) or 0))
+                   for key, spec in reference["vars"].items()}
+    return out
 
 
 def reference_payload(loaded, reference):

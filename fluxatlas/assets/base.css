@@ -489,6 +489,8 @@ td.num-cold { color: var(--pole-cold); }
 .footer .prov summary:hover { color: var(--text-primary); }
 .footer .prov p { margin: 8px 0 6px; max-width: 90ch; }
 .footer .prov .tablewrap { max-width: 110ch; }
+.footer .prov ul { margin: 4px 0 6px; padding-left: 18px; max-width: 90ch; }
+.footer .prov li + li { margin-top: 2px; }
 /* A computed series names its formula where a column would be, and at one line it pushed the
    factor out of the table; the names wrap instead, at their own separators where they can. */
 .footer .prov td code { white-space: normal; overflow-wrap: anywhere; }

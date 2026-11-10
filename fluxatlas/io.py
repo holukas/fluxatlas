@@ -759,6 +759,7 @@ def read_fluxnet(path, keys=None, *, first_year=None, last_year=None, quiet=Fals
                 carried = set(qc[series.notna()].dropna().astype(int))
                 v.qc_convention = varreg.legend_convention(legend, v.measured_codes, carried)
                 v.fill_short = [legend[lv.codes[0]][1] for lv in v.qc_convention.levels]
+                v.qc_legend = legend
             else:
                 v.qc_convention = varreg.qc_convention(v.qc_column)
             fill = fill_levels(qc, series, v.qc_convention, v.measured_codes)

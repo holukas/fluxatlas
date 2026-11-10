@@ -124,7 +124,7 @@ class Atlas:
         self.payload = _build.build_payload(
             self.loaded, site=self.site, site_long=self.site_long, source=self.path.name,
             with_hourly=hourly, quiet=quiet, seasons=seasons, fingerprint=fingerprint,
-            reference=prepared, primary=primary or None)
+            reference=prepared, primary=primary or None, lat=lat, lon=lon, utc_offset=utc_offset)
         if not quiet:
             self.report()
 
@@ -138,6 +138,16 @@ class Atlas:
         specification, the first and last year and whether the hourly layer was built. FLUXNET
         files are reprocessed under an unchanged name, so the digest rather than the name is what
         identifies the input. The dict is a copy, so changing it does not change the page.
+
+        The site settings are recorded where the build used them and are otherwise absent, never
+        null. Under `columns[key]`: `source`, the source flag column, with `source_legend` and
+        `source_reference_code` where they were given; `raw`, the uncorrected twin; `qc_legend`,
+        the legend of the fill flag; and `measured_codes`, where the codes that mean measured are
+        not 0 alone. A legend is a dict from the code, as a string, to `[long, short]`. At the top
+        level: `primary`, the instance read under each plain key; `lat`, `lon` and `utc_offset`;
+        and `reference`, the reference station's file with its `bytes` and `sha256`, its
+        `station` name, the `shift` in minutes, `distance_km` and `elevation_m` where given, and
+        under `vars` the `column`, `split` and `shift` of each variable compared with it.
         """
         return copy.deepcopy(self.payload["meta"]["provenance"])
 
@@ -338,7 +348,11 @@ def _prepare_reference(reference, compared, loaded, lat, lon, utc_offset, quiet)
     columns = list(dict.fromkeys(spec["column"] for spec in compared.values()))
     stamps, values = _compare.read_reference(path, columns)
     shift = float(reference.get("shift", 0) or 0)
+    # The station file is fingerprinted as the input is, since a reference series is reissued under
+    # an unchanged name as readily as a FLUXNET file is, and the comparison is only as traceable as
+    # the file it was made against.
     out = dict(station=reference.get("station") or path.stem, file=path.name,
+               fingerprint=_fingerprint(path), shift=shift,
                distance_km=reference.get("distance_km"), elevation_m=reference.get("elevation_m"),
                site=dict(lat=lat, lon=lon, utc_offset=utc_offset), vars={})
     for key, spec in compared.items():

@@ -2020,8 +2020,20 @@
     if (typeof P.hourly === 'boolean') {
       facts.push(P.hourly ? 'hourly arrays included' : 'built without the hourly arrays');
     }
+    if (P.primary && typeof P.primary === 'object') {
+      Object.keys(P.primary).forEach(k => {
+        facts.push('primary instance of <code>' + esc(k) + '</code>: <code>'
+          + esc(P.primary[k]) + '</code>');
+      });
+    }
+    const place = provPlace(P);
+    if (place) facts.push(place);
+    const settings = keys.map(k => provSettings(k, cols[k] || {})).filter(Boolean);
+    const ref = provReference(P.reference);
     host.hidden = false;
-    host.innerHTML = '<details><summary>Columns read from the file</summary>'
+    host.innerHTML = '<details><summary>'
+      + (settings.length || ref ? 'Columns and site settings'
+        : 'Columns read from the file') + '</summary>'
       + '<p>For each variable: the column read, the quality flag that separates measured from '
       + 'gap-filled records, '
       + (sourced ? 'the source flag naming the sensor or record behind each value, ' : '')
@@ -2031,7 +2043,70 @@
       + tableHTML(['Variable', 'Column', 'Quality flag']
         .concat(sourced ? ['Source flag'] : []).concat(twinned ? ['Uncorrected twin'] : [])
         .concat(['Factor']), rows)
+      + (settings.length ? '<p>Site settings per variable:</p><ul>'
+        + settings.map(s => '<li>' + s + '</li>').join('') + '</ul>' : '')
+      + ref
       + '</details>';
+  }
+
+  /* A legend as `0 new sensor (new); 1 old sensor (old)`: the code, the long label, and the short
+     one where it differs. The codes come as strings, since the payload is JSON. */
+  function provLegend(legend) {
+    if (!legend || typeof legend !== 'object') return '';
+    return Object.keys(legend).sort((a, b) => (+a) - (+b)).map(code => {
+      const entry = Array.isArray(legend[code]) ? legend[code] : [legend[code], legend[code]];
+      return esc(code) + ' ' + esc(entry[0])
+        + (entry[1] !== undefined && entry[1] !== entry[0] ? ' (' + esc(entry[1]) + ')' : '');
+    }).join('; ');
+  }
+
+  /** One variable's site settings as a sentence, or null where it was read with none. */
+  function provSettings(k, c) {
+    const bits = [];
+    if (c.qc_legend) bits.push('fill flag legend: ' + provLegend(c.qc_legend));
+    if (Array.isArray(c.measured_codes) && c.measured_codes.length) {
+      bits.push('measured codes: ' + c.measured_codes.map(esc).join(', '));
+    }
+    if (c.source_legend) bits.push('source flag legend: ' + provLegend(c.source_legend));
+    if (c.source_reference_code !== undefined && c.source_reference_code !== null) {
+      bits.push('reference source code: ' + esc(c.source_reference_code));
+    }
+    if (!bits.length) return null;
+    return '<b>' + esc(VARS[k] ? VARS[k].short : k) + '</b>: ' + bits.join('; ') + '.';
+  }
+
+  /* The site's position and clock, as given to the build:
+     `latitude 47.5° N, longitude 8.4° E, UTC offset +1 h`. */
+  function provPlace(P) {
+    const bits = [];
+    if (isNum(P.lat)) bits.push('latitude ' + esc(Math.abs(P.lat)) + '° ' + (P.lat < 0 ? 'S' : 'N'));
+    if (isNum(P.lon)) bits.push('longitude ' + esc(Math.abs(P.lon)) + '° ' + (P.lon < 0 ? 'W' : 'E'));
+    if (isNum(P.utc_offset)) {
+      bits.push('UTC offset ' + (P.utc_offset < 0 ? '−' : '+') + esc(Math.abs(P.utc_offset)) + ' h');
+    }
+    return bits.join(', ');
+  }
+
+  /* The reference station: its file, identified as the input is, and how each variable was
+     compared with it. A shift is stated per variable only where it departs from the station's. */
+  function provReference(R) {
+    if (!R || typeof R !== 'object' || !R.file) return '';
+    const bits = [];
+    if (R.station) bits.push(esc(R.station));
+    bits.push('file <code>' + esc(R.file) + '</code>' + fileFingerprint(R));
+    if (isNum(R.distance_km)) bits.push('distance ' + esc(R.distance_km) + ' km');
+    if (isNum(R.elevation_m)) bits.push('elevation ' + esc(R.elevation_m) + ' m');
+    const shift = isNum(R.shift) ? R.shift : 0;
+    if (shift) bits.push('time shift ' + esc(shift) + ' min');
+    const vars = R.vars && typeof R.vars === 'object' ? R.vars : {};
+    const compared = Object.keys(vars).map(k => {
+      const s = vars[k] || {};
+      return esc(VARS[k] ? VARS[k].short : k) + ' with <code>' + esc(s.column) + '</code>'
+        + (s.split ? ', night and day separately' : '')
+        + (isNum(s.shift) && s.shift !== shift ? ', time shift ' + esc(s.shift) + ' min' : '');
+    });
+    return '<p>Reference station: ' + bits.join('; ') + '. '
+      + (compared.length ? 'Columns compared: ' + compared.join('; ') + '.' : '') + '</p>';
   }
 
   function renderHero() {

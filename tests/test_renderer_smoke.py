@@ -293,6 +293,50 @@ def test_provenance_is_shown_where_the_build_records_it_and_nowhere_else(full_at
         assert fragment in text, f"{fragment!r} is missing from the provenance"
 
 
+@needs_jsdom
+def test_the_settings_and_the_reference_file_are_shown_and_escaped(frame, tmp_path):
+    """The site settings and the reference station in the disclosure, each from a caller's string
+    planted with a `<u>`: shown as the text it was, never parsed into markup."""
+    path = tmp_path / "settings.parquet"
+    frame.to_parquet(path)
+    atlas = fa.Atlas(path, {"TA": {"column": "TA_F", "qc": "TA_F_QC"}}, hourly=False, quiet=True)
+    payload = copy.deepcopy(atlas.payload)
+    ref_sha = "cd" * 32
+    prov = payload["meta"]["provenance"]
+    prov["columns"]["TA"].update({
+        "source": "SRC<u>s</u>", "source_legend": {"0": ["new <u>n</u>", "new"],
+                                                   "1": ["old", "old"]},
+        "source_reference_code": 0, "qc_legend": {"0": ["measured", "measured"],
+                                                  "4": ["filled <u>f</u>", "filled"]},
+        "measured_codes": [0, 4]})
+    prov["columns"]["SWC"] = {"column": "SWC_30", "qc": None, "factor": 1.0}
+    prov.update({"primary": {"SWC": "SWC@<u>0.3</u>"}, "lat": 47.5, "lon": -8.4,
+                 "utc_offset": 1.0,
+                 "reference": {"file": "ref <u>r</u>.parquet", "bytes": 4_096, "sha256": ref_sha,
+                               "station": "Station <u>s</u>", "shift": -15.0,
+                               "distance_km": 2.0, "elevation_m": 600.0,
+                               "vars": {"TA": {"column": "TA<u>R</u>", "split": True,
+                                               "shift": 30.0}}}})
+    found = drive_page(build.render(payload, tmp_path / "settings.html"))
+    assert not found["problems"], report(found)
+    shown = found["checks"]["page"]["provenance"]
+    assert "u" not in shown["elements"], "markup was parsed out of the provenance"
+    text = shown["text"]
+    for fragment in ("Columns and site settings", "SRC<u>s</u>",
+                     "source flag legend: 0 new <u>n</u> (new); 1 old",
+                     "reference source code: 0",
+                     "fill flag legend: 0 measured; 4 filled <u>f</u> (filled)",
+                     "measured codes: 0, 4",
+                     "primary instance of SWC: SWC@<u>0.3</u>",
+                     "latitude 47.5° N, longitude 8.4° W, UTC offset +1 h",
+                     "Reference station: Station <u>s</u>; file ref <u>r</u>.parquet (4 kB, "
+                     "SHA-256 " + ref_sha + "); distance 2 km; elevation 600 m; "
+                     "time shift -15 min.",
+                     "Columns compared: Air temperature with TA<u>R</u>, night and day "
+                     "separately, time shift 30 min"):
+        assert fragment in text, f"{fragment!r} is missing from the provenance"
+
+
 # -- What `render` writes --------------------------------------------------------------------
 
 def _payload_of(html):

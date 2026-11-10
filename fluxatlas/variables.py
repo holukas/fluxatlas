@@ -1026,6 +1026,7 @@ class Variable:
         self.qc_convention = None
         self.fill_levels = []
         self.fill_short = None      # short labels of the levels, where the caller wrote a legend
+        self.qc_legend = None       # {code: (long, short)} of the fill flag, where the caller wrote one
         self.source = None          # the name of the file the variable was read from
         self.source_flag = None     # {column, legend, reference_code}, where a build names one
         self.raw_column = None      # the uncorrected twin, where a build names one
