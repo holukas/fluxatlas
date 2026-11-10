@@ -85,7 +85,7 @@ def test_the_coverage_chart_has_a_figure_per_year(full_atlas):
 # -- The renderer --------------------------------------------------------------------------------
 
 def test_the_page_has_a_view_and_a_route_for_one_variable(full_atlas, tmp_path):
-    js = (build.ASSETS / "calendar.js").read_text(encoding="utf-8")
+    js = build.renderer_script()
     template = (build.ASSETS / "template.html").read_text(encoding="utf-8")
     assert 'id="view-var"' in template
     assert 'id="var-body"' in template
@@ -104,7 +104,7 @@ def test_the_page_has_a_view_and_a_route_for_one_variable(full_atlas, tmp_path):
 
 def test_the_renderer_reads_no_colour_the_palette_does_not_carry():
     """A chart asking for `p.band` draws with `undefined` and fails silently on the page."""
-    js = (build.ASSETS / "calendar.js").read_text(encoding="utf-8")
+    js = build.renderer_script()
     known = {"series", "cold", "warm", "mid", "bandOuter", "bandInner", "ink", "ink2", "muted",
              "axis", "grid", "surface"}
     import re

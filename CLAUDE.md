@@ -58,7 +58,7 @@ fa.build_atlas("CH-LAE_HH.csv", "atlas.html", variables=["TA"])  # TA and nothin
 | `build.py` | The ported computation: metrics, badges, day tests, normals, seasons, payload, render. The large one. |
 | `compare.py` | The site settings that describe a series against something else: source-flag shares, the correction read back from an uncorrected twin, the residual against a reference station, the night/day split. |
 | `record.py` | `var_record`: what only a year's half-hours give the variable page - percentiles, measured extremes, new records, the longest gap, the gap-fill check. |
-| `assets/` | `calendar.js`, `calendar.css`, `base.css`, `designs.css`, `template.html`, `logo.svg`, inlined into the output. |
+| `assets/` | `calendar.css`, `base.css`, `designs.css`, `template.html`, `logo.svg` and the renderer's parts in `js/`, inlined into the output. |
 | `docs/` | Sphinx, MyST markdown, hosted on Read the Docs. Three parts are generated rather than written: the API reference from the docstrings, the CLI reference from `cli.build_parser` via `sphinx-argparse`, and the variable, column and uncertainty tables from the registry via `docs/_ext/registry_tables.py`. Do not write any of the three out by hand. |
 
 **Selection is the organizing principle.** A metric whose variable is absent is
@@ -538,7 +538,7 @@ What the port changed, beyond the data layer:
   `KeyError`, which is what catches a genuine registry bug.
 - Page copy that said "meteo" or "the exported products" was generalized.
 
-The `calendar.js` renderer was copied nearly as-is and still contains references
+The renderer (`calendar.js` in the CH-LAE repo) was copied nearly as-is and still contains references
 to specific variable keys. Most are guarded by `if (VARS.TA)` and are fine. One
 was not: `seasonLine` read `se.TA.v` outright, which threw for **any** selection
 without air temperature — the fluxes alone, or precipitation alone — and was
@@ -551,8 +551,19 @@ so the same mistake made anywhere else fails rather than shipping.
 markup loads, nothing draws, and no error reaches a reader. A stray `;` inside a
 `chartCard({...})` string did exactly that while all 149 tests passed.
 `test_the_renderer_has_no_statement_break_inside_a_card_literal` guards the one
-shape that caused it, and `tests/test_renderer_syntax.py` parses both
-`calendar.js` and the inlined copy with `node --check`.
+shape that caused it, and `tests/test_renderer_syntax.py` parses every part of
+the renderer and the inlined copy with `node --check`.
+
+**The renderer is kept as parts and shipped as one script.** The files in
+`assets/js/` (`00-data.js` to `99-start.js`, cut at the section headers) are
+joined by `build.renderer_script` in the order `RENDERER_PARTS` states, and the
+`(function () { 'use strict'; ... })();` wrapper is written there rather than in
+any part. Each part is therefore a valid script on its own, and a syntax error is
+reported with the file it is in. A new part is added to `RENDERER_PARTS` as well
+as to the folder; `tests/test_renderer_parts.py` fails if the two disagree, and
+asserts that the page carries exactly the joined script. Every part shares one
+function scope, so a name declared in two parts parses alone and fails only in
+the inlined copy, which is why that copy is parsed too.
 
 **`tests/test_renderer_smoke.py` then runs it.** The built page is loaded under
 jsdom by `tests/js/smoke.mjs` and walked: the grid at each of the four scales and
@@ -575,7 +586,7 @@ cd tests/js && npm install
 ```
 
 Without it — or without node — the smoke tests skip, and the older instruction
-stands in for them: **open the built page after touching `calendar.js`** and
+stands in for them: **open the built page after touching the renderer** and
 check the console. CI installs it, so the renderer is executed on every push.
 
 The class of bug this exists for is the renderer reading a field only one scale

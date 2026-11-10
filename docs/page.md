@@ -1,6 +1,6 @@
 # The built page
 
-One HTML file. `calendar.js`, `calendar.css`, `base.css` and the mark are inlined into the template
+One HTML file. The renderer, the stylesheets and the mark are inlined into the template
 when the page is rendered, so it opens from a memory stick with no server and no network.
 
 ## Three levels, one page

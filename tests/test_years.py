@@ -224,7 +224,7 @@ def test_the_ordinal_is_written_the_way_it_is_read():
 
 def test_the_page_can_address_a_year(full_atlas, tmp_path):
     """The scale is only reachable if the router recognises the slug the payload ships."""
-    js = (build.ASSETS / "calendar.js").read_text(encoding="utf-8")
+    js = build.renderer_script()
     assert "M.year_slug" in js
     assert "year: {" in js, "the renderer has no year entry in its scale registry"
     # The season key is two to six letters, so a router matching three would refuse `DJFMAM`.

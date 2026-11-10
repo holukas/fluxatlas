@@ -40,7 +40,7 @@ python -m pip install -e .
 | `scipy` >= 1.11 | Theil-Sen slopes and Kendall's tau, behind every trend the page publishes. |
 | `pyarrow` >= 15.0 | Reading `.parquet` input, and the faster CSV reader used for the projected read. |
 
-The built page needs nothing. `calendar.js`, `calendar.css` and the mark are inlined into the
+The built page needs nothing. The renderer, the stylesheets and the mark are inlined into the
 output, so the file opens in any browser without a network.
 
 ## The documentation

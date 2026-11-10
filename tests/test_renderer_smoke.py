@@ -1,6 +1,6 @@
 """Run the renderer, rather than only parsing it.
 
-`test_renderer_syntax.py` proves `calendar.js` parses. That catches a stray `;` inside a string
+`test_renderer_syntax.py` proves the renderer parses. That catches a stray `;` inside a string
 literal, and nothing else: a page that parses and then throws on the first card looks exactly like
 one that does not parse, because the renderer is one IIFE and the markup is already on screen when
 it fails.

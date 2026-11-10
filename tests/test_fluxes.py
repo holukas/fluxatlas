@@ -431,10 +431,9 @@ def test_the_renderer_never_dereferences_a_fixed_variable_on_a_span(tmp_path):
     dereferenced in the same breath. Reading `VARS.TA.units` inside an `if (VARS.TA)` is fine and
     is not what this matches.
     """
-    from pathlib import Path
     from fluxatlas import build
 
-    js = (Path(build.__file__).parent / "assets" / "calendar.js").read_text(encoding="utf-8")
+    js = build.renderer_script()
     keys = "|".join(varreg.known())
     offenders = re.findall(rf"\b(?:se|mo|rec|child|here)\.(?:{keys})\.\w+", js)
     assert not offenders, (

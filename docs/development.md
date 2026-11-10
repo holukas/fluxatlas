@@ -10,7 +10,7 @@
 | `variables.py` | The registry, keyed by canonical key, with the candidate columns for each and the factor onto the canonical unit. |
 | `stats.py` | Theil-Sen trend, spells, growing season, rounding. The estimators shared with the CH-LAE dashboards. |
 | `build.py` | The ported computation: metrics, badges, day tests, normals, seasons, payload, render. The large one. |
-| `assets/` | `calendar.js`, `calendar.css`, `base.css`, `template.html`, `logo.svg`, inlined into the output. |
+| `assets/` | `calendar.css`, `base.css`, `designs.css`, `template.html`, `logo.svg` and the renderer's parts in `js/`, inlined into the output. |
 
 Both planned front ends are meant to be thin wrappers, so anything either would need goes in
 `atlas.py` rather than in them.
@@ -40,11 +40,18 @@ missing, so a fresh checkout still passes.
 
 ### The renderer
 
-Two tests cover it, and they answer different questions.
+The renderer runs as one IIFE, but it is kept as parts in `fluxatlas/assets/js/`, cut at its
+section headers and named so their order is explicit (`00-data.js` to `99-start.js`).
+`build.renderer_script` joins them in the order `build.RENDERER_PARTS` states and writes the
+wrapper around them, so each part is a valid script on its own. A new part is added to that tuple as
+well as to the folder; `tests/test_renderer_parts.py` fails if the two disagree.
 
-`tests/test_renderer_syntax.py` parses `calendar.js` and the inlined copy with `node --check`. The
-renderer is one IIFE, so a syntax error blanks the whole page with nothing in the console but a bare
-document.
+Two tests cover the renderer, and they answer different questions.
+
+`tests/test_renderer_syntax.py` parses every part and the inlined copy with `node --check`. A syntax
+error blanks the whole page with nothing in the console but a bare document; checked part by part,
+it is reported with the file it is in. The inlined copy is still parsed, because the parts share one
+function scope and a name declared in two of them is an error only once they are joined.
 
 `tests/test_renderer_smoke.py` runs it. The built page is loaded under jsdom and walked: the grid at
 each of the four scales and under every metric, a span panel at each of the three span scales, a
@@ -66,7 +73,7 @@ cd tests/js && npm install
 jsdom has no layout engine. Every measurement is zero or stubbed, so nothing that depends on a real
 one - a chart margin, a tooltip that has to stay on screen, a grid that has to fit - is tested by
 it. Neither is anything about how the page looks. Open the built page in a browser after touching
-`calendar.js`. See [selection](selection.md#a-one-variable-build-is-the-test).
+the renderer. See [selection](selection.md#a-one-variable-build-is-the-test).
 ```
 
 ## Example data

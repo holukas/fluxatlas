@@ -97,17 +97,18 @@ def test_the_renderer_has_no_statement_break_inside_a_card_literal():
     tell is a semicolon with prose still following it, which means the quote that should have
     enclosed it is missing.
     """
-    js = (Path(build.__file__).parent / "assets" / "calendar.js").read_text(encoding="utf-8")
     offenders = []
-    for n, line in enumerate(js.splitlines(), 1):
-        body = line.strip()
-        if not body.startswith("+"):
-            continue
-        # Drop the paired string literals. An unterminated one leaves its own quote behind, which
-        # is exactly the state a swallowed quote produces.
-        outside = re.sub(r"'(?:[^'\\]|\\.)*'", "", body)
-        if re.search(r";\s*\S", outside):
-            offenders.append(f"{n}: {body[:70]}")
+    for name in build.RENDERER_PARTS:
+        js = (build.RENDERER / name).read_text(encoding="utf-8")
+        for n, line in enumerate(js.splitlines(), 1):
+            body = line.strip()
+            if not body.startswith("+"):
+                continue
+            # Drop the paired string literals. An unterminated one leaves its own quote behind,
+            # which is exactly the state a swallowed quote produces.
+            outside = re.sub(r"'(?:[^'\\]|\\.)*'", "", body)
+            if re.search(r";\s*\S", outside):
+                offenders.append(f"{name}:{n}: {body[:70]}")
     assert not offenders, (
         "a continuation line ends its statement outside a string, which stops the whole renderer "
         "parsing:\n  " + "\n  ".join(offenders))
@@ -218,7 +219,7 @@ def test_available_and_known_variables_are_exported(parquet_path):
 
 def test_every_badge_asks_for_an_icon_the_page_can_draw():
     """A badge asking for an icon the renderer does not know would render as an empty box."""
-    js = (Path(build.__file__).parent / "assets" / "calendar.js").read_text(encoding="utf-8")
+    js = build.renderer_script()
     icons = set(re.findall(r"^\s{4}'([\w-]+)':", js, flags=re.M))
     assert icons, "no icons found in the renderer - the extraction pattern has drifted"
     for badge in build.BADGES:

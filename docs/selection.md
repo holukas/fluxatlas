@@ -55,10 +55,10 @@ pytest cannot execute the renderer.
 ```{admonition} The renderer is one IIFE
 :class: warning
 
-Any syntax error in `calendar.js` blanks the whole page. The markup loads, nothing draws, and no
+Any syntax error in the renderer blanks the whole page. The markup loads, nothing draws, and no
 error reaches a reader. A stray `;` inside a `chartCard({...})` string did exactly that while the
 whole Python suite passed. There is no JavaScript parser in the test environment, so open the built
-page after touching `calendar.js` and check the browser console.
+page after touching the renderer and check the browser console.
 ```
 
 ## Selection in the API

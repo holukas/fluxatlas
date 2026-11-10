@@ -3,10 +3,16 @@
 The renderer is one IIFE, so a syntax error anywhere in it blanks the whole page: the markup loads,
 nothing draws, and no error reaches a reader. A stray `;` inside a string literal did exactly that
 while every other test passed, which is why the repository's own notes say to open the built page
-after touching `calendar.js`.
+after touching the renderer.
 
-Node is not a dependency of this package and is not on every machine, so this test skips where it is
-absent. Where it is present it is the cheapest guard there is: `node --check` parses the file and
+It is kept as parts in `assets/js/`, each a valid script on its own, so each is parsed separately and
+an error is reported with the part it is in. Each is parsed in strict mode, as the page runs it: the
+directive is prefixed on the part's first line, so the line numbers node reports are the part's own.
+The inlined page is parsed as well, because only the joined script can show a declaration made in
+two parts.
+
+Node is not a dependency of this package and is not on every machine, so these tests skip where it
+is absent. Where it is present it is the cheapest guard there is: `node --check` parses the file and
 says nothing more.
 """
 
@@ -23,10 +29,13 @@ NODE = shutil.which("node")
 
 
 @pytest.mark.skipif(NODE is None, reason="node is not installed; open the built page instead")
-def test_the_renderer_parses():
-    result = subprocess.run([NODE, "--check", str(build.ASSETS / "calendar.js")],
-                            capture_output=True, text=True)
-    assert result.returncode == 0, f"calendar.js does not parse:\n{result.stderr}"
+@pytest.mark.parametrize("name", build.RENDERER_PARTS)
+def test_each_part_of_the_renderer_parses(name, tmp_path):
+    source = (build.RENDERER / name).read_text(encoding="utf-8")
+    path = tmp_path / name
+    path.write_text("'use strict'; " + source, encoding="utf-8")
+    result = subprocess.run([NODE, "--check", str(path)], capture_output=True, text=True)
+    assert result.returncode == 0, f"{name} does not parse:\n{result.stderr}"
 
 
 @pytest.mark.skipif(NODE is None, reason="node is not installed")

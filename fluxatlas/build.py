@@ -111,6 +111,31 @@ from .stats import (
 
 ASSETS = Path(__file__).parent / "assets"
 
+# The renderer, in the order its parts are joined. It runs as one IIFE, so a syntax error anywhere
+# in it blanks the whole page; kept as parts, each one is a valid script on its own and `node
+# --check` names the file an error is in. The wrapper is written here rather than in any part,
+# because a part that opened the function and another that closed it could not be checked alone.
+RENDERER = ASSETS / "js"
+RENDERER_PARTS = (
+    "00-data.js", "10-icons.js", "20-format.js", "30-charts.js", "40-state.js", "50-grid.js",
+    "60-month.js", "70-variable.js", "75-variable-page.js", "80-day.js", "90-route.js",
+    "99-start.js",
+)
+RENDERER_OPEN = "(function () {\n  'use strict';\n"
+RENDERER_CLOSE = "})();\n"
+
+
+def renderer_script(folder=RENDERER, parts=RENDERER_PARTS):
+    """The page's script: the renderer's parts, joined in order inside the one wrapper.
+
+    The parts are joined as they are, with nothing between them, so the script is exactly the
+    text of the files in sequence.
+    """
+    folder = Path(folder)
+    return (RENDERER_OPEN
+            + "".join((folder / name).read_text(encoding="utf-8") for name in parts)
+            + RENDERER_CLOSE)
+
 # The page says what made it and who to ask. A built atlas is one file that travels: it is opened
 # from a memory stick, mailed to a co-author, put on a share years later. By then nothing around it
 # says which tool produced it or where to find the definitions behind its figures, so the page
@@ -3284,10 +3309,10 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     # Read out of the icon map itself rather than off the indentation. The check used to match
     # any four-space-indented quoted key anywhere in the renderer, so what the build validated
     # against depended on how that file happened to be formatted.
-    renderer = (ASSETS / "calendar.js").read_text(encoding="utf-8")
+    renderer = renderer_script()
     opens = renderer.find("const ICONS = {")
     if opens < 0:
-        raise RuntimeError("calendar.js has no `const ICONS = {...}` block, so the badge "
+        raise RuntimeError("the renderer has no `const ICONS = {...}` block, so the badge "
                            "icons cannot be checked against the ones the page can draw")
     icon_block = renderer[opens:renderer.index("};", opens)]
     icons = {line.strip().split(":", 1)[0].strip().strip(chr(39))
@@ -3296,7 +3321,7 @@ def build_payload(loaded, *, site, site_long, source=None, with_hourly=True, qui
     for badge in BADGES:
         if badge["icon"] not in icons:
             raise ValueError(
-                f"badge {badge['key']!r} asks for icon {badge['icon']!r}, which calendar.js does "
+                f"badge {badge['key']!r} asks for icon {badge['icon']!r}, which the renderer does "
                 f"not draw - it would render as an empty box")
         # Counted per scale, because a badge means a different number of things at each: the legend
         # says "18 months" beside a month grid and "4 years" beside a year grid, and a year-only
@@ -3623,7 +3648,7 @@ def render(payload, out_path, title=None):
     # The designs come last: each overrides the tokens and type of the two sheets before it.
     css = "\n".join((ASSETS / name).read_text(encoding="utf-8")
                     for name in ("base.css", "calendar.css", "designs.css"))
-    js = (ASSETS / "calendar.js").read_text(encoding="utf-8")
+    js = renderer_script()
 
     # One mark, two uses: inlined into the topbar, where it takes the page's --neutral-mid, and
     # base64'd into the favicon, where nothing external may be fetched. Base64 rather than percent

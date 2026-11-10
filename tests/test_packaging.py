@@ -47,9 +47,14 @@ def test_the_citation_file_states_the_version_being_shipped():
 
 
 def test_every_asset_the_page_needs_is_installed():
-    """The six files `render` inlines, read from wherever the package actually is."""
-    for name in ("template.html", "base.css", "calendar.css", "designs.css", "calendar.js",
-                 "logo.svg"):
+    """The files `render` inlines, read from wherever the package actually is.
+
+    The renderer's parts are named from `RENDERER_PARTS` rather than found by listing the folder,
+    since a wheel that dropped one would list cleanly and build a page that throws.
+    """
+    names = ["template.html", "base.css", "calendar.css", "designs.css", "logo.svg"]
+    names += [f"js/{part}" for part in build.RENDERER_PARTS]
+    for name in names:
         path = build.ASSETS / name
         assert path.exists(), f"{name} is missing from the installed package"
         assert path.stat().st_size > 0, f"{name} is installed but empty"
