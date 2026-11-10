@@ -90,6 +90,10 @@
     change. It needs at least 10,000 overlapping half-hours. The station's values are compared as its file states
     them, never converted. The night and day split uses the site's position (`lat`, `lon`, `utc_offset`).
   - **Notes** on a variable (`notes`, `--note`), shown on its page.
+  - **Provenance of the settings.** `meta.provenance` and the footer list the settings used in the build: the source
+    flag legend and reference code, the fill legend, the measured codes, `primary`, `lat`, `lon` and `utc_offset`, and
+    the reference station file with its size and SHA-256 digest, its time shift and the column compared for each
+    variable. Builds without site settings are unchanged.
 - **Outgoing shortwave and longwave radiation** (`SW_OUT`, `LW_OUT`) as variables of their own, built when named. They
   resolve from the same columns the computed net radiation reads.
 - **More on each variable page.** Tiles above the summary give the annual mean or total and its spread, the trend, the

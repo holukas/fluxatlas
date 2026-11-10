@@ -160,6 +160,28 @@ after, that year left out, for all hours and for night and day.
 is filled in, and `<code>` is kept as code. They are the site's statements and the page presents
 them as such. The registry's own description of a variable is unchanged by them.
 
+## Provenance
+
+The settings used in a build are stored in `meta.provenance` of the payload, which
+`Atlas.provenance` returns, and are listed in the footer of the page. They are stored next to the
+column, quality flag and factor of each variable:
+
+| setting | field |
+| --- | --- |
+| `source` | `columns[key].source`, the flag column, with `source_legend` and `source_reference_code` where given |
+| `raw` | `columns[key].raw` |
+| `qc_legend` | `columns[key].qc_legend` |
+| `measured_codes` | `columns[key].measured_codes`, where it is not 0 alone and the variable has a fill flag |
+| `primary` | `primary` |
+| `lat`, `lon`, `utc_offset` | `lat`, `lon`, `utc_offset` |
+| `reference` | `reference`: the station file's name, size in bytes and SHA-256 digest, the station, its `shift`, `distance_km` and `elevation_m` where given, and per compared variable its `column`, `split` and `shift` |
+
+A legend is stored as a mapping from each code, as a string, to its long and short label. The size
+and SHA-256 digest of the reference station file are computed in the same way as for the input
+file, because a station series can be reissued under an unchanged file name. A field is present
+only if the build used the corresponding setting. A build without site settings therefore has the
+same provenance as before.
+
 ## An example
 
 `examples/build_lae_meteo_atlas.py` builds the merged CH-LAE meteo product with every setting on this
