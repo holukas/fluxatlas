@@ -21,6 +21,13 @@ records what exists. Every item has to keep the rules the package is built on:
   year the file covers.
 - **YAML legend files.** They need PyYAML, which is not a dependency. Offer it as an extra, or
   document JSON as the only format.
+- **Confirm the browser tests on CI after the provenance change.** The footer's provenance text was
+  reworded after the last full local run with the browser tests; the tests that read it passed, the
+  full walk was not repeated.
+- **GitHub Actions versions.** CI warns that Node.js 20 is deprecated for `actions/checkout@v4`,
+  `actions/setup-node@v4` and `astral-sh/setup-uv@v5`, and that the `ubuntu-latest` label will move
+  to Ubuntu 26. Move the actions to versions on a supported Node, and check the suite on the new
+  runner image.
 
 ## Planned
 
@@ -28,15 +35,6 @@ records what exists. Every item has to keep the rules the package is built on:
   the variable picker; the GUI stays a thin wrapper over `atlas.py`.
 
 ## Ideas
-
-### Provenance
-
-- **Record the reference station file by its size and SHA-256**, as the input file is recorded. A
-  page that compares against a station currently names the file but cannot be matched to the exact
-  version of it.
-- **Record the site settings in `meta.provenance`**: the legends, the measured codes, the reference
-  shift and the primary instances, so a page states every setting that shaped it and the build can
-  be reproduced from the page alone.
 
 ### Configuration
 
