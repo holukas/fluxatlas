@@ -33,6 +33,7 @@ from ._console import say
 from . import build as _build
 from . import compare as _compare
 from . import io as _io
+from . import tables as _tables
 from . import variables as _variables
 
 __all__ = ["Atlas", "build_atlas", "available", "known_variables", "read_config"]
@@ -256,6 +257,43 @@ class Atlas:
         else:
             index = pd.Index([row["y"] for row in rows], dtype="int64", name="year")
         return pd.DataFrame(columns, index=index)
+
+    def year_record(self, key):
+        """Each year's half-hourly percentiles, measured extremes, new records and longest gap.
+
+        One row per year for variable `key`, with what holds for the whole record in `attrs`: the
+        units, the basis of the percentiles, the measured share and the gap-fill check. The columns
+        are listed in `fluxatlas.tables.year_record`.
+        """
+        return _tables.year_record(self.payload, key)
+
+    def correction(self, key):
+        """What the correction of `key` did, read back from its uncorrected twin.
+
+        A `fluxatlas.tables.Correction`: the difference per year (`yearly`), per era of the source
+        flag (`eras`, None without one) and over the record (`summary`). Raises `KeyError` where
+        the build names no twin (`raw`) for `key`. See `fluxatlas.tables.correction`.
+        """
+        return _tables.correction(self.payload, key)
+
+    def reference(self, key):
+        """The residual of `key` against the reference station.
+
+        A `fluxatlas.tables.Reference`: the residual per month with its rolling median
+        (`monthly`), per year (`yearly`), across a hardware change (`steps`, None without one) and
+        over the overlap (`summary`). Raises `KeyError` where the build compares `key` with no
+        station, and `fluxatlas.Withheld` with the page's reason where the overlap was too short.
+        See `fluxatlas.tables.reference`.
+        """
+        return _tables.reference(self.payload, key)
+
+    def sources(self, key):
+        """Each year's share of records under each code of the source flag of `key`, in percent.
+
+        One row per year, the columns indexed by code and label. Raises `KeyError` where the build
+        names no source flag for `key`. See `fluxatlas.tables.sources`.
+        """
+        return _tables.sources(self.payload, key)
 
     def report(self):
         """Print what the build found, including the trends that qualify every anomaly on it."""

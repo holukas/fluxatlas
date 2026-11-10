@@ -110,6 +110,12 @@
   missing share as year-by-month surfaces, the last year against the mean by month and hour, the days that set a new
   record, the longest gap of each year, whether the gap-filled series stays inside the measured range, and a year-by-year
   table. Every chart card has a Chart/Table switch, and an index at the top of the page marks the section in view.
+- **The variable page's figures as DataFrames.** `Atlas.year_record` gives each year's half-hourly percentiles,
+  measured extremes, new records and longest gap. `Atlas.correction` gives a correction per year and per era of the
+  source flag, `Atlas.reference` the residual against a reference station per month, per year and across a hardware
+  change, and `Atlas.sources` each year's share of records under each source flag code. They read the payload the page
+  is built from, through the new module `fluxatlas.tables`. A variable or setting the build does not carry raises
+  `KeyError`, and a comparison the build withheld raises `fluxatlas.Withheld` with the page's reason.
 
 ### Changed
 

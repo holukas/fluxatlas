@@ -18,6 +18,8 @@ any selection of either.
 from importlib.metadata import PackageNotFoundError, version
 
 from .atlas import Atlas, available, build_atlas, known_variables, read_config
+from . import tables
+from .tables import Withheld
 from .variables import VARIABLES
 
 # Read from the installed distribution rather than written a second time, so a bump in
@@ -28,5 +30,5 @@ try:
 except PackageNotFoundError:
     __version__ = "0.1.0"
 
-__all__ = ["Atlas", "build_atlas", "available", "known_variables", "read_config", "VARIABLES",
-           "__version__"]
+__all__ = ["Atlas", "build_atlas", "available", "known_variables", "read_config", "Withheld",
+           "tables", "VARIABLES", "__version__"]

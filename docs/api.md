@@ -1,11 +1,12 @@
 # API reference
 
-Six modules. {mod}`fluxatlas.atlas` is the public API, and anything a front end needs belongs there
+Seven modules. {mod}`fluxatlas.atlas` is the public API, and anything a front end needs belongs there
 so the front ends stay thin. The rest is the machinery behind it.
 
 | Module | Responsibility |
 | --- | --- |
 | {mod}`fluxatlas.atlas` | The public API: `Atlas`, `build_atlas`, `read_config`, `available`. |
+| {mod}`fluxatlas.tables` | The variable page's figures as pandas DataFrames, read from the payload. |
 | {mod}`fluxatlas.cli` | The command line, a thin wrapper over `atlas`. |
 | {mod}`fluxatlas.io` | Reading one half-hourly FLUXNET file. |
 | {mod}`fluxatlas.variables` | The registry: canonical keys, candidate columns, units, thresholds. |
@@ -41,6 +42,34 @@ points to use:
 ```{eval-rst}
 .. automodule:: fluxatlas.atlas
    :no-members:
+```
+
+## fluxatlas.tables
+
+```{eval-rst}
+.. automodule:: fluxatlas.tables
+   :no-members:
+```
+
+Each function takes a built payload, `Atlas.payload`, and a variable key. `Atlas.year_record`,
+`Atlas.correction`, `Atlas.reference` and `Atlas.sources` call them on the atlas's own payload:
+
+```python
+import fluxatlas as fa
+
+atlas = fa.Atlas("CH-LAE_HH.csv", ["TA", "PREC"])
+atlas.year_record("TA")                          # one row per year
+fa.tables.year_record(atlas.payload, "TA")       # the same table
+```
+
+```{eval-rst}
+.. autofunction:: fluxatlas.tables.year_record
+.. autofunction:: fluxatlas.tables.correction
+.. autofunction:: fluxatlas.tables.reference
+.. autofunction:: fluxatlas.tables.sources
+.. autoclass:: fluxatlas.tables.Correction
+.. autoclass:: fluxatlas.tables.Reference
+.. autoexception:: fluxatlas.tables.Withheld
 ```
 
 ## fluxatlas.io
