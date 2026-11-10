@@ -11,6 +11,9 @@ need them are withheld with a reason attached, and the composite - which is a st
 several axes at once - is withheld rather than computed over one. Passing more variables adds
 their metrics, badges and day tests back.
 
+A whole build can also be described in one JSON or YAML settings file and built with
+`Atlas.from_config("site.json")`; `read_config` says what the file holds.
+
 A CLI and a desktop GUI are planned on top of this module; both are meant to be thin, so anything
 either of them would need belongs here rather than in them.
 """
@@ -19,6 +22,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -31,7 +35,7 @@ from . import compare as _compare
 from . import io as _io
 from . import variables as _variables
 
-__all__ = ["Atlas", "build_atlas", "available", "known_variables"]
+__all__ = ["Atlas", "build_atlas", "available", "known_variables", "read_config"]
 
 # A FLUXNET site identifier: two-letter country code, a hyphen, three characters. The boundaries
 # are spelled out rather than written `\b`, because `_` is a word character and the identifier
@@ -98,6 +102,10 @@ class Atlas:
         self.site_long = site_long
         self.hourly = hourly
         self.seasons = seasons
+        # Where `write` goes and what it titles the page when it is not told: set by `from_config`
+        # from the settings file, and otherwise nothing, so `write` needs a path as it always did.
+        self.out = None
+        self.title = None
 
         # The settings that reach beyond one column are checked before the file is read, so a
         # mistake in them costs nothing but the message.
@@ -127,6 +135,30 @@ class Atlas:
             reference=prepared, primary=primary or None, lat=lat, lon=lon, utc_offset=utc_offset)
         if not quiet:
             self.report()
+
+    @classmethod
+    def from_config(cls, config, /, **overrides):
+        """An atlas built as the settings file `config` describes it; see `read_config`.
+
+        Each keyword in `overrides` takes the name it has in `build_atlas` - `path` for the input,
+        `out` for the output - and replaces the file's value for that keyword whole: a `variables`
+        given here replaces the file's mapping rather than being merged into it. `quiet` is not a
+        setting of the file and is passed here.
+
+        The output and the title the file states are kept on the atlas as `out` and `title`, so
+        `atlas.write()` writes there without being told.
+        """
+        settings = read_config(config)
+        settings.update(overrides)
+        out = settings.pop("out", None)
+        title = settings.pop("title", None)
+        if settings.get("path") is None:
+            raise ValueError(f"{Path(config).name} names no input file; state it as 'input' in the "
+                             f"file, or pass path=")
+        atlas = cls(settings.pop("path"), **settings)
+        atlas.out = None if out is None else Path(out)
+        atlas.title = title
+        return atlas
 
     @property
     def provenance(self):
@@ -241,8 +273,17 @@ class Atlas:
             say(f"  trend {m['short']:<16} {t['slope']:+8.3f} {m['units']}/decade  "
                 f"p = {pvalue}, {t['n']} years")
 
-    def write(self, out_path, title=None, quiet=False):
-        """Render the page to `out_path` and return the path written."""
+    def write(self, out_path=None, title=None, quiet=False):
+        """Render the page to `out_path` and return the path written.
+
+        Without `out_path` the page goes to the output the settings file named, and without `title`
+        it takes the title the file gave, where the atlas was built by `from_config`.
+        """
+        out_path = self.out if out_path is None else out_path
+        if out_path is None:
+            raise ValueError("no output path: pass one to write(), or state 'output' in the "
+                             "settings file")
+        title = self.title if title is None else title
         path = _build.render(self.payload, Path(out_path), title=title)
         if not quiet:
             say(f"  written: {path}  ({path.stat().st_size / 1024 / 1024:.1f} MB)")
@@ -363,3 +404,252 @@ def _prepare_reference(reference, compared, loaded, lat, lon, utc_offset, quiet)
     if not quiet:
         say(f"  reference {out['station']}: {', '.join(compared)} against {path.name}")
     return out
+
+
+# ----------------------------------------------------------------------------------------------
+# A settings file
+# ----------------------------------------------------------------------------------------------
+
+# The top level of a settings file, each key with the keyword of `build_atlas` it sets. The input
+# and the output are named for what they are, since `path` alone would not say which; everything
+# else has the name it has in Python.
+_CONFIG_KEYS = {
+    "input": "path", "output": "out", "site": "site", "site_long": "site_long",
+    "first_year": "first_year", "last_year": "last_year", "seasons": "seasons",
+    "hourly": "hourly", "title": "title", "variables": "variables", "primary": "primary",
+    "lat": "lat", "lon": "lon", "utc_offset": "utc_offset", "reference": "reference",
+}
+
+# The fields of a variable's entry a file may state. `checks` is a Python callable, and `instance`
+# is set by `Atlas` itself for `primary`; neither can be written in a file.
+_CONFIG_VARIABLE_FIELDS = tuple(f for f in _io.COLUMN_FIELDS + _io.OPTION_FIELDS
+                                if f not in ("checks", "instance"))
+_CONFIG_TEXT_FIELDS = ("column", "qc", "raw", "correction_note", "title", "short")
+_CONFIG_SOURCE_FIELDS = {"column": str, "legend": dict, "reference_code": int}
+_CONFIG_COMPARED_FIELDS = {"column": str, "shift": float, "split": bool}
+_CONFIG_REFERENCE_FIELDS = {"file": str, "station": str, "distance_km": float,
+                            "elevation_m": float, "shift": float}
+_KIND_NAMES = {str: "a string", int: "an integer", float: "a number", bool: "true or false",
+               dict: "a mapping", list: "a list"}
+
+
+def read_config(path):
+    """The settings of a whole build, read from a JSON or YAML file.
+
+    Returns a dict of keyword arguments for `build_atlas`, holding only what the file states, so a
+    setting the file leaves out keeps its default. The input is returned as `path` and the output
+    as `out`. `Atlas` takes every key but `out` and `title`, which `Atlas.from_config` keeps for
+    `Atlas.write`.
+
+    The file is one mapping with any of these keys:
+
+    ===================== =========================================================================
+    ``input``             the half-hourly file the atlas is built from
+    ``output``            the page to write
+    ``site``              also ``site_long``, ``first_year``, ``last_year``, ``seasons``,
+                          ``hourly`` and ``title``, as the keyword arguments of the same name
+    ``variables``         a list of canonical keys, or a mapping from each key to its column name,
+                          to null for the registry's column, or to its entry: ``column``, ``qc``,
+                          ``factor`` and the site settings ``source``, ``qc_legend``,
+                          ``measured_codes``, ``raw``, ``notes``, ``correction_note``,
+                          ``reference``, ``title`` and ``short``
+    ``primary``           the instance that stands in for each plain key
+    ``lat``               also ``lon`` and ``utc_offset``, the site's position and clock
+    ``reference``         the reference station: ``file``, ``station``, ``distance_km``,
+                          ``elevation_m`` and ``shift``
+    ===================== =========================================================================
+
+    A legend maps each code, written as a string, to ``[long, short]``, as a ``--legends`` file
+    does. A relative path - the input, the output and the reference station's file - is taken from
+    the settings file's own folder, not from the working directory, so a settings file and the data
+    beside it can be moved together. A key whose value is null is treated as absent, except ``qc``,
+    where null states that the series has no flag.
+
+    Everything is checked before any data file is opened. A key the file does not know, at any
+    level, is refused with its place in the file, and so is a value of the wrong type. ``checks``
+    cannot be stated in a file, because it is a Python callable; add it in Python to the
+    ``variables`` this function returns.
+
+    A YAML file (``.yaml`` or ``.yml``) needs PyYAML; a JSON file needs nothing.
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"no such settings file: {path}")
+    text = path.read_text(encoding="utf-8")
+    if path.suffix.lower() in (".yaml", ".yml"):
+        try:
+            import yaml
+        except ImportError:
+            raise ImportError(f"{path.name}: a YAML settings file needs PyYAML (pip install "
+                              f"pyyaml); a JSON file needs nothing") from None
+        try:
+            found = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            raise ValueError(f"{path.name} is not valid YAML: {exc}") from None
+    else:
+        try:
+            found = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path.name} is not valid JSON: {exc}") from None
+    return _Config(path.name, path.parent.resolve()).read(found)
+
+
+class _Config:
+    """Checks one settings file. Every message names the file and the place in it."""
+
+    def __init__(self, label, folder):
+        self.label = label
+        self.folder = folder
+
+    def fail(self, place, message):
+        raise ValueError(f"{self.label}, {place}: {message}" if place
+                         else f"{self.label}: {message}")
+
+    def expect(self, value, kind, place):
+        """`value`, refused unless it is of `kind`; a bool is never taken for a number."""
+        kinds = (int, float) if kind is float else (kind,)
+        if (isinstance(value, bool) and kind is not bool) or not isinstance(value, kinds):
+            self.fail(place, f"expected {_KIND_NAMES[kind]}, got {value!r}")
+        return value
+
+    def known(self, found, fields, place):
+        """Refuse a key that is not one of `fields`, naming it and where it is."""
+        stray = [k for k in found if k not in fields]
+        if stray:
+            self.fail(place or "the top level",
+                      f"unknown key(s) {', '.join(map(repr, stray))}; "
+                      f"{'it' if place else 'a settings file'} takes {', '.join(fields)}")
+
+    def path(self, text, place):
+        """A path from the file, a relative one taken from the file's own folder."""
+        path = Path(self.expect(text, str, place)).expanduser()
+        return path if path.is_absolute() else self.folder / path
+
+    def read(self, found):
+        if not isinstance(found, dict):
+            self.fail(None, 'a settings file holds one mapping of settings, such as '
+                            '{"input": "site.csv", "variables": ["TA"]}')
+        self.known(found, _CONFIG_KEYS, None)
+        out = {}
+        for key, value in found.items():
+            if value is None:
+                continue
+            if key in ("input", "output"):
+                value = self.path(value, key)
+            elif key in ("site", "site_long", "title"):
+                self.expect(value, str, key)
+            elif key == "seasons":
+                self.expect(value, str, key)
+                try:
+                    _build.season_scheme(value)
+                except ValueError as exc:
+                    self.fail(key, str(exc))
+            elif key in ("first_year", "last_year"):
+                self.expect(value, int, key)
+            elif key == "hourly":
+                self.expect(value, bool, key)
+            elif key in ("lat", "lon", "utc_offset"):
+                self.expect(value, float, key)
+            elif key == "primary":
+                for base, chosen in self.expect(value, dict, key).items():
+                    self.expect(chosen, str, f"primary.{base}")
+                value = dict(value)
+            elif key == "reference":
+                value = self.reference(value)
+            elif key == "variables":
+                value = self.variables(value)
+            out[_CONFIG_KEYS[key]] = value
+        return out
+
+    def reference(self, value):
+        """The reference station, its file taken from the settings file's folder."""
+        self.expect(value, dict, "reference")
+        self.known(value, _CONFIG_REFERENCE_FIELDS, "reference")
+        out = {}
+        for name, item in value.items():
+            if item is None:
+                continue
+            place = f"reference.{name}"
+            out[name] = (self.path(item, place) if name == "file"
+                         else self.expect(item, _CONFIG_REFERENCE_FIELDS[name], place))
+        if "file" not in out:
+            self.fail("reference", "the reference station names no file")
+        return out
+
+    def variables(self, value):
+        """The variables, as a mapping from each key to its entry."""
+        if isinstance(value, list):
+            value = {self.expect(key, str, "variables"): None for key in value}
+        self.expect(value, dict, "variables")
+        out = {}
+        for key, want in value.items():
+            if not _variables.is_known(key):
+                self.fail("variables", f"unknown variable {key!r}; known keys: "
+                                       f"{', '.join(_variables.known())}, or an instance of one "
+                                       f"written BASE@LABEL")
+            if want is None:
+                out[key] = {}
+            elif isinstance(want, str):
+                out[key] = dict(column=want)
+            else:
+                out[key] = self.entry(key, want)
+        return out
+
+    def entry(self, key, want):
+        """One variable's entry: its column fields and its site settings."""
+        here = f"variables.{key}"
+        self.expect(want, dict, here)
+        if "checks" in want:
+            self.fail(f"{here}.checks", "a correction check is a Python callable and cannot be "
+                                        "stated in a settings file. Leave it out of the file and "
+                                        "add it in Python to the variables read_config returns")
+        self.known(want, _CONFIG_VARIABLE_FIELDS, here)
+        entry = {}
+        for name, item in want.items():
+            place = f"{here}.{name}"
+            if item is None:
+                if name == "qc":
+                    entry[name] = None
+                continue
+            if name in _CONFIG_TEXT_FIELDS:
+                self.expect(item, str, place)
+            elif name == "factor":
+                self.expect(item, float, place)
+            elif name == "notes":
+                for i, text in enumerate(item if isinstance(item, list) else [item]):
+                    self.expect(text, str, f"{place}[{i}]" if isinstance(item, list) else place)
+            elif name == "measured_codes":
+                for code in item if isinstance(item, list) else [item]:
+                    self.expect(code, int, place)
+            elif name == "qc_legend":
+                self.legend(item, place)
+            elif name == "source":
+                item = self.setting(item, _CONFIG_SOURCE_FIELDS, place)
+                if "legend" in item:
+                    self.legend(item["legend"], f"{place}.legend")
+            elif name == "reference":
+                item = self.setting(item, _CONFIG_COMPARED_FIELDS, place)
+            entry[name] = copy.deepcopy(item)
+        return entry
+
+    def setting(self, item, fields, place):
+        """A setting written as a column name alone or as a mapping of `fields`, as a mapping."""
+        if isinstance(item, str):
+            return dict(column=item)
+        self.expect(item, dict, place)
+        self.known(item, fields, place)
+        item = {k: x for k, x in item.items() if x is not None}
+        if "column" not in item:
+            self.fail(place, "names no column")
+        for name, x in item.items():
+            if name != "legend":
+                self.expect(x, fields[name], f"{place}.{name}")
+        return item
+
+    def legend(self, item, place):
+        """Refuse a legend that is not one. The legend is kept as written; the reader converts it."""
+        self.expect(item, dict, place)
+        try:
+            _variables.legend_entries(item, place)
+        except ValueError as exc:
+            raise ValueError(f"{self.label}, {exc}") from None

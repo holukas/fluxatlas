@@ -94,6 +94,13 @@
     flag legend and reference code, the fill legend, the measured codes, `primary`, `lat`, `lon` and `utc_offset`, and
     the reference station file with its size and SHA-256 digest, its time shift and the column compared for each
     variable. Builds without site settings are unchanged.
+- **One settings file for a whole build.** A JSON or YAML file holds everything `Atlas` takes: the input and output,
+  the site, the years and seasons, the variables with every site setting, `primary`, the site's position and the
+  reference station. `fluxatlas --config site.json` builds from it, `fa.read_config` reads it into the keyword arguments
+  of `build_atlas`, and `fa.Atlas.from_config` builds from it, after which `Atlas.write()` writes to the output the
+  file names. A relative path in the file is taken from the file's own folder. The whole file is checked before any data
+  file is opened, and a key it does not know is refused at every level with its place in the file. A flag also given on
+  the command line overrides the file. `checks` is a Python callable and cannot be stated in a file.
 - **Outgoing shortwave and longwave radiation** (`SW_OUT`, `LW_OUT`) as variables of their own, built when named. They
   resolve from the same columns the computed net radiation reads.
 - **More on each variable page.** Tiles above the summary give the annual mean or total and its spread, the trend, the

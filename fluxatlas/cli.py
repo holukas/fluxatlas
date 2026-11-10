@@ -24,6 +24,14 @@ produces the page it always did. Legends are long, so they come from a JSON or Y
     {"TA": {"source": {"0": ["Campbell CS215", "CS215"], "1": ["Rotronic MP101A", "MP101A"]},
             "qc": {"1": ["XGBoost model", "XGBoost"]}}}
 
+A whole build can be described in one settings file instead, and `--config site.json` reads it; see
+`fluxatlas.atlas.read_config` for what it holds. The input positional is then optional where the
+file names one. A flag also given on the command line overrides the file: a value such as `--site`
+or `-o` replaces the file's, and a flag that names a variable replaces that field of the variable's
+entry and keeps the rest. `--var KEY=COLUMN` replaces the column, and with it the flag and factor
+that described the old one; `--note` replaces the variable's notes; `--vars` adds to the file's
+selection; `--primary` and the `--ref-*` flags replace the entries they name.
+
 A thin wrapper over `fluxatlas.atlas`, deliberately: nothing is computed here that a caller using
 the library would have to reimplement.
 """
@@ -31,6 +39,7 @@ the library would have to reimplement.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import sys
 import webbrowser
@@ -40,7 +49,7 @@ from . import build as _build
 from . import io as _io
 from . import variables as _variables
 from ._console import say
-from .atlas import Atlas
+from .atlas import Atlas, read_config
 
 
 def _pairs(values, flag):
@@ -61,11 +70,13 @@ def _pairs(values, flag):
     return out
 
 
-def build_mapping(args):
+def build_mapping(args, base=None):
     """The `variables` argument for `Atlas`, from the three flags that can contribute to it.
 
-    Returns None where the caller named nothing, which is the signal to build the registry's
-    default variables the file can supply.
+    `base` is the mapping of a settings file, which the flags are applied over: `--vars` adds to
+    it, and `--var KEY=COLUMN` replaces the column, flag and factor of the entry and keeps its
+    settings. Returns None where neither names anything, which is the signal to build the
+    registry's default variables the file can supply.
     """
     explicit = _pairs(args.var, "--var")
     flags = _pairs(args.qc, "--qc")
@@ -79,16 +90,23 @@ def build_mapping(args):
         raise SystemExit(f"--vars: unknown variable(s) {', '.join(unknown)}; known keys: "
                          f"{', '.join(_variables.known())}")
 
-    mapping = {key: None for key in listed}
+    mapping = copy.deepcopy(dict(base or {}))
+    for key in listed:
+        mapping.setdefault(key, None)
     for key, column in explicit.items():
-        mapping[key] = dict(column=column)
+        # The flag and the factor describe a column, so a column named here does not inherit the
+        # ones the settings file gave for another.
+        kept = mapping.get(key)
+        kept = ({k: v for k, v in kept.items() if k not in _io.COLUMN_FIELDS}
+                if isinstance(kept, dict) else {})
+        mapping[key] = dict(kept, column=column)
 
     for source, name, cast in ((flags, "qc", str), (factors, "factor", float)):
         for key, value in source.items():
-            if not isinstance(mapping.get(key), dict):
+            if not isinstance(mapping.get(key), dict) or "column" not in mapping[key]:
                 raise SystemExit(
                     f"--{name} names {key}, which has no --var mapping. The flag refines a column "
-                    f"named with --var {key}=COLUMN.")
+                    f"named with --var {key}=COLUMN or in the settings file.")
             try:
                 mapping[key][name] = cast(value)
             except ValueError:
@@ -102,7 +120,7 @@ def _settings_of(mapping, key, flag):
     """The settings of a selected variable, made a dict where it was named by its key alone."""
     if key not in mapping:
         raise SystemExit(f"{flag} names {key}, which is not in the selection; name it with --vars "
-                         f"or --var as well")
+                         f"or --var, or in the settings file, as well")
     if not isinstance(mapping[key], dict):
         mapping[key] = {}
     return mapping[key]
@@ -141,8 +159,20 @@ def read_legends(path):
     return found
 
 
+def _as_setting(spec, field):
+    """A setting the settings file gave as a column name alone, made a dict to refine."""
+    if isinstance(spec.get(field), str):
+        spec[field] = dict(column=spec[field])
+    return spec.get(field)
+
+
 def add_settings(args, mapping):
-    """Write the site settings onto the variables of the selection they name."""
+    """Write the site settings onto the variables of the selection they name.
+
+    Each flag replaces the field it names and leaves the rest of the entry as it was, so the flags
+    refine the mapping of a settings file. `--source` and `--ref` name a new column and replace
+    the whole setting, legend and split included, since those described the old column.
+    """
     # Read through `getattr`, so a namespace built without these flags - by a caller of
     # `build_mapping` that knows only the column flags - names none of them.
     args = argparse.Namespace(**{name: getattr(args, name, None) for name in (
@@ -152,14 +182,14 @@ def add_settings(args, mapping):
         _settings_of(mapping, key, "--source")["source"] = dict(column=column)
     for key, code in _pairs(args.source_ref, "--source-ref").items():
         spec = _settings_of(mapping, key, "--source-ref")
-        if not isinstance(spec.get("source"), dict):
+        if not isinstance(_as_setting(spec, "source"), dict):
             raise SystemExit(f"--source-ref names {key}, which has no --source flag")
         spec["source"]["reference_code"] = _codes(code, "--source-ref", key)[0]
     if args.legends:
         for key, entry in read_legends(args.legends).items():
             spec = _settings_of(mapping, key, "--legends")
             if "source" in entry:
-                if not isinstance(spec.get("source"), dict):
+                if not isinstance(_as_setting(spec, "source"), dict):
                     raise SystemExit(f"--legends gives a source legend for {key}, which has no "
                                      f"--source flag")
                 spec["source"]["legend"] = entry["source"]
@@ -170,40 +200,54 @@ def add_settings(args, mapping):
                                                                             key)
     for key, column in _pairs(args.raw, "--raw").items():
         _settings_of(mapping, key, "--raw")["raw"] = column
+    # The notes a command line gives for a variable replace the settings file's, rather than
+    # being added to them.
+    notes = {}
     for item in args.note or ():
         key, _, text = item.partition("=")
         if not _variables.is_known(key.strip()) or not text.strip():
             raise SystemExit(f"--note expects KEY=TEXT, got {item!r}")
-        _settings_of(mapping, key.strip(), "--note").setdefault("notes", []).append(text.strip())
+        notes.setdefault(key.strip(), []).append(text.strip())
+    for key, texts in notes.items():
+        _settings_of(mapping, key, "--note")["notes"] = texts
     for key, text in _pairs(args.correction_note, "--correction-note").items():
         _settings_of(mapping, key, "--correction-note")["correction_note"] = text
     for key, column in _pairs(args.ref, "--ref").items():
         _settings_of(mapping, key, "--ref")["reference"] = dict(column=column)
     for key in args.ref_split or ():
         spec = _settings_of(mapping, key.strip(), "--ref-split")
-        if not isinstance(spec.get("reference"), dict):
+        if not isinstance(_as_setting(spec, "reference"), dict):
             raise SystemExit(f"--ref-split names {key}, which has no --ref column")
         spec["reference"]["split"] = True
 
 
-def reference_of(args):
-    """The reference station, from the flags that describe it, or None."""
-    if not args.reference:
+def reference_of(args, base=None):
+    """The reference station, from the flags that describe it over a settings file's, or None.
+
+    Each flag given replaces that field of `base`, and `--reference` its file.
+    """
+    found = dict(base) if base else None
+    if args.reference:
+        found = dict(found or {}, file=args.reference)
+    if found is None:
         if args.ref:
             raise SystemExit("--ref names a reference column, but no --reference file is given")
         return None
-    return dict(file=args.reference, station=args.ref_station, distance_km=args.ref_distance,
-                elevation_m=args.ref_elevation, shift=args.ref_shift)
+    for name, value in (("station", args.ref_station), ("distance_km", args.ref_distance),
+                        ("elevation_m", args.ref_elevation), ("shift", args.ref_shift)):
+        if value is not None:
+            found[name] = value
+    return found
 
 
-def primary_of(args):
-    """`--primary BASE=INSTANCE` as a dict, or None."""
-    out = {}
+def primary_of(args, base=None):
+    """`--primary BASE=INSTANCE` as a dict over a settings file's `primary`, or None."""
+    out = dict(base or {})
     for item in args.primary or ():
-        base, _, chosen = item.partition("=")
-        if not base.strip() or not chosen.strip():
+        plain, _, chosen = item.partition("=")
+        if not plain.strip() or not chosen.strip():
             raise SystemExit(f"--primary expects BASE=INSTANCE, got {item!r}")
-        out[base.strip()] = chosen.strip()
+        out[plain.strip()] = chosen.strip()
     return out or None
 
 
@@ -260,8 +304,18 @@ def build_parser():
   fluxatlas record.parquet -o atlas.html --var VPD=vpd_pa --factor VPD=0.001
   fluxatlas record.parquet -o atlas.html --var TA=air --source TA=TA_SENSOR --legends l.json
   fluxatlas record.parquet -o atlas.html --var SWC@0.1=swc_10 --var SWC@0.3=swc_30 --primary SWC=SWC@0.1
+  fluxatlas --config site.json
+  fluxatlas --config site.json -o draft.html --first-year 2015
 """)
-    parser.add_argument("input", help="the half-hourly input file (.csv or .parquet)")
+    parser.add_argument("input", nargs="?",
+                        help="the half-hourly input file (.csv or .parquet); may be left out where "
+                             "the --config file names one")
+    parser.add_argument("--config", metavar="FILE",
+                        help="a JSON or YAML settings file describing the whole build: the input "
+                             "and output, the variables with their site settings, and the "
+                             "reference station. A relative path in it is taken from the file's "
+                             "own folder. A flag also given on the command line overrides the "
+                             "file.")
     parser.add_argument("-o", "--out", help="output HTML file; the default is <SITE>_atlas.html "
                                             "beside the input")
     parser.add_argument("--vars", action="append", metavar="KEY[,KEY...]",
@@ -318,20 +372,20 @@ def build_parser():
     ref.add_argument("--ref-split", action="append", metavar="KEY",
                      help="split a comparison into night and day by the position of the sun; "
                           "needs --lat, --lon and --utc-offset. Repeatable.")
-    ref.add_argument("--ref-shift", type=float, default=0.0, metavar="MINUTES",
+    ref.add_argument("--ref-shift", type=float, metavar="MINUTES",
                      help="move the reference stamps by this many minutes before they are put on "
                           "the half-hourly windows, e.g. -15 for a station stamped at the end of "
-                          "its half-hour")
+                          "its half-hour. Default: 0")
     ref.add_argument("--ref-station", metavar="NAME", help="the station's name for the page")
     ref.add_argument("--ref-distance", type=float, metavar="KM", help="its distance from the site")
     ref.add_argument("--ref-elevation", type=float, metavar="M", help="its elevation")
-    parser.add_argument("--seasons", default="DJF", metavar="MONTHS",
+    parser.add_argument("--seasons", metavar="MONTHS",
                         help="the first season, as month initials (DJF, JJA) or numbers (12,1,2). "
                              "The rest of the year is divided into seasons of the same length, so "
                              "DJF gives the usual four and DJFMAM gives two half-years. Use "
                              "'none' for a site whose year has no seasons. Default: DJF")
     parser.add_argument("--site", help="site identifier; the default is read from the file name")
-    parser.add_argument("--site-long", default="", help="longer site description for the page")
+    parser.add_argument("--site-long", help="longer site description for the page")
     parser.add_argument("--first-year", type=int, help="first year to include")
     parser.add_argument("--last-year", type=int, help="last year to include")
     parser.add_argument("--no-hourly", action="store_true",
@@ -355,9 +409,24 @@ def main(argv=None):
     except (AttributeError, ValueError):  # a redirected stream may not support it
         pass
 
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
-    source = Path(args.input)
+    # The settings file is read and checked in full before the input is opened, as every flag is.
+    config = {}
+    if args.config:
+        try:
+            config = read_config(args.config)
+        except (OSError, ValueError, ImportError) as exc:
+            raise SystemExit(f"--config: {exc}") from None
+
+    def given(flag, key, default=None):
+        """The flag where it was given, else the settings file's value, else the default."""
+        return flag if flag is not None else config.get(key, default)
+
+    if args.input is None and "path" not in config:
+        parser.error("the input file is required, unless a --config file names it as 'input'")
+    source = Path(given(args.input, "path"))
     if not source.exists():
         raise SystemExit(f"no such file: {source}")
     if args.list:
@@ -366,18 +435,24 @@ def main(argv=None):
     # Checked before the file is opened. The season spec is a string the caller typed, and a typo
     # in it should not cost a read of several hundred megabytes and a screen of coverage warnings
     # before it is mentioned.
+    seasons = given(args.seasons, "seasons", _build.DEFAULT_SEASONS)
     try:
-        _build.season_scheme(args.seasons)
+        _build.season_scheme(seasons)
     except ValueError as exc:
         raise SystemExit(f"--seasons: {exc}") from None
 
-    atlas = Atlas(source, build_mapping(args), site=args.site, site_long=args.site_long,
-                  first_year=args.first_year, last_year=args.last_year,
-                  hourly=not args.no_hourly, quiet=args.quiet, seasons=args.seasons,
-                  primary=primary_of(args), lat=args.lat, lon=args.lon,
-                  utc_offset=args.utc_offset, reference=reference_of(args))
-    out = Path(args.out) if args.out else source.parent / f"{atlas.site}_atlas.html"
-    path = atlas.write(out, title=args.title, quiet=args.quiet)
+    atlas = Atlas(source, build_mapping(args, config.get("variables")),
+                  site=given(args.site, "site"), site_long=given(args.site_long, "site_long", ""),
+                  first_year=given(args.first_year, "first_year"),
+                  last_year=given(args.last_year, "last_year"),
+                  hourly=False if args.no_hourly else config.get("hourly", True),
+                  quiet=args.quiet, seasons=seasons,
+                  primary=primary_of(args, config.get("primary")),
+                  lat=given(args.lat, "lat"), lon=given(args.lon, "lon"),
+                  utc_offset=given(args.utc_offset, "utc_offset"),
+                  reference=reference_of(args, config.get("reference")))
+    out = Path(given(args.out, "out", source.parent / f"{atlas.site}_atlas.html"))
+    path = atlas.write(out, title=given(args.title, "title"), quiet=args.quiet)
     if args.open_browser:
         webbrowser.open(path.resolve().as_uri())
     return 0

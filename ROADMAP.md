@@ -38,9 +38,6 @@ records what exists. Every item has to keep the rules the package is built on:
 
 ### Configuration
 
-- **One settings file for a whole build** (`--config site.json`), carrying the mapping, the
-  legends, the notes and the reference station. A site with many variables currently needs a long
-  command line or a Python script.
 - **Check a settings file against the file's header** before anything is read, as `--list` does for
   the registry: every column, flag and legend code named, with what is missing.
 

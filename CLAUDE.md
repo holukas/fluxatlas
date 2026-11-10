@@ -326,8 +326,9 @@ either a bug or a deliberate change that rewrites it (`--write`).
 `examples/build_lae_meteo_atlas.py` builds the full merged CH-LAE product
 (`99_METEO_MERGED_2004-2026.09.parquet`, not committed) with every site
 setting — legends, source flags, instances, raw twins, the MeteoSwiss
-Lägeren reference and notes. All CH-LAE facts live in that script;
-none go in the registry.
+Lägeren reference and notes. All CH-LAE facts live in
+`examples/ch-lae_site.json`, which the script reads and which
+`fluxatlas --config` builds the same payload from; none go in the registry.
 
 ## Site settings
 

@@ -5,7 +5,7 @@ Two scripts, and they are the two kinds of file this package reads.
 | Script | The case it shows |
 | --- | --- |
 | `build_fluxnet_atlas.py` | A **FLUXNET-standardized** file. No configuration: the registry knows the column names already. **Start here.** |
-| `build_lae_meteo_atlas.py` | A local product whose columns were never named for FLUXNET, **mapped by hand** with every site setting: legends, instrument flags, depths, corrected series and a reference station. |
+| `build_lae_meteo_atlas.py` | A local product whose columns were never named for FLUXNET, **mapped by hand** with every site setting: legends, instrument flags, depths, corrected series and a reference station. The settings are in `ch-lae_site.json`. |
 
 If you have a FLUXNET file — a FULLSET record, a FLUXMET release, EddyPro's FLUXNET
 output — the first one is the case you are in, and nothing below the first command is
@@ -191,9 +191,11 @@ The site-settings case: a local product that says more than a FLUXNET file can. 
 merged CH-LAE meteo product with every setting the package offers — the site's own fill
 legends, the instrument flag of each series, five soil water and seven soil temperature
 depths, the homogenised series beside their measured twins, and the MeteoSwiss Lägeren
-station as a reference for air temperature and humidity. The legends and the site's notes are in the
-script, not in the package. Neither input file is committed; the defaults are where they sit
-in the CH-LAE data folder.
+station as a reference for air temperature and humidity. Every setting, legend and note is in
+`ch-lae_site.json` beside it, not in the package, and the script only reads that file and builds.
+`fluxatlas --config examples/ch-lae_site.json` builds the same page from the command line.
+Neither input file is committed; the settings file names where they sit in the CH-LAE data
+folder, and `--input` and `--reference` point the script elsewhere.
 
 `data/CH-LAE_meteo_30min_2005-2025.parquet`, a 9.3 MB twenty-one-year six-variable extract,
 **is** committed. The tests read it, and it is the plain mapping case: its columns keep their

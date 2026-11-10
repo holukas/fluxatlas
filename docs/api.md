@@ -5,7 +5,7 @@ so the front ends stay thin. The rest is the machinery behind it.
 
 | Module | Responsibility |
 | --- | --- |
-| {mod}`fluxatlas.atlas` | The public API: `Atlas`, `build_atlas`, `available`. |
+| {mod}`fluxatlas.atlas` | The public API: `Atlas`, `build_atlas`, `read_config`, `available`. |
 | {mod}`fluxatlas.cli` | The command line, a thin wrapper over `atlas`. |
 | {mod}`fluxatlas.io` | Reading one half-hourly FLUXNET file. |
 | {mod}`fluxatlas.variables` | The registry: canonical keys, candidate columns, units, thresholds. |
@@ -28,6 +28,8 @@ points to use:
    :special-members: __init__
 
 .. autofunction:: fluxatlas.build_atlas
+
+.. autofunction:: fluxatlas.read_config
 
 .. autofunction:: fluxatlas.available
 

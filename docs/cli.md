@@ -29,6 +29,23 @@ There are two ways to say which variables to build, and one call can use both.
 Naming nothing builds the default selection: every registry variable the file can supply except
 the ones `--list` marks with `*`, which are built when named.
 
+## A settings file
+
+`--config FILE` reads a JSON or YAML file that describes the whole build: the input and output,
+the site, the years and seasons, the variables with their site settings, and the reference station.
+The input positional may then be left out where the file names one. A relative path in the file is
+taken from the file's own folder.
+
+```bash
+fluxatlas --config site.json
+fluxatlas --config site.json -o draft.html --first-year 2015
+```
+
+A flag also given on the command line overrides the file. A value such as `-o` or `--site`
+replaces the file's; a flag that names a variable replaces that field of its entry and keeps the
+rest, and `--vars` adds to the file's selection. The format of the file and the full rule are on
+the [site settings](site-settings.md#one-file-for-a-whole-build) page.
+
 ## Examples
 
 ```bash
@@ -69,6 +86,7 @@ diurnal composites and nothing else.
 ## Errors
 
 An argument error, an unknown canonical key, a `--qc` or `--factor` that refines nothing, a missing
-input file, or an invalid `--seasons` value: each exits with a message and a non-zero status. The
+input file, an invalid `--seasons` value, or a key the `--config` file does not know: each exits
+with a message and a non-zero status. The
 season value is checked before the file is opened, so a typo does not first cost a read of several
 hundred megabytes.
